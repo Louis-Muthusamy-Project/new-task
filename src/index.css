@@ -10,7 +10,7 @@
 
 body {
   font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 15px;
+  font-size: 14px;
   background-color: var(--bg-primary);
   color: var(--text-primary);
   transition: background-color 0.3s ease, color 0.3s ease;
@@ -44,11 +44,24 @@ body {
 }
 
 /* Typography Helpers */
-h1, h2, h3, h4, h5, h6 {
+h1, h2, h3, h4, h5, h6,
+.ant-typography h1,
+.ant-typography h2,
+.ant-typography h3,
+.ant-typography h4,
+.ant-typography h5,
+.ant-typography h6 {
   color: var(--text-primary);
   margin-bottom: 0.5rem;
   font-weight: 800;
 }
+
+h1, .ant-typography h1 { font-size: 28px !important; }
+h2, .ant-typography h2 { font-size: 24px !important; }
+h3, .ant-typography h3 { font-size: 20px !important; }
+h4, .ant-typography h4 { font-size: 18px !important; }
+h5, .ant-typography h5 { font-size: 16px !important; }
+h6, .ant-typography h6 { font-size: 14px !important; }
 
 p {
   color: var(--text-secondary);

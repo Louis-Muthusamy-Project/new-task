@@ -75,8 +75,8 @@ const SocialMedia = () => {
                   boxShadow: `0 4px 12px ${kpi.color}15`
                 }}
               >
-                <Text type="secondary" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5 }}>{kpi.label}</Text>
-                <Title level={1} style={{ margin: '12px 0 8px', color: 'var(--text-primary)', fontSize: 44, fontWeight: 800 }}>{kpi.val}</Title>
+                <Text type="secondary" style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1 }}>{kpi.label}</Text>
+                <Title level={1} style={{ margin: '12px 0 8px', color: 'var(--text-primary)', fontSize: 32, fontWeight: 800 }}>{kpi.val}</Title>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 'auto' }}>
                   {kpi.sub.includes('▲') && <TrendingUp size={14} color="var(--accent-primary)" />}
                   <Text style={{ fontSize: 13, fontWeight: 600, color: kpi.sub.includes('▲') ? 'var(--accent-primary)' : 'var(--text-secondary)' }}>{kpi.sub.replace('▲ ', '')}</Text>
