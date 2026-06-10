@@ -103,9 +103,9 @@ const PerformanceAds = () => {
       {/* NEW TWO-TONE SOLID HEADER CARDS */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         {[
-          { label: 'AD SPEND (MTD)', val: '₹8.42L', sub: 'of ₹10.00L budget', isProgress: true, pct: 84.2, color: 'var(--accent-secondary)', icon: <IndianRupee size={16} /> },
+          { label: 'AD SPEND (MTD)', val: '₹8.42L', isProgress: true, pct: 84.2, color: 'var(--accent-secondary)', icon: <IndianRupee size={16} /> },
           { label: 'TOTAL LEADS', val: '142', sub: '+23% vs LM', subColor: 'var(--accent-primary)', desc: 'Across all platforms', color: 'var(--accent-primary)', icon: <Users size={16} /> },
-          { label: 'COST PER LEAD', val: '₹5,929', sub: 'On target', subColor: 'var(--accent-danger)', desc: 'Target ₹5,500', color: 'var(--accent-danger)', icon: <Target size={16} /> },
+          { label: 'COST PER LEAD', val: '₹5,929', subColor: 'var(--accent-danger)', desc: 'Target ₹5,500', color: 'var(--accent-danger)', icon: <Target size={16} /> },
           { label: 'ROAS', val: '4.2x', sub: '+0.7', subColor: 'var(--accent-primary)', desc: 'Target 3.5x', color: 'var(--accent-warning)', icon: <Activity size={16} /> },
           { label: 'IMPRESSIONS', val: '12.4M', sub: '+8%', subColor: 'var(--accent-primary)', desc: 'Last 30 days', color: 'var(--accent-info)', icon: <Megaphone size={16} /> },
         ].map((kpi, i) => (

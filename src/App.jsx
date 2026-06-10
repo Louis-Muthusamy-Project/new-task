@@ -1,4 +1,5 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import AppLayout from './layouts/AppLayout';
 import PlaceholderPage from './components/PlaceholderPage';
 import { 
@@ -40,9 +41,18 @@ import Marketplace from './pages/Marketplace';
 import AgencyPortal from './pages/AgencyPortal';
 import ClientPortal from './pages/ClientPortal';
 
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+}
+
 function App() {
   return (
     <Router>
+      <ScrollToTop />
       <Routes>
         <Route path="/" element={<AppLayout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
