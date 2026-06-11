@@ -160,7 +160,7 @@ const OverviewTab = () => {
       <motion.div variants={itemVariants}>
         <Row gutter={[24, 24]} style={{ marginBottom: 48 }}>
           {stats.map((stat, idx) => (
-            <Col xs={12} lg={8} xl={4} key={idx}>
+            <Col xs={24} sm={12} lg={8} xl={8} xxl={4} key={idx}>
               <SlabCard style={{ height: '100%' }} bodyStyle={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                 <Text type="secondary" style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, display: 'block', marginBottom: 12, color: 'var(--text-tertiary)' }}>{stat.label}</Text>
                 <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 8, lineHeight: 1 }}>{stat.value}</div>

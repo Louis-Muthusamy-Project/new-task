@@ -2,12 +2,20 @@ import React, { useState } from 'react';
 import { Typography, Row, Col, Card, Button, Table, Tag, Switch, Tabs } from 'antd';
 import { motion } from 'framer-motion';
 import { Bot, Zap, Activity, Clock, Target, Shield, Search, FileText, Users, MessageSquare, DollarSign, AlertTriangle } from 'lucide-react';
+import AIAgentConfigureDrawer from '../components/AIAgentConfigureDrawer';
 
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
 
 const AIAgents = () => {
   const [activeTab, setActiveTab] = useState('all');
+  const [configuringAgent, setConfiguringAgent] = useState(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  const handleConfigure = (agent) => {
+    setConfiguringAgent(agent);
+    setIsDrawerOpen(true);
+  };
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -294,7 +302,7 @@ const AIAgents = () => {
                     </div>
                     <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
                       <a style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-secondary)' }}>View Logs</a>
-                      <Button size="middle" style={{ borderRadius: 6, fontWeight: 600, borderColor: 'var(--border-color)' }}>Configure</Button>
+                      <Button size="middle" onClick={() => handleConfigure(agent)} style={{ borderRadius: 6, fontWeight: 600, borderColor: 'var(--border-color)' }}>Configure</Button>
                     </div>
                   </div>
                 </Card>
@@ -386,6 +394,12 @@ const AIAgents = () => {
           ))}
         </Row>
       </motion.div>
+
+      <AIAgentConfigureDrawer 
+        open={isDrawerOpen} 
+        onClose={() => setIsDrawerOpen(false)} 
+        agent={configuringAgent} 
+      />
 
     </motion.div>
   );

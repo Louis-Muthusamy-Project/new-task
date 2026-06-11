@@ -1,13 +1,15 @@
-import React from 'react';
-import { Typography, Row, Col, Card, Button, Table, Tag, Avatar, Progress } from 'antd';
+import React, { useState } from 'react';
+import { Typography, Row, Col, Card, Button, Table, Tag, Avatar, Progress, Modal, Form, Select, Input, DatePicker, Switch } from 'antd';
 import { motion } from 'framer-motion';
-import { Download, Plus, Edit3, Trash2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Download, Plus, Edit3, Trash2, CheckCircle2, AlertCircle, Clock, Target } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { recentTimeEntries } from '../data/mock';
 
 const { Title, Text } = Typography;
 
 const TimeTracking = () => {
+  const [isLogTimeModalVisible, setIsLogTimeModalVisible] = useState(false);
+
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: {
@@ -91,34 +93,42 @@ const TimeTracking = () => {
         </div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <Button icon={<Download size={16} />} style={{ borderRadius: 8, fontWeight: 600, borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'var(--bg-secondary)', height: 40 }}>Export Timesheet</Button>
-          <Button type="primary" icon={<Plus size={16} />} style={{ borderRadius: 8, background: 'var(--accent-secondary)', height: 40, fontWeight: 700, border: 'none', boxShadow: 'var(--shadow-md)' }}>Log Time</Button>
+          <Button type="primary" onClick={() => setIsLogTimeModalVisible(true)} icon={<Plus size={16} />} style={{ borderRadius: 8, background: 'var(--accent-secondary)', height: 40, fontWeight: 700, border: 'none', boxShadow: 'var(--shadow-md)' }}>Log Time</Button>
         </div>
       </motion.div>
 
-      {/* NEW ELONGATED PILL METER CARDS */}
+      {/* UPDATED KPI CARDS */}
       <motion.div variants={itemVariants}>
         <Row gutter={[24, 24]} style={{ marginBottom: 40 }}>
           {[
-            { label: 'HOURS LOGGED', val: '284h', sub: 'of 320h capacity', msg: 'This week', color: 'var(--accent-info)' },
-            { label: 'BILLABLE HOURS', val: '241h', sub: '85% billable', msg: 'Across clients', color: 'var(--accent-primary)', pos: true },
-            { label: 'NON-BILLABLE', val: '43h', sub: '15% non-bill.', msg: 'Admin & internal', color: 'var(--accent-warning)', alert: true },
-            { label: 'UTILISATION RATE', val: '85%', msg: 'Target > 80%', color: 'var(--accent-secondary)', prog: 85 },
+            { label: 'HOURS LOGGED', val: '284h', sub: 'of 320h capacity', msg: 'This week', color: 'var(--accent-info)', icon: <Clock size={20} /> },
+            { label: 'BILLABLE HOURS', val: '241h', sub: '85% billable', msg: 'Across clients', color: 'var(--accent-primary)', pos: true, icon: <CheckCircle2 size={20} /> },
+            { label: 'NON-BILLABLE', val: '43h', sub: '15% non-bill.', msg: 'Admin & internal', color: 'var(--accent-warning)', alert: true, icon: <AlertCircle size={20} /> },
+            { label: 'UTILISATION RATE', val: '85%', msg: 'Target > 80%', color: 'var(--accent-secondary)', prog: 85, icon: <Target size={20} /> },
           ].map((kpi, i) => (
-            <Col xs={24} sm={12} lg={6} key={i}>
-              <motion.div whileHover={{ scale: 1.02, transition: { duration: 0.2 } }} style={{ height: '100%' }}>
+            <Col xs={24} sm={12} lg={12} xl={12} xxl={6} key={i}>
+              <motion.div whileHover={{ y: -4, transition: { duration: 0.2 } }} style={{ height: '100%' }}>
                 <Card 
+                  className="glassmorphism hover-bg"
                   style={{ 
-                    borderRadius: 48, // The Pill shape
+                    borderRadius: 16, 
                     border: '1px solid var(--border-color)', 
-                    background: 'var(--bg-secondary)',
-                    boxShadow: 'var(--shadow-md)',
-                    height: '100%'
+                    height: '100%',
+                    position: 'relative',
+                    overflow: 'hidden'
                   }} 
-                  bodyStyle={{ padding: '24px 32px' }}
+                  bodyStyle={{ padding: '24px 24px', display: 'flex', flexDirection: 'column', height: '100%' }}
                 >
-                  <Text type="secondary" style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.5 }}>{kpi.label}</Text>
+                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: kpi.color }} />
                   
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginTop: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                    <Text type="secondary" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5 }}>{kpi.label}</Text>
+                    <div style={{ padding: 8, borderRadius: 10, backgroundColor: 'var(--bg-secondary)', color: kpi.color, border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}>
+                      {kpi.icon}
+                    </div>
+                  </div>
+                  
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginTop: 'auto' }}>
                     <Title level={2} style={{ margin: 0, color: 'var(--text-primary)', fontWeight: 800, lineHeight: 1 }}>{kpi.val}</Title>
                     {kpi.sub && <Text style={{ color: kpi.alert ? 'var(--accent-warning)' : kpi.pos ? 'var(--accent-primary)' : 'var(--text-secondary)', fontSize: 13, fontWeight: 700 }}>{kpi.sub}</Text>}
                   </div>
@@ -173,6 +183,84 @@ const TimeTracking = () => {
           <Table columns={entryCols} dataSource={recentTimeEntries} pagination={false} rowKey="id" size="middle" scroll={{ x: 1000 }} rowClassName={() => 'hover-bg'} />
         </Card>
       </motion.div>
+
+      {/* Log Time Modal */}
+      <Modal
+        open={isLogTimeModalVisible}
+        onCancel={() => setIsLogTimeModalVisible(false)}
+        footer={null}
+        width={560}
+        style={{ top: 60 }}
+        closeIcon={<span style={{ color: 'var(--text-tertiary)', fontSize: 20 }}>×</span>}
+        title={
+          <div style={{ marginBottom: 24 }}>
+            <Title level={4} style={{ margin: 0, fontWeight: 800, color: 'var(--text-primary)' }}>Log time entry</Title>
+            <Text type="secondary" style={{ fontSize: 14, fontWeight: 500 }}>Every hour logged feeds the Profitability Engine.</Text>
+          </div>
+        }
+      >
+        <Form layout="vertical">
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item label={<span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: 1 }}>CLIENT</span>}>
+                <Select defaultValue="prestige" size="large" style={{ fontWeight: 600 }}>
+                  <Select.Option value="prestige">Prestige Estates</Select.Option>
+                  <Select.Option value="rapido">Rapido</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label={<span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: 1 }}>PROJECT / MODULE</span>}>
+                <Select defaultValue="seo" size="large" style={{ fontWeight: 600 }}>
+                  <Select.Option value="seo">SEO</Select.Option>
+                  <Select.Option value="ads">Ads</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item label={<span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: 1 }}>TASK DESCRIPTION</span>}>
+            <Input placeholder="e.g. Keyword research – luxury apts cluster" size="large" />
+          </Form.Item>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item label={<span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: 1 }}>DATE</span>}>
+                <DatePicker size="large" style={{ width: '100%' }} placeholder="June 11th, 2026" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label={<span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: 1 }}>HOURS</span>}>
+                <Input size="large" defaultValue="1.0" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item label={<span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: 1 }}>TEAM MEMBER</span>}>
+                <Select defaultValue="arjun" size="large" style={{ fontWeight: 600 }}>
+                  <Select.Option value="arjun">Arjun Sharma</Select.Option>
+                  <Select.Option value="priya">Priya Nair</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label={<span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: 1 }}>BILLABLE</span>}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid var(--border-color)', borderRadius: 8, padding: '8px 16px', height: 40 }}>
+                  <Text style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Billable to client</Text>
+                  <Switch defaultChecked style={{ background: 'var(--accent-secondary)' }} />
+                </div>
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 16, marginTop: 16 }}>
+            <Button size="large" onClick={() => setIsLogTimeModalVisible(false)} style={{ borderRadius: 8, fontWeight: 600, color: 'var(--text-primary)', borderColor: 'var(--border-color)' }}>Cancel</Button>
+            <Button size="large" type="primary" icon={<Clock size={16} />} style={{ background: 'var(--accent-secondary)', borderRadius: 8, fontWeight: 700, border: 'none' }}>Save entry</Button>
+          </div>
+        </Form>
+      </Modal>
 
     </motion.div>
   );

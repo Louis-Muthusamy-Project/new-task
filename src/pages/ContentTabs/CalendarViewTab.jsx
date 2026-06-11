@@ -52,50 +52,54 @@ const CalendarViewTab = ({ itemVariants }) => {
         </div>
 
         <Card className="glassmorphism" style={{ borderRadius: 16, border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }} bodyStyle={{ padding: 0 }}>
-          {/* Header Row */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary)', borderTopLeftRadius: 16, borderTopRightRadius: 16 }}>
-            {daysOfWeek.map(day => (
-              <div key={day} style={{ padding: '12px 16px', fontSize: 11, fontWeight: 700, letterSpacing: 1, color: 'var(--text-secondary)', borderRight: '1px solid var(--border-color)' }}>
-                {day}
+          <div style={{ overflowX: 'auto' }}>
+            <div style={{ minWidth: 900 }}>
+              {/* Header Row */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary)', borderTopLeftRadius: 16, borderTopRightRadius: 16 }}>
+                {daysOfWeek.map(day => (
+                  <div key={day} style={{ padding: '12px 16px', fontSize: 11, fontWeight: 700, letterSpacing: 1, color: 'var(--text-secondary)', borderRight: '1px solid var(--border-color)' }}>
+                    {day}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
 
-          {/* Grid Rows */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridTemplateRows: 'repeat(5, 120px)' }}>
-            {days.map((cell, i) => (
-              <div key={i} style={{ 
-                borderRight: (i + 1) % 7 !== 0 ? '1px solid var(--border-color)' : 'none', 
-                borderBottom: i < 28 ? '1px solid var(--border-color)' : 'none',
-                padding: 8,
-                background: cell.date === 9 ? 'var(--bg-primary)' : 'transparent', // highlight 9th just for visual
-                border: cell.date === 9 ? '2px solid var(--accent-secondary)' : 'none',
-                margin: cell.date === 9 ? -1 : 0,
-                zIndex: cell.date === 9 ? 2 : 1,
-                position: 'relative'
-              }}>
-                {cell.date && <Text type="secondary" style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 8, paddingLeft: 4 }}>{cell.date}</Text>}
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {cell.events.map((ev, idx) => (
-                    <div key={idx} style={{ 
-                      background: ev.color, 
-                      color: '#fff', 
-                      fontSize: 11, 
-                      fontWeight: 600, 
-                      padding: '4px 8px', 
-                      borderRadius: 4, 
-                      whiteSpace: 'nowrap', 
-                      overflow: 'hidden', 
-                      textOverflow: 'ellipsis',
-                      cursor: 'pointer'
-                    }}>
-                      {ev.title}
+              {/* Grid Rows */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridTemplateRows: 'repeat(5, 120px)' }}>
+                {days.map((cell, i) => (
+                  <div key={i} style={{ 
+                    borderRight: (i + 1) % 7 !== 0 ? '1px solid var(--border-color)' : 'none', 
+                    borderBottom: i < 28 ? '1px solid var(--border-color)' : 'none',
+                    padding: 8,
+                    background: cell.date === 9 ? 'var(--bg-primary)' : 'transparent', // highlight 9th just for visual
+                    border: cell.date === 9 ? '2px solid var(--accent-secondary)' : 'none',
+                    margin: cell.date === 9 ? -1 : 0,
+                    zIndex: cell.date === 9 ? 2 : 1,
+                    position: 'relative'
+                  }}>
+                    {cell.date && <Text type="secondary" style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 8, paddingLeft: 4 }}>{cell.date}</Text>}
+                    
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {cell.events.map((ev, idx) => (
+                        <div key={idx} style={{ 
+                          background: ev.color, 
+                          color: '#fff', 
+                          fontSize: 11, 
+                          fontWeight: 600, 
+                          padding: '4px 8px', 
+                          borderRadius: 4, 
+                          whiteSpace: 'nowrap', 
+                          overflow: 'hidden', 
+                          textOverflow: 'ellipsis',
+                          cursor: 'pointer'
+                        }}>
+                          {ev.title}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
 
           <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-color)', display: 'flex', gap: 24, flexWrap: 'wrap' }}>

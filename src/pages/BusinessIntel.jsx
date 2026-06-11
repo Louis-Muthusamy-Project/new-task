@@ -70,7 +70,7 @@ const BusinessIntel = () => {
             { label: 'ARPU', val: '₹3.57L', sub: '12 active clients', icon: <Users size={20}/>, color: 'var(--text-primary)' },
             { label: 'CLIENT LTV (AVG)', val: '₹1.43Cr', sub: '42 months avg tenure', icon: <ShieldCheck size={20}/>, color: 'var(--text-primary)' },
           ].map((kpi, i) => (
-            <Col xs={24} sm={12} lg={4} style={{ flex: '1 1 200px', minWidth: 200}} key={i}>
+            <Col xs={24} sm={12} lg={8} xl={8} xxl={4} style={{ flex: '1 1 240px', minWidth: 240}} key={i}>
               <motion.div whileHover={{ y: -2, transition: { duration: 0.2 } }} style={{ height: '100%' }}>
                 <Card 
                   bodyStyle={{ padding: '24px 20px' }} 
@@ -126,7 +126,7 @@ const BusinessIntel = () => {
 
       <motion.div variants={itemVariants}>
         <Row gutter={[32, 32]} style={{ marginBottom: 40 }}>
-          <Col xs={24} lg={16}>
+          <Col xs={24} lg={24} xl={24} xxl={16}>
             <Card 
               title={<div style={{ paddingTop: 8 }}><Title level={5} style={{ margin: 0, fontWeight: 700, color: 'var(--text-primary)' }}>Client Retention by Cohort</Title><Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>% of cohort still active each month after onboarding</Text></div>} 
               className="glassmorphism" style={{ borderRadius: 16, height: '100%', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}
@@ -171,7 +171,7 @@ const BusinessIntel = () => {
             </Card>
           </Col>
 
-          <Col xs={24} lg={8}>
+          <Col xs={24} lg={24} xl={24} xxl={8}>
             <Card 
               title={<div style={{ paddingTop: 8 }}><Title level={5} style={{ margin: 0, fontWeight: 700, color: 'var(--text-primary)' }}>Revenue by Client Age</Title><Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>Contribution to MRR by tenure</Text></div>} 
               className="glassmorphism" style={{ borderRadius: 16, height: '100%', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}
@@ -209,7 +209,7 @@ const BusinessIntel = () => {
           className="glassmorphism" style={{ borderRadius: 16, marginBottom: 40, border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}
         >
           <Row gutter={48}>
-            <Col xs={24} lg={8}>
+            <Col xs={24} lg={24} xl={24} xxl={8} style={{ marginBottom: 24 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
                 <div style={{ border: '1px solid var(--border-color)', borderRadius: 16, padding: 24, background: 'var(--bg-secondary)', boxShadow: 'var(--shadow-sm)' }}>
                   <Text type="secondary" style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.5, color: 'var(--text-tertiary)' }}>MONTHLY CHURN RATE</Text>
@@ -228,7 +228,7 @@ const BusinessIntel = () => {
                 </div>
               </div>
             </Col>
-            <Col xs={24} lg={16}>
+            <Col xs={24} lg={24} xl={24} xxl={16}>
               <Text type="secondary" style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 24, marginTop: 8 }}>Churn reasons — last 12 months</Text>
               <div style={{ height: 420 }}>
                 <ResponsiveContainer width="100%" height="100%">
@@ -257,7 +257,7 @@ const BusinessIntel = () => {
           className="glassmorphism" style={{ borderRadius: 16, marginBottom: 40, border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}
         >
           <Row gutter={[24, 24]} style={{ marginBottom: 40 }}>
-            <Col xs={24} lg={8}>
+            <Col xs={24} lg={24} xl={8} xxl={8}>
               <div style={{ border: '1px solid var(--border-color)', borderRadius: 16, padding: 24, background: 'var(--bg-secondary)', boxShadow: 'var(--shadow-sm)' }}>
                 <Text type="secondary" style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.5, color: 'var(--text-tertiary)' }}>CONSERVATIVE</Text>
                 <div style={{ fontSize: 18, fontWeight: 800, marginTop: 12, color: 'var(--text-primary)' }}>₹44.2L / mo by Sep</div>
@@ -265,7 +265,7 @@ const BusinessIntel = () => {
                 <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>Assumes current churn rate</Text>
               </div>
             </Col>
-            <Col xs={24} lg={8}>
+            <Col xs={24} lg={24} xl={8} xxl={8}>
               <div style={{ border: '2px solid var(--accent-primary)', background: 'rgba(16, 185, 129, 0.05)', borderRadius: 16, padding: 24, boxShadow: 'var(--shadow-md)' }}>
                 <Text type="secondary" style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.5, color: 'var(--accent-primary)' }}>BASE</Text>
                 <div style={{ fontSize: 18, fontWeight: 800, marginTop: 12, color: 'var(--text-primary)' }}>₹47.8L / mo by Sep</div>
@@ -273,7 +273,7 @@ const BusinessIntel = () => {
                 <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>Assumes 2 new wins from pipeline</Text>
               </div>
             </Col>
-            <Col xs={24} lg={8}>
+            <Col xs={24} lg={24} xl={8} xxl={8}>
               <div style={{ border: '1px solid var(--border-color)', borderRadius: 16, padding: 24, background: 'var(--bg-secondary)', boxShadow: 'var(--shadow-sm)' }}>
                 <Text type="secondary" style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.5, color: 'var(--text-tertiary)' }}>OPTIMISTIC</Text>
                 <div style={{ fontSize: 18, fontWeight: 800, marginTop: 12, color: 'var(--text-primary)' }}>₹52.4L / mo by Sep</div>
@@ -315,7 +315,7 @@ const BusinessIntel = () => {
             { label: 'NET REVENUE RETENTION', val: '108%', sub: '↗ Expansion > churn', color: 'var(--accent-primary)', icon: <TrendingUp size={20}/> },
             { label: 'AGENCY GROSS MARGIN', val: '33.6%', sub: 'Service-business benchmark', icon: <LinkIcon size={20}/>, color: 'var(--text-primary)' },
           ].map((kpi, i) => (
-            <Col xs={24} sm={12} lg={6} key={i}>
+            <Col xs={24} sm={12} lg={12} xl={12} xxl={6} style={{ flex: '1 1 240px', minWidth: 240}} key={i}>
               <motion.div whileHover={{ y: -2, transition: { duration: 0.2 } }} style={{ height: '100%' }}>
                 <Card 
                   bodyStyle={{ padding: '24px 20px' }} 

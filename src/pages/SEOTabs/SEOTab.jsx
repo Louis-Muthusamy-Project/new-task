@@ -98,7 +98,7 @@ const SEOTab = ({ itemVariants }) => {
       </Row>
 
       <Row gutter={[24, 24]}>
-        <Col xs={24} xl={17}>
+        <Col xs={24} lg={24} xl={24} xxl={17}>
           <motion.div variants={itemVariants} style={{ height: '100%' }}>
             <Card 
               title={<div style={{ paddingTop: 8 }}><Title level={5} style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Keyword Rankings</Title><Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>284 tracked keywords · Updated 4 mins ago</Text></div>} 
@@ -121,7 +121,7 @@ const SEOTab = ({ itemVariants }) => {
                 </div>
               </div>
               <div style={{ overflowX: 'auto' }}>
-                <Table columns={keywordCols} dataSource={seoKeywords} pagination={false} rowKey="id" size="middle" scroll={{ x: 1000 }} style={{ minWidth: 1000 }} />
+                <Table columns={keywordCols} dataSource={seoKeywords} pagination={false} rowKey="id" size="middle" scroll={{ x: 1000 }} />
               </div>
               
               <div style={{ background: 'rgba(245, 158, 11, 0.05)', border: '1px solid rgba(245, 158, 11, 0.2)', padding: 20, borderRadius: 12, marginTop: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
@@ -135,7 +135,7 @@ const SEOTab = ({ itemVariants }) => {
           </motion.div>
         </Col>
 
-        <Col xs={24} xl={7}>
+        <Col xs={24} lg={24} xl={24} xxl={7}>
           <motion.div variants={itemVariants}>
             <Card title={<Title level={5} style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Site Health Score</Title>} className="glassmorphism" style={{ borderRadius: 16, marginBottom: 24, border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}>
               <div style={{ height: 200, display: 'flex', justifyContent: 'center', position: 'relative' }}>

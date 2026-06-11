@@ -1,12 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Typography, Row, Col, Card, Button, Select, Table, Tag } from 'antd';
 import { motion } from 'framer-motion';
 import { Calendar, Plus, FileText, BarChart2, Target, Zap, Edit3, PauseCircle, PlayCircle, Download, CheckCircle2, Clock } from 'lucide-react';
 import { scheduledReports, recentSentReports } from '../data/mock';
+import CreateReportModal from '../components/CreateReportModal';
 
 const { Title, Text } = Typography;
 
 const Reports = () => {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: {
@@ -78,7 +81,7 @@ const Reports = () => {
         </div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <Button icon={<Calendar size={16} />} style={{ borderRadius: 8, fontWeight: 600, borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'var(--bg-secondary)', height: 40 }}>Schedule New</Button>
-          <Button type="primary" icon={<Plus size={16} />} style={{ borderRadius: 8, background: 'var(--accent-secondary)', height: 40, fontWeight: 700, border: 'none', boxShadow: 'var(--shadow-md)' }}>Create Report</Button>
+          <Button onClick={() => setIsModalOpen(true)} type="primary" icon={<Plus size={16} />} style={{ borderRadius: 8, background: 'var(--accent-secondary)', height: 40, fontWeight: 700, border: 'none', boxShadow: 'var(--shadow-md)' }}>Create Report</Button>
         </div>
       </motion.div>
 
@@ -127,7 +130,7 @@ const Reports = () => {
                   <Text style={{ color: 'var(--text-tertiary)', fontSize: 11, fontWeight: 800, letterSpacing: 1.5, display: 'block', margin: 0 }}>{tpl.pages}</Text>
                 </div>
                 
-                <Button block style={{ borderRadius: 8, height: 44, fontWeight: 600, borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'var(--bg-primary)' }}>Use Template</Button>
+                <Button onClick={() => setIsModalOpen(true)} block style={{ borderRadius: 8, height: 44, fontWeight: 600, borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'var(--bg-primary)' }}>Use Template</Button>
               </Card>
             </motion.div>
           </Col>
@@ -157,6 +160,8 @@ const Reports = () => {
           <Table columns={recentCols} dataSource={recentSentReports} pagination={false} rowKey="id" size="middle" scroll={{ x: 1000 }} rowClassName={() => 'hover-bg'} />
         </Card>
       </motion.div>
+
+      <CreateReportModal open={isModalOpen} onClose={() => setIsModalOpen(false)} />
 
     </motion.div>
   );

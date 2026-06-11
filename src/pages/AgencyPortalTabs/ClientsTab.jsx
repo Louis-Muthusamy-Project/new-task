@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
-import { Typography, Input, Button, Tag, Row, Col } from 'antd';
-import { Search, AlertTriangle, CheckCircle, ExternalLink, MoreHorizontal, Circle } from 'lucide-react';
+import { Typography, Input, Button, Tag, Row, Col, Drawer, Tabs, Progress } from 'antd';
+import { Search, AlertTriangle, CheckCircle, ExternalLink, MoreHorizontal, Circle, ArrowUpRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 import SlabCard from '../../components/SlabCard';
 
 const { Title, Text } = Typography;
 
 const ClientsTab = () => {
+  const [selectedClient, setSelectedClient] = useState(null);
+
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: { opacity: 1, transition: { staggerChildren: 0.05 } }
@@ -150,7 +152,7 @@ const ClientsTab = () => {
                   <Button style={{ borderRadius: 8, fontWeight: 600, color: 'var(--text-secondary)', borderColor: 'var(--border-color)', background: 'transparent', height: 40, display: 'flex', alignItems: 'center' }}>
                     <MoreHorizontal size={18} />
                   </Button>
-                  <Button type="primary" style={{ background: 'var(--accent-primary)', fontWeight: 700, borderRadius: 8, padding: '0 20px', height: 40, display: 'flex', alignItems: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+                  <Button type="primary" onClick={() => setSelectedClient(client)} style={{ background: 'var(--accent-primary)', fontWeight: 700, borderRadius: 8, padding: '0 20px', height: 40, display: 'flex', alignItems: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
                     View Client <ExternalLink size={16} style={{ marginLeft: 8 }} />
                   </Button>
                 </div>
@@ -202,6 +204,79 @@ const ClientsTab = () => {
           </motion.div>
         ))}
       </div>
+
+      {/* Client Detail Drawer */}
+      <Drawer
+        open={!!selectedClient}
+        onClose={() => setSelectedClient(null)}
+        width={480}
+        closeIcon={<span style={{ color: 'var(--text-tertiary)', fontSize: 20 }}>×</span>}
+        headerStyle={{ borderBottom: 'none', padding: '32px 32px 0 32px' }}
+        bodyStyle={{ padding: 32 }}
+        title={selectedClient && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ width: 56, height: 56, borderRadius: '50%', background: getStatusColor(selectedClient.status), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 20 }}>
+              {selectedClient.code}
+            </div>
+            <div>
+              <Title level={4} style={{ margin: 0, fontWeight: 800, color: 'var(--text-primary)' }}>{selectedClient.name}</Title>
+              <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>{selectedClient.industry}</Text>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
+                <Tag style={{ margin: 0, borderRadius: 12, background: `${getStatusColor(selectedClient.status)}20`, color: getStatusColor(selectedClient.status), border: 'none', fontWeight: 700, padding: '2px 10px' }}>
+                  {selectedClient.mos} · {selectedClient.status}
+                </Tag>
+                <Text type="secondary" style={{ fontSize: 12, fontWeight: 600 }}>AM: {selectedClient.am}</Text>
+              </div>
+            </div>
+          </div>
+        )}
+      >
+        {selectedClient && (
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <Button type="primary" style={{ background: 'var(--accent-secondary)', height: 48, borderRadius: 12, fontWeight: 700, fontSize: 15, marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+              Open Full Dashboard <ArrowUpRight size={18} style={{ marginLeft: 8 }} />
+            </Button>
+            
+            <Tabs defaultActiveKey="1" tabBarStyle={{ fontWeight: 600, color: 'var(--text-secondary)' }}>
+              <Tabs.TabPane tab="Summary" key="1">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 24, marginTop: 16, marginBottom: 32 }}>
+                  <Progress type="circle" percent={selectedClient.mos} strokeColor={getStatusColor(selectedClient.status)} trailColor="var(--bg-tertiary)" size={80} format={() => <span style={{ fontWeight: 800, color: 'var(--text-primary)', fontSize: 20 }}>{selectedClient.mos}</span>} />
+                  <div>
+                    <Title level={2} style={{ margin: 0, fontWeight: 800 }}>{selectedClient.mos}</Title>
+                    <Text type="secondary" style={{ fontSize: 14, fontWeight: 500 }}>{selectedClient.status} · Grade A</Text>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 32 }}>
+                  {Object.entries(selectedClient.scores).map(([label, score]) => (
+                    <div key={label}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-tertiary)', letterSpacing: 1 }}>{label}</span>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)' }}>{score}</span>
+                      </div>
+                      <Progress percent={score} showInfo={false} strokeColor={getScoreColor(score)} trailColor="var(--bg-tertiary)" size="small" />
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 16, padding: 24, marginBottom: 24 }}>
+                  <Text style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-tertiary)', letterSpacing: 1, display: 'block', marginBottom: 12 }}>3 QUICKEST WINS</Text>
+                  <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}>
+                    <li>· Fix mobile page speed (Web +6 pts)</li>
+                    <li>· Schedule 8 GEO posts (GEO +9 pts)</li>
+                    <li>· Restart paused Meta campaigns (Ads +4 pts)</li>
+                  </ul>
+                </div>
+
+                <a style={{ color: 'var(--accent-secondary)', fontWeight: 700, fontSize: 14 }}>View Full MOS →</a>
+              </Tabs.TabPane>
+              <Tabs.TabPane tab="Tasks" key="2" />
+              <Tabs.TabPane tab="Billing" key="3" />
+              <Tabs.TabPane tab="Activity" key="4" />
+            </Tabs>
+          </div>
+        )}
+      </Drawer>
 
     </motion.div>
   );

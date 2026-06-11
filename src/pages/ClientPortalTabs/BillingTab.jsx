@@ -98,7 +98,7 @@ const BillingTab = () => {
       {/* Top Cards */}
       <motion.div variants={itemVariants}>
         <Row gutter={[24, 24]} style={{ marginBottom: 24 }}>
-          <Col xs={24} lg={10}>
+          <Col xs={24} lg={24} xl={24} xxl={10}>
             <BubbleCard bodyStyle={{ padding: 32, display: 'flex', flexDirection: 'column', height: '100%' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
                 <Text style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-secondary)', letterSpacing: 1 }}>CURRENT RETAINER</Text>
@@ -113,7 +113,7 @@ const BillingTab = () => {
               <Text style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>Active since Aug 2024 · 12-month contract</Text>
             </BubbleCard>
           </Col>
-          <Col xs={24} lg={14}>
+          <Col xs={24} lg={24} xl={24} xxl={14}>
             <BubbleCard bodyStyle={{ padding: 32, display: 'flex', height: '100%', gap: 32 }}>
               <div style={{ flex: 1 }}>
                 <Text style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-secondary)', letterSpacing: 1, display: 'block', marginBottom: 16 }}>NEXT INVOICE</Text>
@@ -139,7 +139,7 @@ const BillingTab = () => {
                   </div>
                   <Button type="text" size="small" style={{ color: 'var(--text-tertiary)', fontSize: 12, fontWeight: 600 }}>Remove</Button>
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <Button icon={<CreditCard size={14} />} style={{ borderRadius: 8, fontSize: 12, fontWeight: 600 }}>+ Card</Button>
                   <Button icon={<Wallet size={14} />} style={{ borderRadius: 8, fontSize: 12, fontWeight: 600 }}>UPI Autopay</Button>
                   <Button icon={<Landmark size={14} />} style={{ borderRadius: 8, fontSize: 12, fontWeight: 600 }}>NetBanking</Button>
@@ -218,7 +218,7 @@ const BillingTab = () => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 24 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <Calendar size={20} color="var(--text-secondary)" />
+                <Calendar size={20} color="var(--text-secondary)" style={{ flexShrink: 0 }} />
                 <div>
                   <Text style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', display: 'block' }}>Jul 2026</Text>
                   <Text style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)' }}>Due 1 Aug 2026</Text>
@@ -231,7 +231,7 @@ const BillingTab = () => {
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <Calendar size={20} color="var(--text-secondary)" />
+                <Calendar size={20} color="var(--text-secondary)" style={{ flexShrink: 0 }} />
                 <div>
                   <Text style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', display: 'block' }}>Aug 2026</Text>
                   <Text style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)' }}>Due 1 Sep 2026</Text>

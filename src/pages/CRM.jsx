@@ -142,7 +142,7 @@ const CRM = () => {
           { label: 'CONVERSION RATE', val: '8.4%', sub: '▲ +1.2% vs last mo', desc: 'Lead → Site Visit', color: 'var(--accent-warning)' },
           { label: 'PIPELINE VALUE', val: '₹2.84Cr', sub: '▲ +18% vs last mo', desc: 'Across all open stages', color: 'var(--accent-primary)' }
         ].map((kpi, i) => (
-          <Col xs={24} sm={12} lg={4} style={{ flex: '1 1 200px', minWidth: 200}} key={i}>
+          <Col xs={24} sm={12} lg={8} xl={8} xxl={4} style={{ flex: '1 1 240px', minWidth: 240}} key={i}>
             <motion.div variants={itemVariants} whileHover={{ y: -4, transition: { duration: 0.2 } }} style={{ height: '100%' }}>
               <Card 
                 bodyStyle={{ padding: '24px 20px', position: 'relative', zIndex: 2, height: '100%', display: 'flex', flexDirection: 'column' }} 
@@ -204,7 +204,7 @@ const CRM = () => {
             { name: 'Organic', count: 18, sub: '-2 vs last mo', color: 'var(--accent-secondary)', qual: '10 (55.6%)', cpl: '₹0', conv: '11.1%', trend: '-10%', trendColor: 'var(--accent-danger)', subColor: 'var(--accent-danger)' },
             { name: 'Referral', count: 16, sub: '+2 vs last mo', color: 'var(--accent-warning)', qual: '6 (37.5%)', cpl: '₹0', conv: '12.5%', trend: '+14.3%' },
           ].map((source, i) => (
-            <Col xs={24} sm={12} lg={4} style={{ flex: '1 1 200px', minWidth: 200}} key={i}>
+            <Col xs={24} sm={12} lg={8} xl={8} xxl={4} style={{ flex: '1 1 240px', minWidth: 240}} key={i}>
               <motion.div whileHover={{ y: -4, transition: { duration: 0.2 } }}>
                 <Card className="glassmorphism" bodyStyle={{ padding: '20px 24px' }} style={{ borderRadius: 16, border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>

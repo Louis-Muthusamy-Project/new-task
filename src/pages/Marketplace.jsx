@@ -135,7 +135,7 @@ const Marketplace = () => {
       <motion.div variants={itemVariants}>
         <Row gutter={[24, 24]} style={{ marginBottom: 40 }}>
           {stats.map((stat, idx) => (
-            <Col xs={24} sm={12} lg={6} key={idx}>
+            <Col xs={24} sm={12} lg={12} xl={12} xxl={6} style={{ flex: '1 1 240px', minWidth: 240}} key={idx}>
               <motion.div whileHover={{ y: -4, transition: { duration: 0.2 } }} style={{ height: '100%' }}>
                 <RetailTagCard style={{ height: '100%', paddingTop: 16 }}>
                   <Text type="secondary" style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.5, display: 'block', marginBottom: 12, textAlign: 'center' }}>{stat.label}</Text>
@@ -174,7 +174,7 @@ const Marketplace = () => {
 
         <Row gutter={[24, 32]}>
           {servicePackages.map(pkg => (
-            <Col xs={24} lg={8} key={pkg.id}>
+            <Col xs={24} lg={12} xl={12} xxl={8} key={pkg.id}>
               <RetailTagCard style={{ height: '100%', display: 'flex', flexDirection: 'column' }} bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
                   <div style={{ background: 'var(--bg-tertiary)', padding: 16, borderRadius: 16, border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}>
@@ -211,7 +211,7 @@ const Marketplace = () => {
             </Col>
           ))}
           
-          <Col xs={24} lg={8}>
+          <Col xs={24} lg={12} xl={12} xxl={8}>
             <RetailTagCard style={{ height: '100%', display: 'flex', flexDirection: 'column' }} bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
                   <div style={{ background: 'var(--bg-tertiary)', padding: 16, borderRadius: 16, color: 'var(--text-secondary)', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}>
@@ -244,7 +244,7 @@ const Marketplace = () => {
             </RetailTagCard>
           </Col>
           
-          <Col xs={24} lg={8}>
+          <Col xs={24} lg={12} xl={12} xxl={8}>
             <div className="hover-bg" style={{ border: '3px dashed var(--border-color)', borderRadius: 32, height: '100%', minHeight: 400, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', cursor: 'pointer', background: 'rgba(255,255,255,0.02)' }}>
               <Plus size={40} style={{ marginBottom: 16, color: 'var(--text-tertiary)' }} />
               <Text style={{ fontSize: 16, fontWeight: 700, color: 'inherit' }}>Add Service Package</Text>
@@ -261,7 +261,7 @@ const Marketplace = () => {
         
         <Row gutter={[24, 24]}>
           {templates.map((tpl, i) => (
-            <Col xs={24} sm={12} lg={8} key={i}>
+            <Col xs={24} sm={12} lg={12} xl={12} xxl={8} key={i}>
               <Card className="glassmorphism" style={{ borderRadius: 16, border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }} bodyStyle={{ padding: 24 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                   <div style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)', padding: 10, borderRadius: 12, border: '1px solid var(--border-color)' }}>
@@ -293,7 +293,7 @@ const Marketplace = () => {
         
         <Row gutter={[24, 24]}>
           {addons.map((addon, i) => (
-            <Col xs={24} lg={8} key={i}>
+            <Col xs={24} lg={12} xl={12} xxl={8} key={i}>
               <Card className="glassmorphism" style={{ borderRadius: 16, height: '100%', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }} bodyStyle={{ padding: 32, display: 'flex', flexDirection: 'column', height: '100%' }}>
                 <div style={{ background: addon.bg, padding: 16, borderRadius: 16, width: 64, height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 24, boxShadow: 'var(--shadow-sm)' }}>
                   {addon.icon}

@@ -133,7 +133,7 @@ const SLA = () => {
       </Row>
 
       <Row gutter={[24, 24]}>
-        <Col xs={24} lg={16} xl={17}>
+        <Col xs={24} lg={24} xl={24} xxl={17}>
           <motion.div variants={itemVariants} className="glassmorphism" style={{ padding: '20px 24px', borderRadius: 16, marginBottom: 24, border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 16 }}>
               <Input.Search placeholder="Search clients..." style={{ width: '100%', maxWidth: 360 }} />
@@ -156,7 +156,7 @@ const SLA = () => {
               </div>
             </div>
             <div style={{ overflowX: 'auto' }}>
-              <Table columns={columns} dataSource={agencyClients} rowKey="id" pagination={false} size="middle" scroll={{ x: 900 }} style={{ minWidth: 900 }} />
+              <Table columns={columns} dataSource={agencyClients} rowKey="id" pagination={false} size="middle" scroll={{ x: 900 }} />
             </div>
           </motion.div>
 
@@ -193,7 +193,7 @@ const SLA = () => {
           </motion.div>
         </Col>
 
-        <Col xs={24} lg={8} xl={7}>
+        <Col xs={24} lg={24} xl={24} xxl={7}>
           <motion.div variants={itemVariants} className="glassmorphism" style={{ padding: 24, borderRadius: 16, border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-md)', position: 'relative', overflow: 'hidden' }}>
             {/* Subtle red glow in the background for "Needs Action" */}
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 100, background: 'linear-gradient(180deg, rgba(239,68,68,0.1) 0%, transparent 100%)', pointerEvents: 'none' }} />

@@ -73,7 +73,7 @@ const AICopilot = () => {
   ];
 
   return (
-    <motion.div variants={containerVariants} initial="hidden" animate="visible" style={{ height: 'calc(100vh - 120px)', display: 'flex', flexDirection: 'column' }}>
+    <motion.div variants={containerVariants} initial="hidden" animate="visible" style={{ minHeight: 'calc(100vh - 120px)', display: 'flex', flexDirection: 'column' }}>
       
       <motion.div variants={itemVariants} style={{ marginBottom: 24 }}>
         <Text type="secondary" style={{ fontSize: 12, fontWeight: 700, letterSpacing: 1.5 }}>PILLAR 04 · INTELLIGENCE</Text>
@@ -84,10 +84,10 @@ const AICopilot = () => {
         <Text type="secondary" style={{ fontWeight: 500 }}>Conversational AI assistant trained on your agency\'s marketing strategy and performance data.</Text>
       </motion.div>
 
-      <Row gutter={[24, 24]} style={{ flex: 1, overflow: 'hidden' }}>
+      <Row gutter={[24, 24]} style={{ flex: 1, overflowY: 'auto' }}>
         
         {/* Left Sidebar - Chat History */}
-        <Col xs={24} lg={5} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <Col xs={24} lg={24} xl={24} xxl={5} style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 300 }}>
           <motion.div variants={itemVariants} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             <Button type="primary" icon={<Plus size={16}/>} block style={{ borderRadius: 8, background: 'var(--accent-secondary)', height: 44, marginBottom: 24, fontWeight: 700, border: 'none', boxShadow: 'var(--shadow-md)' }}>New Conversation</Button>
             
@@ -106,7 +106,7 @@ const AICopilot = () => {
         </Col>
 
         {/* Main Chat Area */}
-        <Col xs={24} lg={14} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <Col xs={24} lg={24} xl={24} xxl={14} style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 600 }}>
           <motion.div variants={itemVariants} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
             <Card 
               bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', height: '100%' }} 
@@ -200,7 +200,7 @@ const AICopilot = () => {
         </Col>
 
         {/* Right Sidebar - Context Panel */}
-        <Col xs={24} lg={5} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <Col xs={24} lg={24} xl={24} xxl={5} style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 400 }}>
           <motion.div variants={itemVariants}>
             <Card 
               bodyStyle={{ padding: 24 }} 
