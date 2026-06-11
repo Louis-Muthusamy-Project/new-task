@@ -24,7 +24,9 @@ const SignIn = () => {
         return;
       }
 
-      if (email === 'admin@gmail.com') {
+      if (email === 'superadmin@gmail.com') {
+        login('superadmin');
+      } else if (email === 'admin@gmail.com') {
         login('admin');
       } else if (email === 'agency@gmail.com') {
         login('agency');

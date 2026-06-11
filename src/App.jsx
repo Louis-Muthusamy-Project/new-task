@@ -64,6 +64,14 @@ import ClientStoreTab from './pages/ClientPortal/tabs/StoreTab';
 import ClientBillingTab from './pages/ClientPortal/tabs/BillingTab';
 import ClientSupportTab from './pages/ClientPortal/tabs/SupportTab';
 
+// Super Admin Layout and Pages
+import SuperAdminLayout from './layouts/SuperAdminLayout';
+import SuperAdminDashboard from './pages/SuperAdmin/Dashboard';
+import SuperAdminCompanies from './pages/SuperAdmin/Companies';
+import SuperAdminSubscriptions from './pages/SuperAdmin/Subscriptions';
+import SuperAdminIntegrations from './pages/SuperAdmin/Integrations';
+import SuperAdminAdmins from './pages/SuperAdmin/Admins';
+
 function ScrollToTop() {
   const { pathname } = useLocation();
   useEffect(() => {
@@ -82,6 +90,7 @@ const ProtectedRoute = ({ allowedRoles }) => {
   
   if (allowedRoles && !allowedRoles.includes(role)) {
     // Redirect to respective dashboard if trying to access unauthorized route
+    if (role === 'superadmin') return <Navigate to="/superadmin/dashboard" replace />;
     if (role === 'admin') return <Navigate to="/dashboard" replace />;
     if (role === 'agency') return <Navigate to="/agency/overview" replace />;
     if (role === 'client') return <Navigate to="/client/dashboard" replace />;
@@ -95,8 +104,21 @@ const AppRoutes = () => {
   
   return (
     <Routes>
-      <Route path="/signin" element={role ? <Navigate to={role === 'admin' ? '/dashboard' : role === 'agency' ? '/agency/overview' : '/client/dashboard'} replace /> : <SignIn />} />
+      <Route path="/signin" element={role ? <Navigate to={role === 'superadmin' ? '/superadmin/dashboard' : role === 'admin' ? '/dashboard' : role === 'agency' ? '/agency/overview' : '/client/dashboard'} replace /> : <SignIn />} />
       
+      {/* Super Admin Routes */}
+      <Route element={<ProtectedRoute allowedRoles={['superadmin']} />}>
+        <Route path="/superadmin" element={<SuperAdminLayout />}>
+          <Route index element={<Navigate to="/superadmin/dashboard" replace />} />
+          <Route path="dashboard" element={<SuperAdminDashboard />} />
+          <Route path="companies" element={<SuperAdminCompanies />} />
+          <Route path="subscriptions" element={<SuperAdminSubscriptions />} />
+          <Route path="integrations" element={<SuperAdminIntegrations />} />
+          
+          <Route path="admins" element={<SuperAdminAdmins />} />
+        </Route>
+      </Route>
+
       {/* Admin Routes */}
       <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
         <Route path="/" element={<AppLayout />}>
@@ -174,7 +196,7 @@ const AppRoutes = () => {
       </Route>
 
       {/* Catch all - Redirect to sign in if no role, otherwise to respective dashboard */}
-      <Route path="*" element={<ProtectedRoute allowedRoles={['admin', 'agency', 'client']} />} />
+      <Route path="*" element={<ProtectedRoute allowedRoles={['superadmin', 'admin', 'agency', 'client']} />} />
     </Routes>
   );
 };

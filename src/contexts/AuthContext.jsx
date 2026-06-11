@@ -20,8 +20,8 @@ export const AuthProvider = ({ children }) => {
 
   const login = (selectedRole) => {
     setRole(selectedRole);
-    // Redirect based on role
-    if (selectedRole === 'admin') navigate('/dashboard');
+    if (selectedRole === 'superadmin') navigate('/superadmin/dashboard');
+    else if (selectedRole === 'admin') navigate('/dashboard');
     else if (selectedRole === 'agency') navigate('/agency/overview');
     else if (selectedRole === 'client') navigate('/client/dashboard');
   };

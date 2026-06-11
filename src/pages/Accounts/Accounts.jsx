@@ -81,6 +81,14 @@ const Accounts = () => {
     { title: '', key: 'action', render: () => <ArrowUpRight size={16} color="var(--text-tertiary)" style={{ cursor: 'pointer' }} /> }
   ];
 
+  const filteredClients = React.useMemo(() => {
+    return agencyClients.filter(client => {
+      if (filter === 'All') return true;
+      if (filter === 'At-risk') return client.status === 'At risk';
+      return client.status === filter;
+    });
+  }, [filter]);
+
   return (
     <motion.div variants={containerVariants} initial="hidden" animate="visible">
       <motion.div variants={itemVariants} style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
@@ -194,7 +202,7 @@ const Accounts = () => {
         <div style={{ overflowX: 'auto' }}>
           <Table 
             columns={columns} 
-            dataSource={agencyClients} 
+            dataSource={filteredClients} 
             rowKey="id" 
             pagination={false} 
             rowSelection={{ type: 'checkbox' }}
