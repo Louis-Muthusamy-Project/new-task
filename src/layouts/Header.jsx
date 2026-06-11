@@ -1,18 +1,28 @@
 import React from 'react';
 import { Layout, Input, Button, Avatar, Badge, Dropdown } from 'antd';
-import { Search, Bell, Sun, Moon, User, Command } from 'lucide-react';
+import { Search, Bell, Sun, Moon, User, Command, LogOut } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 
 const { Header: AntHeader } = Layout;
 
 const Header = () => {
   const { isDark, toggleTheme } = useTheme();
+  const { role, logout } = useAuth();
 
   const userMenuItems = [
     { key: 'profile', label: 'My Profile', icon: <User size={16} /> },
     { type: 'divider' },
-    { key: 'logout', label: 'Logout', danger: true },
+    { key: 'logout', label: 'Logout', danger: true, icon: <LogOut size={16} />, onClick: logout },
   ];
+
+  const getUserDetails = () => {
+    if (role === 'agency') return { name: 'Arjun Sharma', subtitle: 'BCC Martech', initial: 'AS' };
+    if (role === 'client') return { name: 'Rahul Kapoor', subtitle: 'Prestige Estates', initial: 'RK' };
+    return { name: 'Admin User', subtitle: 'Agency Owner', initial: 'AU' };
+  };
+
+  const userDetails = getUserDetails();
 
   return (
     <AntHeader style={{ 
@@ -65,10 +75,10 @@ const Header = () => {
         <Dropdown menu={{ items: userMenuItems }} trigger={['click']} placement="bottomRight">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '4px 8px', borderRadius: 8, transition: 'background 0.3s' }} className="hover-bg">
             <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2, textAlign: 'right' }}>
-              <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>Admin User</span>
-              <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Agency Owner</span>
+              <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>{userDetails.name}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{userDetails.subtitle}</span>
             </div>
-            <Avatar style={{ backgroundColor: 'var(--accent-primary)' }} icon={<User size={18} />} />
+            <Avatar style={{ backgroundColor: 'var(--accent-primary)', fontWeight: 800 }}>{userDetails.initial}</Avatar>
           </div>
         </Dropdown>
       </div>

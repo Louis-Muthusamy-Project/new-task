@@ -76,7 +76,7 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
         { key: '/workspace/crm', icon: getIcon(LineChart), label: getLabel('CRM & Leads', '142', 'default') },
         { key: '/workspace/automation', icon: getIcon(Zap), label: 'Automation' },
         { key: '/workspace/tasks', icon: getIcon(CheckSquare), label: 'Task Management' },
-        { key: '/workspace/website', icon: getIcon(Globe), label: 'Website & CRO' },
+        { key: '/workspace/website', icon: getIcon(Globe), label: 'Websites' },
       ],
     },
     { type: 'divider' },
@@ -84,9 +84,12 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
       key: 'intelligence',
       label: collapsed ? 'INT' : 'INTELLIGENCE',
       children: [
+        
         { key: '/intelligence/analytics', icon: getIcon(TrendingUp), label: 'Analytics & Attribution' },
         { key: '/intelligence/mos', icon: getIcon(Activity), label: getLabel('MOS Score', '68', 'warning') },
         { key: '/intelligence/copilot', icon: getIcon(MessageCircle), label: 'AI Co-Pilot' },
+        { key: '/intelligence/chatgpt', icon: getIcon(MessageCircle), label: 'ChatGPT' },
+        { key: '/intelligence/canva', icon: getIcon(Palette), label: 'Canva' },
         { key: '/intelligence/agents', icon: getIcon(Bot), label: getLabel('Ai Agent', 'teal') },
         { key: '/intelligence/benchmarks', icon: getIcon(Award), label: 'Benchmarks' },
         { key: '/intelligence/reporting', icon: getIcon(FileText), label: 'Reports' },
@@ -113,8 +116,6 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
       children: [
         { key: '/settings/company', icon: getIcon(SettingsIcon), label: 'Settings' },
         { key: '/settings/marketplace', icon: getIcon(Store), label: 'Marketplace' },
-        { key: '/settings/agency', icon: getIcon(Monitor), label: 'Agency Portal' },
-        { key: '/settings/client', icon: getIcon(Monitor), label: 'Client Portal' },
       ],
     },
   ];

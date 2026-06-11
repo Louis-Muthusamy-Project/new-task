@@ -1,6 +1,12 @@
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, Outlet } from 'react-router-dom';
 import { useEffect } from 'react';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import SignIn from './pages/SignIn';
+
+// Layouts
 import AppLayout from './layouts/AppLayout';
+import AgencyLayout from './layouts/AgencyLayout';
+import ClientLayout from './layouts/ClientLayout';
 import PlaceholderPage from './components/PlaceholderPage';
 import { 
   Users, HeartHandshake, Monitor, MessageCircle, TrendingUp, Zap, 
@@ -8,7 +14,7 @@ import {
   Lightbulb, Calendar, DollarSign, File, Store, Book, Library, Shield, Bell, CreditCard, Activity, Bot, Award
 } from 'lucide-react';
 
-// Actual Pages
+// Admin Pages
 import Dashboard from './pages/Dashboard';
 import CRM from './pages/CRM';
 import WebsiteBuilder from './pages/WebsiteBuilder';
@@ -38,8 +44,25 @@ import AIAgents from './pages/AIAgents';
 import AICopilot from './pages/AICopilot';
 import Benchmarks from './pages/Benchmarks';
 import Marketplace from './pages/Marketplace';
-import AgencyPortal from './pages/AgencyPortal';
-import ClientPortal from './pages/ClientPortal';
+import ClientChatGPTPage from './pages/ClientChatGPTPage';
+import ClientCanvaPage from './pages/ClientCanvaPage';
+
+// Agency Portal Tabs
+import OverviewTab from './pages/AgencyPortalTabs/OverviewTab';
+import ClientsTab from './pages/AgencyPortalTabs/ClientsTab';
+import AgencyPerformanceTab from './pages/AgencyPortalTabs/PerformanceTab';
+import AgencyTasksTab from './pages/AgencyPortalTabs/TasksTab';
+import AgencyBillingTab from './pages/AgencyPortalTabs/BillingTab';
+import AgencySupportTab from './pages/AgencyPortalTabs/SupportTab';
+
+// Client Portal Tabs
+import ClientDashboardTab from './pages/ClientPortalTabs/DashboardTab';
+import ClientPerformanceTab from './pages/ClientPortalTabs/MyPerformanceTab';
+import ClientLeadsTab from './pages/ClientPortalTabs/LeadsTab';
+import ClientTasksTab from './pages/ClientPortalTabs/TasksTab';
+import ClientStoreTab from './pages/ClientPortalTabs/StoreTab';
+import ClientBillingTab from './pages/ClientPortalTabs/BillingTab';
+import ClientSupportTab from './pages/ClientPortalTabs/SupportTab';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -49,23 +72,41 @@ function ScrollToTop() {
   return null;
 }
 
-function App() {
+// Protected Route Component
+const ProtectedRoute = ({ allowedRoles }) => {
+  const { role } = useAuth();
+  
+  if (!role) {
+    return <Navigate to="/signin" replace />;
+  }
+  
+  if (allowedRoles && !allowedRoles.includes(role)) {
+    // Redirect to respective dashboard if trying to access unauthorized route
+    if (role === 'admin') return <Navigate to="/dashboard" replace />;
+    if (role === 'agency') return <Navigate to="/agency/overview" replace />;
+    if (role === 'client') return <Navigate to="/client/dashboard" replace />;
+  }
+  
+  return <Outlet />;
+};
+
+const AppRoutes = () => {
+  const { role } = useAuth();
+  
   return (
-    <Router>
-      <ScrollToTop />
-      <Routes>
+    <Routes>
+      <Route path="/signin" element={role ? <Navigate to={role === 'admin' ? '/dashboard' : role === 'agency' ? '/agency/overview' : '/client/dashboard'} replace /> : <SignIn />} />
+      
+      {/* Admin Routes */}
+      <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
         <Route path="/" element={<AppLayout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
-          
-          {/* Section 1 */}
           <Route path="dashboard" element={<Dashboard />} />
           
-          {/* Section 2: Clients */}
           <Route path="clients/accounts" element={<Accounts />} />
           <Route path="clients/sla" element={<SLA />} />
           <Route path="clients/portal" element={<PortalSettings />} />
 
-          {/* Section 3: Workspace */}
           <Route path="workspace/strategy" element={<Strategy />} />
           <Route path="workspace/seo" element={<SEO />} />
           <Route path="workspace/content" element={<Content />} />
@@ -77,15 +118,15 @@ function App() {
           <Route path="workspace/tasks" element={<Tasks />} />
           <Route path="workspace/website/*" element={<WebsiteBuilder />} />
 
-          {/* Section 4: Intelligence */}
           <Route path="intelligence/analytics" element={<Analytics />} />
           <Route path="intelligence/mos" element={<MOSScore />} />
           <Route path="intelligence/copilot" element={<AICopilot />} />
+          <Route path="intelligence/chatgpt" element={<ClientChatGPTPage />} />
+          <Route path="intelligence/canva" element={<ClientCanvaPage />} />
           <Route path="intelligence/agents" element={<AIAgents />} />
           <Route path="intelligence/benchmarks" element={<Benchmarks />} />
           <Route path="intelligence/reporting" element={<Reports />} />
 
-          {/* Section 5: Agency Ops */}
           <Route path="ops/team" element={<Teams />} />
           <Route path="ops/time" element={<TimeTracking />} />
           <Route path="ops/resources" element={<Resources />} />
@@ -94,22 +135,57 @@ function App() {
           <Route path="ops/newbusiness" element={<NewBusiness />} />
           <Route path="ops/businessintel" element={<BusinessIntel />} />
 
-          {/* Section 6: Settings */}
           <Route path="settings/company" element={<SettingsPage />} />
           <Route path="settings/marketplace" element={<Marketplace />} />
-          <Route path="settings/agency" element={<AgencyPortal />} />
-          <Route path="settings/client" element={<ClientPortal />} />
           <Route path="settings/users" element={<PlaceholderPage title="User Settings" description="Manage user preferences." icon={Users} />} />
           <Route path="settings/roles" element={<PlaceholderPage title="Roles & Permissions" description="Define role-based access control." icon={Shield} />} />
           <Route path="settings/integrations" element={<PlaceholderPage title="Integrations" description="Connect third-party apps and APIs." icon={Zap} />} />
           <Route path="settings/notifications" element={<PlaceholderPage title="Notifications" description="Configure email and in-app alerts." icon={Bell} />} />
           <Route path="settings/billing" element={<PlaceholderPage title="Billing" description="Manage subscription plans and payment methods." icon={CreditCard} />} />
           <Route path="settings/audit" element={<PlaceholderPage title="Audit Logs" description="Review system activity and security events." icon={Activity} />} />
-
-          {/* Catch all */}
-          <Route path="*" element={<div style={{ padding: 24, textAlign: 'center', marginTop: 40 }}><h2 style={{color: 'var(--text-primary)'}}>404 - Page Not Found</h2></div>} />
         </Route>
-      </Routes>
+      </Route>
+
+      {/* Agency Routes */}
+      <Route element={<ProtectedRoute allowedRoles={['agency']} />}>
+        <Route path="/agency" element={<AgencyLayout />}>
+          <Route index element={<Navigate to="/agency/overview" replace />} />
+          <Route path="overview" element={<OverviewTab />} />
+          <Route path="clients" element={<ClientsTab />} />
+          <Route path="performance" element={<AgencyPerformanceTab />} />
+          <Route path="tasks" element={<AgencyTasksTab />} />
+          <Route path="billing" element={<AgencyBillingTab />} />
+          <Route path="support" element={<AgencySupportTab />} />
+        </Route>
+      </Route>
+
+      {/* Client Routes */}
+      <Route element={<ProtectedRoute allowedRoles={['client']} />}>
+        <Route path="/client" element={<ClientLayout />}>
+          <Route index element={<Navigate to="/client/dashboard" replace />} />
+          <Route path="dashboard" element={<ClientDashboardTab />} />
+          <Route path="performance" element={<ClientPerformanceTab />} />
+          <Route path="leads" element={<ClientLeadsTab />} />
+          <Route path="tasks" element={<ClientTasksTab />} />
+          <Route path="store" element={<ClientStoreTab />} />
+          <Route path="billing" element={<ClientBillingTab />} />
+          <Route path="support" element={<ClientSupportTab />} />
+        </Route>
+      </Route>
+
+      {/* Catch all - Redirect to sign in if no role, otherwise to respective dashboard */}
+      <Route path="*" element={<ProtectedRoute allowedRoles={['admin', 'agency', 'client']} />} />
+    </Routes>
+  );
+};
+
+function App() {
+  return (
+    <Router>
+      <ScrollToTop />
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
     </Router>
   );
 }

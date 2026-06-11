@@ -16,11 +16,13 @@
     "@ant-design/icons": "^6.2.5",
     "@vitejs/plugin-react": "^6.0.2",
     "antd": "^6.4.3",
+    "classnames": "^2.5.1",
     "framer-motion": "^12.40.0",
     "lucide-react": "^1.17.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.17.0",
+    "reactflow": "^11.11.4",
     "recharts": "^3.8.1"
   }
 }
