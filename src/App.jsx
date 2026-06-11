@@ -1,7 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, Outlet } from 'react-router-dom';
 import { useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import SignIn from './pages/SignIn';
+import SignIn from './pages/SignIn/SignIn';
 
 // Layouts
 import AppLayout from './layouts/AppLayout';
@@ -15,54 +15,54 @@ import {
 } from 'lucide-react';
 
 // Admin Pages
-import Dashboard from './pages/Dashboard';
-import CRM from './pages/CRM';
-import WebsiteBuilder from './pages/WebsiteBuilder';
-import Strategy from './pages/Strategy';
-import SEO from './pages/SEO';
-import Content from './pages/Content';
-import Creative from './pages/Creative';
-import SocialMedia from './pages/SocialMedia';
-import PerformanceAds from './pages/PerformanceAds';
-import Accounts from './pages/Accounts';
-import SLA from './pages/SLA';
-import PortalSettings from './pages/PortalSettings';
-import Analytics from './pages/Analytics';
-import Automation from './pages/Automation';
-import Tasks from './pages/Tasks';
-import Reports from './pages/Reports';
-import Teams from './pages/Teams';
-import TimeTracking from './pages/TimeTracking';
-import Resources from './pages/Resources';
-import MOSScore from './pages/MOSScore';
-import Finance from './pages/Finance';
-import Profitability from './pages/Profitability';
-import NewBusiness from './pages/NewBusiness';
-import BusinessIntel from './pages/BusinessIntel';
-import SettingsPage from './pages/Settings';
-import AIAgents from './pages/AIAgents';
-import AICopilot from './pages/AICopilot';
-import Benchmarks from './pages/Benchmarks';
-import Marketplace from './pages/Marketplace';
-import ClientChatGPTPage from './pages/ClientChatGPTPage';
-import ClientCanvaPage from './pages/ClientCanvaPage';
+import Dashboard from './pages/Dashboard/Dashboard';
+import CRM from './pages/CRM/CRM';
+import WebsiteBuilder from './pages/WebsiteBuilder/WebsiteBuilder';
+import Strategy from './pages/Strategy/Strategy';
+import SEO from './pages/SEO/SEO';
+import Content from './pages/Content/Content';
+import Creative from './pages/Creative/Creative';
+import SocialMedia from './pages/SocialMedia/SocialMedia';
+import PerformanceAds from './pages/PerformanceAds/PerformanceAds';
+import Accounts from './pages/Accounts/Accounts';
+import SLA from './pages/SLA/SLA';
+import PortalSettings from './pages/PortalSettings/PortalSettings';
+import Analytics from './pages/Analytics/Analytics';
+import Automation from './pages/Automation/Automation';
+import Tasks from './pages/Tasks/Tasks';
+import Reports from './pages/Reports/Reports';
+import Teams from './pages/Teams/Teams';
+import TimeTracking from './pages/TimeTracking/TimeTracking';
+import Resources from './pages/Resources/Resources';
+import MOSScore from './pages/MOSScore/MOSScore';
+import Finance from './pages/Finance/Finance';
+import Profitability from './pages/Profitability/Profitability';
+import NewBusiness from './pages/NewBusiness/NewBusiness';
+import BusinessIntel from './pages/BusinessIntel/BusinessIntel';
+import SettingsPage from './pages/Settings/Settings';
+import AIAgents from './pages/AIAgents/AIAgents';
+import AICopilot from './pages/AICopilot/AICopilot';
+import Benchmarks from './pages/Benchmarks/Benchmarks';
+import Marketplace from './pages/Marketplace/Marketplace';
+import ClientChatGPTPage from './pages/ClientChatGPTPage/ClientChatGPTPage';
+import ClientCanvaPage from './pages/ClientCanvaPage/ClientCanvaPage';
 
 // Agency Portal Tabs
-import OverviewTab from './pages/AgencyPortalTabs/OverviewTab';
-import ClientsTab from './pages/AgencyPortalTabs/ClientsTab';
-import AgencyPerformanceTab from './pages/AgencyPortalTabs/PerformanceTab';
-import AgencyTasksTab from './pages/AgencyPortalTabs/TasksTab';
-import AgencyBillingTab from './pages/AgencyPortalTabs/BillingTab';
-import AgencySupportTab from './pages/AgencyPortalTabs/SupportTab';
+import OverviewTab from './pages/AgencyPortal/tabs/OverviewTab';
+import ClientsTab from './pages/AgencyPortal/tabs/ClientsTab';
+import AgencyPerformanceTab from './pages/AgencyPortal/tabs/PerformanceTab';
+import AgencyTasksTab from './pages/AgencyPortal/tabs/TasksTab';
+import AgencyBillingTab from './pages/AgencyPortal/tabs/BillingTab';
+import AgencySupportTab from './pages/AgencyPortal/tabs/SupportTab';
 
 // Client Portal Tabs
-import ClientDashboardTab from './pages/ClientPortalTabs/DashboardTab';
-import ClientPerformanceTab from './pages/ClientPortalTabs/MyPerformanceTab';
-import ClientLeadsTab from './pages/ClientPortalTabs/LeadsTab';
-import ClientTasksTab from './pages/ClientPortalTabs/TasksTab';
-import ClientStoreTab from './pages/ClientPortalTabs/StoreTab';
-import ClientBillingTab from './pages/ClientPortalTabs/BillingTab';
-import ClientSupportTab from './pages/ClientPortalTabs/SupportTab';
+import ClientDashboardTab from './pages/ClientPortal/tabs/DashboardTab';
+import ClientPerformanceTab from './pages/ClientPortal/tabs/MyPerformanceTab';
+import ClientLeadsTab from './pages/ClientPortal/tabs/LeadsTab';
+import ClientTasksTab from './pages/ClientPortal/tabs/TasksTab';
+import ClientStoreTab from './pages/ClientPortal/tabs/StoreTab';
+import ClientBillingTab from './pages/ClientPortal/tabs/BillingTab';
+import ClientSupportTab from './pages/ClientPortal/tabs/SupportTab';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
