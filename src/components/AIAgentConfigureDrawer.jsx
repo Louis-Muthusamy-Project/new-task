@@ -50,7 +50,6 @@ const AIAgentConfigureDrawer = ({ open, onClose, agent }) => {
     >
       <Tabs 
         defaultActiveKey="settings" 
-        style={{ padding: '0 24px' }}
         items={[
           {
             label: <strong style={{ fontWeight: 600 }}>Settings</strong>,

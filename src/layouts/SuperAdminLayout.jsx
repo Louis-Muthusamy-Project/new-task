@@ -7,11 +7,9 @@ import Header from './Header';
 const { Content } = Layout;
 
 const SuperAdminLayout = () => {
-  const [collapsed, setCollapsed] = useState(false);
-
   return (
     <Layout style={{ minHeight: '100vh', background: 'var(--bg-primary)' }}>
-      <SuperAdminSidebar collapsed={collapsed} setCollapsed={setCollapsed} />
+      <SuperAdminSidebar />
       <Layout style={{ background: 'var(--bg-primary)' }}>
         <Header />
         <Content style={{ 

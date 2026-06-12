@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { Typography, Input, Button, Tag, Row, Col, Drawer, Tabs, Progress } from 'antd';
-import { Search, AlertTriangle, CheckCircle, ExternalLink, MoreHorizontal, Circle, ArrowUpRight } from 'lucide-react';
+import { Typography, Input, Button, Tag, Row, Col, Drawer, Tabs, Progress, Switch, Select, message, Divider } from 'antd';
+import { Search, AlertTriangle, CheckCircle, ExternalLink, MoreHorizontal, Circle, ArrowUpRight, Shield, Zap, Globe, Users } from 'lucide-react';
 import { motion } from 'framer-motion';
 import SlabCard from '../../../components/SlabCard';
+import { useFeatures } from '../../../contexts/FeatureContext';
 
 const { Title, Text } = Typography;
 
 const ClientsTab = () => {
   const [selectedClient, setSelectedClient] = useState(null);
+  const { getClientData, updateClientFeatures, packages } = useFeatures();
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -233,7 +235,7 @@ const ClientsTab = () => {
       >
         {selectedClient && (
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <Button type="primary" style={{ background: 'var(--accent-secondary)', height: 48, borderRadius: 12, fontWeight: 700, fontSize: 15, marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+            <Button type="primary" style={{ background: 'var(--accent-secondary)', height: 48, minHeight: 48, flexShrink: 0, borderRadius: 12, fontWeight: 700, fontSize: 15, marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
               Open Full Dashboard <ArrowUpRight size={18} style={{ marginLeft: 8 }} />
             </Button>
             
@@ -270,9 +272,72 @@ const ClientsTab = () => {
 
                 <a style={{ color: 'var(--accent-secondary)', fontWeight: 700, fontSize: 14 }}>View Full MOS →</a>
               </Tabs.TabPane>
-              <Tabs.TabPane tab="Tasks" key="2" />
-              <Tabs.TabPane tab="Billing" key="3" />
-              <Tabs.TabPane tab="Activity" key="4" />
+              <Tabs.TabPane tab="Features & Access" key="2">
+                {(() => {
+                  const clientData = getClientData(selectedClient.code) || {};
+                  const clientFeatures = clientData.features || [];
+                  const clientPackage = clientData.package || 'Starter';
+
+                  const handleFeatureToggle = (feature, checked) => {
+                    const newFeatures = checked 
+                      ? [...clientFeatures, feature] 
+                      : clientFeatures.filter(f => f !== feature);
+                    updateClientFeatures(selectedClient.code, newFeatures, clientPackage);
+                    message.success(`Feature ${checked ? 'enabled' : 'disabled'} for ${selectedClient.name}`);
+                  };
+
+                  const handlePackageChange = (newPackageName) => {
+                    const selectedPkg = packages.find(p => p.name === newPackageName);
+                    if (selectedPkg) {
+                      updateClientFeatures(selectedClient.code, selectedPkg.features, newPackageName);
+                      message.success(`Package updated to ${newPackageName} for ${selectedClient.name}`);
+                    }
+                  };
+
+                  return (
+                    <div style={{ marginTop: 16 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, padding: 16, background: 'var(--bg-secondary)', borderRadius: 12, border: '1px solid var(--border-color)' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-tertiary)' }}>Assigned Package</span>
+                          <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)' }}>Manage Tier</span>
+                        </div>
+                        <Select 
+                          value={clientPackage} 
+                          onChange={handlePackageChange}
+                          style={{ width: 140, fontWeight: 700 }}
+                          options={packages.map(pkg => ({ value: pkg.name, label: pkg.name }))}
+                        />
+                      </div>
+
+                      <Title level={5} style={{ marginBottom: 16, fontWeight: 800, color: 'var(--text-primary)' }}>Individual Features</Title>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        {[
+                          { id: 'dashboard', label: 'Client Dashboard', icon: <AlertTriangle size={16} /> },
+                          { id: 'performance', label: 'Performance Analytics', icon: <Zap size={16} /> },
+                          { id: 'leads', label: 'Lead Management (CRM)', icon: <Users size={16} /> },
+                          { id: 'website', label: 'Website Builder', icon: <Globe size={16} /> },
+                          { id: 'store', label: 'Asset Store', icon: <Shield size={16} /> },
+                        ].map(feat => (
+                          <div key={feat.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', border: '1px solid var(--border-color)', borderRadius: 12 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                              <div style={{ color: 'var(--text-tertiary)' }}>{feat.icon}</div>
+                              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>{feat.label}</span>
+                            </div>
+                            <Switch 
+                              checked={clientFeatures.includes(feat.id)} 
+                              onChange={(checked) => handleFeatureToggle(feat.id, checked)}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </Tabs.TabPane>
+              <Tabs.TabPane tab="Tasks" key="3" />
+              <Tabs.TabPane tab="Billing" key="4" />
+              <Tabs.TabPane tab="Activity" key="5" />
             </Tabs>
           </div>
         )}

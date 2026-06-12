@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layout, Menu } from 'antd';
+import { Layout, Menu, Drawer, Grid } from 'antd';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, Users, HeartHandshake, Monitor, Target, Search, FileText, 
@@ -8,6 +8,7 @@ import {
   Store, Book, Library, Settings as SettingsIcon, Shield, Bell, CreditCard, Activity, Clock, Briefcase, Bot, Award, AlertTriangle, Palette
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
+import { useLayoutContext } from '../contexts/LayoutContext';
 
 const { Sider } = Layout;
 
@@ -15,6 +16,8 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { isDark } = useTheme();
+  const { mobileMenuOpen, setMobileMenuOpen } = useLayoutContext();
+  const screens = Grid.useBreakpoint();
 
   const getIcon = (IconCmp) => <IconCmp size={16} strokeWidth={2} />;
 
@@ -115,14 +118,14 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
       label: collapsed ? 'SET' : 'SETTINGS',
       children: [
         { key: '/settings/company', icon: getIcon(SettingsIcon), label: 'Settings' },
-        { key: '/settings/marketplace', icon: getIcon(Store), label: 'Marketplace' },
+        { key: '/settings/marketplace', icon: getIcon(Store), label: 'Master Item' },
       ],
     },
   ];
 
   const getSelectedKeys = () => [location.pathname];
 
-  return (
+  const sidebarContent = (
     <Sider 
       collapsible 
       collapsed={collapsed} 
@@ -165,6 +168,23 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
       </div>
     </Sider>
   );
+
+  if (!screens.lg && screens.lg !== undefined) {
+    return (
+      <Drawer
+        placement="left"
+        closable={false}
+        onClose={() => setMobileMenuOpen(false)}
+        open={mobileMenuOpen}
+        bodyStyle={{ padding: 0, overflow: 'hidden' }}
+        width={280}
+      >
+        {sidebarContent}
+      </Drawer>
+    );
+  }
+
+  return sidebarContent;
 };
 
 export default Sidebar;

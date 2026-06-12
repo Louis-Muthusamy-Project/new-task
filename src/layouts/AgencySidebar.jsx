@@ -1,7 +1,8 @@
 import React from 'react';
-import { Layout, Menu } from 'antd';
+import { Layout, Menu, Drawer, Grid } from 'antd';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
+import { useLayoutContext } from '../contexts/LayoutContext';
 import { LayoutDashboard, Users, TrendingUp, CheckSquare, CreditCard, HelpCircle } from 'lucide-react';
 
 const { Sider } = Layout;
@@ -10,6 +11,8 @@ const AgencySidebar = ({ collapsed, setCollapsed }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { isDark } = useTheme();
+  const { mobileMenuOpen, setMobileMenuOpen } = useLayoutContext();
+  const screens = Grid.useBreakpoint();
 
   const getIcon = (IconCmp) => <IconCmp size={16} strokeWidth={2} />;
 
@@ -28,7 +31,7 @@ const AgencySidebar = ({ collapsed, setCollapsed }) => {
     return match ? [match.key] : ['/agency/overview'];
   };
 
-  return (
+  const sidebarContent = (
     <Sider 
       collapsible 
       collapsed={collapsed} 
@@ -70,6 +73,23 @@ const AgencySidebar = ({ collapsed, setCollapsed }) => {
       </div>
     </Sider>
   );
+
+  if (!screens.lg && screens.lg !== undefined) {
+    return (
+      <Drawer
+        placement="left"
+        closable={false}
+        onClose={() => setMobileMenuOpen(false)}
+        open={mobileMenuOpen}
+        bodyStyle={{ padding: 0, overflow: 'hidden' }}
+        width={280}
+      >
+        {sidebarContent}
+      </Drawer>
+    );
+  }
+
+  return sidebarContent;
 };
 
 export default AgencySidebar;

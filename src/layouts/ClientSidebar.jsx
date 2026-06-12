@@ -1,8 +1,10 @@
 import React from 'react';
-import { Layout, Menu } from 'antd';
+import { Layout, Menu, Drawer, Grid } from 'antd';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
-import { LayoutDashboard, Target, Users, CheckSquare, ShoppingCart, CreditCard, HelpCircle } from 'lucide-react';
+import { useLayoutContext } from '../contexts/LayoutContext';
+import { useFeatures } from '../contexts/FeatureContext';
+import { LayoutDashboard, Target, Users, CheckSquare, ShoppingCart, CreditCard, HelpCircle, Globe } from 'lucide-react';
 
 const { Sider } = Layout;
 
@@ -10,18 +12,25 @@ const ClientSidebar = ({ collapsed, setCollapsed }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { isDark } = useTheme();
+  const { mobileMenuOpen, setMobileMenuOpen } = useLayoutContext();
+  const screens = Grid.useBreakpoint();
+
+  const { hasFeature } = useFeatures();
 
   const getIcon = (IconCmp) => <IconCmp size={16} strokeWidth={2} />;
 
-  const menuItems = [
-    { key: '/client/dashboard', icon: getIcon(LayoutDashboard), label: 'Dashboard' },
-    { key: '/client/performance', icon: getIcon(Target), label: 'My Performance' },
-    { key: '/client/leads', icon: getIcon(Users), label: 'Leads' },
-    { key: '/client/tasks', icon: getIcon(CheckSquare), label: 'Tasks' },
-    { key: '/client/store', icon: getIcon(ShoppingCart), label: 'Store' },
-    { key: '/client/billing', icon: getIcon(CreditCard), label: 'Billing' },
-    { key: '/client/support', icon: getIcon(HelpCircle), label: 'Support' },
+  const allMenuItems = [
+    { key: '/client/dashboard', icon: getIcon(LayoutDashboard), label: 'Dashboard', featureId: 'dashboard' },
+    { key: '/client/performance', icon: getIcon(Target), label: 'My Performance', featureId: 'performance' },
+    { key: '/client/leads', icon: getIcon(Users), label: 'Leads', featureId: 'leads' },
+    { key: '/client/website', icon: getIcon(Globe), label: 'Website', featureId: 'website' },
+    { key: '/client/tasks', icon: getIcon(CheckSquare), label: 'Tasks', featureId: 'tasks' },
+    { key: '/client/store', icon: getIcon(ShoppingCart), label: 'Store', featureId: 'store' },
+    { key: '/client/billing', icon: getIcon(CreditCard), label: 'Billing', featureId: 'billing' },
+    { key: '/client/support', icon: getIcon(HelpCircle), label: 'Support', featureId: 'support' },
   ];
+
+  const menuItems = allMenuItems.filter(item => hasFeature(item.featureId));
 
   const getSelectedKeys = () => {
     // Exact match or active parent
@@ -29,7 +38,7 @@ const ClientSidebar = ({ collapsed, setCollapsed }) => {
     return match ? [match.key] : ['/client/dashboard'];
   };
 
-  return (
+  const sidebarContent = (
     <Sider 
       collapsible 
       collapsed={collapsed} 
@@ -71,6 +80,23 @@ const ClientSidebar = ({ collapsed, setCollapsed }) => {
       </div>
     </Sider>
   );
+
+  if (!screens.lg && screens.lg !== undefined) {
+    return (
+      <Drawer
+        placement="left"
+        closable={false}
+        onClose={() => setMobileMenuOpen(false)}
+        open={mobileMenuOpen}
+        bodyStyle={{ padding: 0, overflow: 'hidden' }}
+        width={280}
+      >
+        {sidebarContent}
+      </Drawer>
+    );
+  }
+
+  return sidebarContent;
 };
 
 export default ClientSidebar;

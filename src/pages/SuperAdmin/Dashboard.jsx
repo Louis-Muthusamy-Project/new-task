@@ -64,7 +64,7 @@ const Dashboard = () => {
   ];
 
   return (
-    <div style={{ padding: '0 24px' }}>
+    <div>
       <div style={{ marginBottom: 32 }}>
         <Title level={2} style={{ margin: '0 0 8px 0', fontWeight: 800, color: 'var(--text-primary)' }}>
           Platform Overview

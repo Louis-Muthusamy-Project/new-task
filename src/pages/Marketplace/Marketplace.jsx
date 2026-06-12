@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Typography, Row, Col, Card, Button, Tabs, Tag } from 'antd';
 import { motion } from 'framer-motion';
-import { Search, BarChart2, FileText, CheckCircle2, Edit2, Eye, EyeOff, Plus, Play, Shield, Activity, Mail, FileCheck } from 'lucide-react';
+import { Search, BarChart2, FileText, CheckCircle2, Edit2, Eye, EyeOff, Plus, Play, Shield, Activity, Mail, FileCheck, Video, BookOpen } from 'lucide-react';
 
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
@@ -81,6 +81,17 @@ const Marketplace = () => {
     { icon: <BarChart2 size={28} color="var(--accent-warning)" />, bg: 'rgba(245, 158, 11, 0.1)', title: 'Advanced Analytics', price: '₹3,999/mo', desc: 'Attribution modelling • Predictive analytics • Custom dashboards' },
   ];
 
+  const reports = [
+    { icon: <FileCheck size={24} />, title: 'Complete Website Audit Report', price: '₹8,000 one-time', desc: 'One-time purchase. Delivered in 3 days.', bullets: ['Technical SEO audit', 'Content gap analysis', 'Competitor benchmarking', 'Action plan & priorities'], status: 'Draft', activeClients: 0 },
+    { icon: <BarChart2 size={24} />, title: 'Competitor Analysis Report', price: '₹5,000 one-time', desc: 'Identify top 3 competitors, keyword overlap, backlink profiles, social media strategy.', bullets: ['Top 3 competitors', 'Keyword overlap analysis', 'Backlink profile comparison', 'Social strategy tear-down'], status: 'Active', activeClients: 2 },
+    { icon: <Search size={24} />, title: 'Keyword Research & Mapping', price: '₹6,500 one-time', desc: 'Comprehensive keyword discovery and mapping to target pages for your site.', bullets: ['Primary & secondary keywords', 'Search intent mapping', 'Content recommendations', 'Difficulty scoring'], status: 'Active', activeClients: 1 }
+  ];
+
+  const training = [
+    { icon: <Video size={28} color="var(--accent-secondary)" />, bg: 'rgba(139, 92, 246, 0.1)', title: 'Agency Scaling Masterclass', price: '₹14,999', desc: 'Learn how to scale your agency to ₹1Cr/mo. Includes video lessons, templates, and SOPs.', format: 'Video Course', duration: '6 hours' },
+    { icon: <BookOpen size={28} color="var(--accent-primary)" />, bg: 'rgba(16, 185, 129, 0.1)', title: 'Meta Ads Certification prep', price: '₹4,999', desc: 'Complete study guide and practice tests for the Meta Blueprint certification.', format: 'PDF + Quizzes', duration: 'Self-paced' },
+  ];
+
   // Helper for Globe icon
   function Globe({ size, color }) {
     return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>;
@@ -121,7 +132,7 @@ const Marketplace = () => {
     <motion.div variants={containerVariants} initial="hidden" animate="visible">
       <motion.div variants={itemVariants} style={{ marginBottom: 32 }}>
         <Text type="secondary" style={{ fontSize: 12, fontWeight: 800, letterSpacing: 1.5 }}>MARKETPLACE</Text>
-        <Title level={2} style={{ margin: '4px 0 8px 0', fontWeight: 800 }}>Marketplace</Title>
+        <Title level={2} style={{ margin: '4px 0 8px 0', fontWeight: 800 }}>Master Item</Title>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
           <Text type="secondary" style={{ fontWeight: 500 }}>Expand your revenue — sell services, tools, and templates to your clients.</Text>
           <div style={{ display: 'flex', gap: 12 }}>
@@ -152,7 +163,7 @@ const Marketplace = () => {
       </motion.div>
 
       <motion.div variants={itemVariants}>
-        <Tabs defaultActiveKey="all" style={{ marginBottom: 40 }} size="large">
+        <Tabs activeKey={activeTab} onChange={setActiveTab} style={{ marginBottom: 40 }} size="large">
           <TabPane tab={<strong style={{ fontWeight: 600 }}>All</strong>} key="all" />
           <TabPane tab={<strong style={{ fontWeight: 600 }}>Services</strong>} key="services" />
           <TabPane tab={<strong style={{ fontWeight: 600 }}>Templates</strong>} key="templates" />
@@ -163,6 +174,7 @@ const Marketplace = () => {
       </motion.div>
 
       {/* Service Packages */}
+      {(activeTab === 'all' || activeTab === 'services') && (
       <motion.div variants={itemVariants} style={{ marginBottom: 48 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 32, flexWrap: 'wrap', gap: 16 }}>
           <div>
@@ -212,39 +224,6 @@ const Marketplace = () => {
           ))}
           
           <Col xs={24} lg={12} xl={12} xxl={8}>
-            <RetailTagCard style={{ height: '100%', display: 'flex', flexDirection: 'column' }} bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
-                  <div style={{ background: 'var(--bg-tertiary)', padding: 16, borderRadius: 16, color: 'var(--text-secondary)', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}>
-                    <FileCheck size={24} />
-                  </div>
-                  <Tag style={{ background: 'rgba(245, 158, 11, 0.1)', color: 'var(--accent-warning)', border: '1px solid rgba(245, 158, 11, 0.2)', borderRadius: 12, fontWeight: 800, padding: '4px 12px', fontSize: 13 }}>₹8,000 one-time</Tag>
-                </div>
-                
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, fontSize: 13, fontWeight: 700, color: 'var(--text-tertiary)' }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--text-tertiary)' }}></div>
-                  Draft
-                </div>
-                
-                <Title level={4} style={{ margin: '0 0 12px 0', fontWeight: 800, color: 'var(--text-primary)', opacity: 0.8 }}>Complete Website Audit Report</Title>
-                <Text style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 24, display: 'block', minHeight: 48, fontWeight: 500, lineHeight: 1.6 }}>One-time purchase. Delivered in 3 days.</Text>
-
-                <ul style={{ margin: '0 0 32px 0', padding: 0, listStyle: 'none', flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <li style={{ display: 'flex', alignItems: 'flex-start', gap: 12, fontSize: 14, color: 'var(--text-secondary)', fontWeight: 500 }}><CheckCircle2 size={18} color="var(--accent-primary)" /> Technical SEO audit</li>
-                  <li style={{ display: 'flex', alignItems: 'flex-start', gap: 12, fontSize: 14, color: 'var(--text-secondary)', fontWeight: 500 }}><CheckCircle2 size={18} color="var(--accent-primary)" /> Content gap analysis</li>
-                  <li style={{ display: 'flex', alignItems: 'flex-start', gap: 12, fontSize: 14, color: 'var(--text-secondary)', fontWeight: 500 }}><CheckCircle2 size={18} color="var(--accent-primary)" /> Competitor benchmarking</li>
-                  <li style={{ display: 'flex', alignItems: 'flex-start', gap: 12, fontSize: 14, color: 'var(--text-secondary)', fontWeight: 500 }}><CheckCircle2 size={18} color="var(--accent-primary)" /> Action plan & priorities</li>
-                </ul>
-
-                <Text style={{ fontSize: 13, color: 'var(--text-tertiary)', fontWeight: 700, display: 'block', marginBottom: 20 }}>0 active clients</Text>
-
-                <div style={{ display: 'flex', gap: 16, borderTop: '2px dashed var(--border-color)', paddingTop: 24, margin: '0 -12px' }}>
-                  <Button type="primary" style={{ background: 'var(--accent-secondary)', borderRadius: 8, fontWeight: 700, flex: 1, height: 40, border: 'none' }}>Publish</Button>
-                  <Button icon={<Edit2 size={16}/>} style={{ borderRadius: 8, fontWeight: 600, flex: 1, height: 40, borderColor: 'var(--border-color)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}>Edit</Button>
-                </div>
-            </RetailTagCard>
-          </Col>
-          
-          <Col xs={24} lg={12} xl={12} xxl={8}>
             <div className="hover-bg" style={{ border: '3px dashed var(--border-color)', borderRadius: 32, height: '100%', minHeight: 400, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', cursor: 'pointer', background: 'rgba(255,255,255,0.02)' }}>
               <Plus size={40} style={{ marginBottom: 16, color: 'var(--text-tertiary)' }} />
               <Text style={{ fontSize: 16, fontWeight: 700, color: 'inherit' }}>Add Service Package</Text>
@@ -253,8 +232,10 @@ const Marketplace = () => {
 
         </Row>
       </motion.div>
+      )}
 
       {/* Templates */}
+      {(activeTab === 'all' || activeTab === 'templates') && (
       <motion.div variants={itemVariants} style={{ marginBottom: 48 }}>
         <Title level={4} style={{ margin: '0 0 4px 0', fontWeight: 800, color: 'var(--text-primary)' }}>M1 Templates Marketplace</Title>
         <Text type="secondary" style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 32 }}>Premium templates created by the M1 community</Text>
@@ -285,9 +266,11 @@ const Marketplace = () => {
           ))}
         </Row>
       </motion.div>
+      )}
 
       {/* Addons */}
-      <motion.div variants={itemVariants}>
+      {(activeTab === 'all' || activeTab === 'tools') && (
+      <motion.div variants={itemVariants} style={{ marginBottom: 48 }}>
         <Title level={4} style={{ margin: '0 0 4px 0', fontWeight: 800, color: 'var(--text-primary)' }}>Power Addons for M1</Title>
         <Text type="secondary" style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 32 }}>Extend your M1 platform with premium features</Text>
         
@@ -307,6 +290,105 @@ const Marketplace = () => {
           ))}
         </Row>
       </motion.div>
+      )}
+
+      {/* Reports */}
+      {(activeTab === 'all' || activeTab === 'reports') && (
+      <motion.div variants={itemVariants} style={{ marginBottom: 48 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 32, flexWrap: 'wrap', gap: 16 }}>
+          <div>
+            <Title level={4} style={{ margin: 0, fontWeight: 800, color: 'var(--text-primary)' }}>Premium Reports & Audits</Title>
+            <Text type="secondary" style={{ fontSize: 14, fontWeight: 500 }}>One-off deliverables to upsell your clients</Text>
+          </div>
+          <Button type="primary" icon={<Plus size={16}/>} style={{ background: 'var(--accent-secondary)', borderRadius: 8, fontWeight: 700, border: 'none', height: 40, boxShadow: 'var(--shadow-md)' }}>Add Report Template</Button>
+        </div>
+        
+        <Row gutter={[24, 32]}>
+          {reports.map((report, i) => (
+            <Col xs={24} lg={12} xl={12} xxl={8} key={i}>
+              <RetailTagCard style={{ height: '100%', display: 'flex', flexDirection: 'column' }} bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+                    <div style={{ background: 'var(--bg-tertiary)', padding: 16, borderRadius: 16, color: 'var(--text-secondary)', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}>
+                      {report.icon}
+                    </div>
+                    <Tag style={{ background: 'rgba(245, 158, 11, 0.1)', color: 'var(--accent-warning)', border: '1px solid rgba(245, 158, 11, 0.2)', borderRadius: 12, fontWeight: 800, padding: '4px 12px', fontSize: 13 }}>{report.price}</Tag>
+                  </div>
+                  
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, fontSize: 13, fontWeight: 700, color: report.status === 'Draft' ? 'var(--text-tertiary)' : 'var(--accent-primary)' }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: report.status === 'Draft' ? 'var(--text-tertiary)' : 'var(--accent-primary)' }}></div>
+                    {report.status}
+                  </div>
+                  
+                  <Title level={4} style={{ margin: '0 0 12px 0', fontWeight: 800, color: 'var(--text-primary)', opacity: report.status === 'Draft' ? 0.8 : 1 }}>{report.title}</Title>
+                  <Text style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 24, display: 'block', minHeight: 48, fontWeight: 500, lineHeight: 1.6 }}>{report.desc}</Text>
+
+                  <ul style={{ margin: '0 0 32px 0', padding: 0, listStyle: 'none', flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {report.bullets.map((b, idx) => (
+                      <li key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, fontSize: 14, color: 'var(--text-secondary)', fontWeight: 500 }}>
+                        <CheckCircle2 size={18} color="var(--accent-primary)" style={{ flexShrink: 0, marginTop: 2 }} />
+                        <span>{b}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <Text style={{ fontSize: 13, color: report.status === 'Draft' ? 'var(--text-tertiary)' : 'var(--accent-secondary)', fontWeight: 700, display: 'block', marginBottom: 20 }}>{report.activeClients} active clients</Text>
+
+                  <div style={{ display: 'flex', gap: 16, borderTop: '2px dashed var(--border-color)', paddingTop: 24, margin: '0 -12px' }}>
+                    {report.status === 'Draft' ? (
+                      <Button type="primary" style={{ background: 'var(--accent-secondary)', borderRadius: 8, fontWeight: 700, flex: 1, height: 40, border: 'none' }}>Publish</Button>
+                    ) : (
+                      <Button type="primary" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: 8, fontWeight: 700, flex: 1, height: 40 }}>Preview</Button>
+                    )}
+                    <Button icon={<Edit2 size={16}/>} style={{ borderRadius: 8, fontWeight: 600, flex: 1, height: 40, borderColor: 'var(--border-color)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}>Edit</Button>
+                  </div>
+              </RetailTagCard>
+            </Col>
+          ))}
+          
+          <Col xs={24} lg={12} xl={12} xxl={8}>
+            <div className="hover-bg" style={{ border: '3px dashed var(--border-color)', borderRadius: 32, height: '100%', minHeight: 400, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', cursor: 'pointer', background: 'rgba(255,255,255,0.02)' }}>
+              <Plus size={40} style={{ marginBottom: 16, color: 'var(--text-tertiary)' }} />
+              <Text style={{ fontSize: 16, fontWeight: 700, color: 'inherit' }}>Create New Report</Text>
+            </div>
+          </Col>
+        </Row>
+      </motion.div>
+      )}
+
+      {/* Training */}
+      {(activeTab === 'all' || activeTab === 'training') && (
+      <motion.div variants={itemVariants}>
+        <Title level={4} style={{ margin: '0 0 4px 0', fontWeight: 800, color: 'var(--text-primary)' }}>Agency Training & Courses</Title>
+        <Text type="secondary" style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 32 }}>Upskill your team or sell training to your clients.</Text>
+        
+        <Row gutter={[24, 24]}>
+          {training.map((course, i) => (
+            <Col xs={24} lg={12} xl={12} xxl={8} key={i}>
+              <Card className="glassmorphism" style={{ borderRadius: 16, height: '100%', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }} bodyStyle={{ padding: 32, display: 'flex', flexDirection: 'column', height: '100%' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+                  <div style={{ background: course.bg, padding: 16, borderRadius: 16, width: 64, height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--shadow-sm)' }}>
+                    {course.icon}
+                  </div>
+                  <Tag style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: 12, fontWeight: 600, padding: '4px 12px' }}>{course.format}</Tag>
+                </div>
+                
+                <Text style={{ fontWeight: 800, fontSize: 18, display: 'block', color: 'var(--text-primary)', marginBottom: 8 }}>{course.title}</Text>
+                
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                  <Text style={{ fontWeight: 800, fontSize: 16, color: 'var(--accent-primary)' }}>{course.price}</Text>
+                  <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--border-color)' }}></span>
+                  <Text style={{ color: 'var(--text-secondary)', fontWeight: 600, fontSize: 13 }}>{course.duration}</Text>
+                </div>
+                
+                <Text type="secondary" style={{ fontSize: 14, marginBottom: 32, flex: 1, display: 'block', fontWeight: 500, lineHeight: 1.6 }}>{course.desc}</Text>
+                
+                <Button type="primary" block style={{ background: 'var(--accent-primary)', borderRadius: 8, fontWeight: 700, border: 'none', height: 40 }}>View Course</Button>
+              </Card>
+            </Col>
+          ))}
+        </Row>
+      </motion.div>
+      )}
 
     </motion.div>
   );

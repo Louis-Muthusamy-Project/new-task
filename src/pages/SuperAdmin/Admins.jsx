@@ -92,11 +92,11 @@ const Admins = () => {
   ];
 
   return (
-    <div style={{ padding: '0 24px' }}>
+    <div >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
         <div>
           <Title level={2} style={{ margin: '0 0 8px 0', fontWeight: 800, color: 'var(--text-primary)' }}>
-            Super Admins
+            User Management
           </Title>
           <Text type="secondary" style={{ fontSize: 16 }}>
             Manage super admin users, system roles, and access permissions.

@@ -1,6 +1,8 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, Outlet } from 'react-router-dom';
 import { useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { LayoutProvider } from './contexts/LayoutContext';
+import { FeatureProvider } from './contexts/FeatureContext';
 import SignIn from './pages/SignIn/SignIn';
 
 // Layouts
@@ -63,6 +65,7 @@ import ClientTasksTab from './pages/ClientPortal/tabs/TasksTab';
 import ClientStoreTab from './pages/ClientPortal/tabs/StoreTab';
 import ClientBillingTab from './pages/ClientPortal/tabs/BillingTab';
 import ClientSupportTab from './pages/ClientPortal/tabs/SupportTab';
+import ClientWebsiteTab from './pages/ClientPortal/tabs/ClientWebsiteTab';
 
 // Super Admin Layout and Pages
 import SuperAdminLayout from './layouts/SuperAdminLayout';
@@ -120,7 +123,7 @@ const AppRoutes = () => {
       </Route>
 
       {/* Admin Routes */}
-      <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+      <Route element={<ProtectedRoute allowedRoles={['superadmin', 'admin']} />}>
         <Route path="/" element={<AppLayout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
@@ -169,7 +172,7 @@ const AppRoutes = () => {
       </Route>
 
       {/* Agency Routes */}
-      <Route element={<ProtectedRoute allowedRoles={['agency']} />}>
+      <Route element={<ProtectedRoute allowedRoles={['superadmin', 'agency']} />}>
         <Route path="/agency" element={<AgencyLayout />}>
           <Route index element={<Navigate to="/agency/overview" replace />} />
           <Route path="overview" element={<OverviewTab />} />
@@ -182,12 +185,13 @@ const AppRoutes = () => {
       </Route>
 
       {/* Client Routes */}
-      <Route element={<ProtectedRoute allowedRoles={['client']} />}>
+      <Route element={<ProtectedRoute allowedRoles={['superadmin', 'client']} />}>
         <Route path="/client" element={<ClientLayout />}>
           <Route index element={<Navigate to="/client/dashboard" replace />} />
           <Route path="dashboard" element={<ClientDashboardTab />} />
           <Route path="performance" element={<ClientPerformanceTab />} />
           <Route path="leads" element={<ClientLeadsTab />} />
+          <Route path="website/*" element={<ClientWebsiteTab />} />
           <Route path="tasks" element={<ClientTasksTab />} />
           <Route path="store" element={<ClientStoreTab />} />
           <Route path="billing" element={<ClientBillingTab />} />
@@ -206,7 +210,11 @@ function App() {
     <Router>
       <ScrollToTop />
       <AuthProvider>
-        <AppRoutes />
+        <FeatureProvider>
+          <LayoutProvider>
+            <AppRoutes />
+          </LayoutProvider>
+        </FeatureProvider>
       </AuthProvider>
     </Router>
   );
