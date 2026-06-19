@@ -21,6 +21,8 @@ import Dashboard from './pages/Dashboard/Dashboard';
 import CRM from './pages/CRM/CRM';
 import WebsiteBuilder from './pages/WebsiteBuilder/WebsiteBuilder';
 import Strategy from './pages/Strategy/Strategy';
+import WebsiteSetupPage from './pages/WebsiteBuilder/websiteWizard/WebsiteSetupPage';
+
 import SEO from './pages/SEO/SEO';
 import Content from './pages/Content/Content';
 import Creative from './pages/Creative/Creative';
@@ -142,6 +144,8 @@ const AppRoutes = () => {
           <Route path="workspace/automation" element={<Automation />} />
           <Route path="workspace/tasks" element={<Tasks />} />
           <Route path="workspace/website/*" element={<WebsiteBuilder />} />
+          <Route path="/website/setup" element={<WebsiteSetupPage />} />
+
 
           <Route path="intelligence/analytics" element={<Analytics />} />
           <Route path="intelligence/mos" element={<MOSScore />} />

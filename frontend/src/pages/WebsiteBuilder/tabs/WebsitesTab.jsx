@@ -3,8 +3,13 @@ import { Button, Input, Radio, Table, Typography, Space, Modal, Card, Select, Ro
 import { Plus, Search, Folder, Sparkles, LayoutTemplate, Link2, Settings, FileText, Monitor, Smartphone, UploadCloud, ChevronRight, PenTool, ExternalLink, ArrowLeft, ArrowRight, Info, Activity, Trash2 } from "lucide-react";
 
 import { motion } from "framer-motion";
+import { useNavigate } from 'react-router-dom';
+import TemplateLibraryModal from '../websiteWizard/TemplateLibraryModal';
+import WebsiteTemplatePage from './WebsiteTemplatePage';
+import WebsiteEditPage from './WebsiteEditPage';
 
 const { Title, Text } = Typography;
+
 const { Option } = Select;
 const { TextArea } = Input;
 
@@ -429,6 +434,7 @@ const ManageWebsiteView = ({ activeWebsite, setView, itemVariants }) => {
 };
 
 const WebsitesTab = ({ itemVariants }) => {
+  const navigate = useNavigate();
   const [viewType, setViewType] = useState("list");
   const [folderView, setFolderView] = useState("home");
   const [searchText, setSearchText] = useState("");
@@ -437,6 +443,7 @@ const WebsitesTab = ({ itemVariants }) => {
   const [websites, setWebsites] = useState([]);
   const [activeWebsite, setActiveWebsite] = useState(null);
   const [view, setView] = useState("list");
+  const [pendingWebsiteName, setPendingWebsiteName] = useState("");
 
   useEffect(() => {
     const saved = localStorage.getItem("tunepath_websites");
@@ -472,8 +479,51 @@ const WebsitesTab = ({ itemVariants }) => {
       setIsModalOpen(false);
       setActiveWebsite(newWebsite);
       setView("manage");
+    } else if (data.type === "templates") {
+      setPendingWebsiteName(data.name);
+      setView("templates");
+      setIsModalOpen(false);
     }
   };
+
+  // Called once a template card is picked on WebsiteTemplatePage.
+  const handleTemplateSelected = (website) => {
+    const newWebsite = {
+      key: website._id || website.id || Date.now().toString(),
+      name: website.name,
+      description: website.description || "",
+      lastUpdated: "Just now",
+      pages: (website.pages && website.pages.length) || 1,
+      isNew: true,
+      rawPages: website.pages, // full page objects for WebsiteEditPage
+    };
+    setWebsites((prev) => [...prev, newWebsite]);
+    setActiveWebsite(newWebsite);
+    setView("edit");
+  };
+
+  if (view === "templates") {
+    return (
+      <WebsiteTemplatePage
+        websiteName={pendingWebsiteName}
+        onBack={() => setView("list")}
+        onSelectTemplate={handleTemplateSelected}
+      />
+    );
+  }
+
+  if (view === "edit" && activeWebsite) {
+    return (
+      <WebsiteEditPage
+        website={{ ...activeWebsite, pages: activeWebsite.rawPages }}
+        justCreated
+        onBack={() => setView("list")}
+        onChange={(next) =>
+          setActiveWebsite((prev) => ({ ...prev, name: next.name, description: next.description, rawPages: next.pages }))
+        }
+      />
+    );
+  }
 
   if (view === "manage" && activeWebsite) {
     return <ManageWebsiteView activeWebsite={activeWebsite} setView={setView} itemVariants={itemVariants} />;
@@ -601,11 +651,16 @@ const WebsitesTab = ({ itemVariants }) => {
         />
       </Card>
 
-      <CreateWebsiteModal 
-        open={isModalOpen}
-        onCancel={() => setIsModalOpen(false)}
-        onCreate={handleCreateWebsite}
-      />
+         
+          <TemplateLibraryModal
+            open={isModalOpen}
+            onCancel={() => setIsModalOpen(false)}
+            onCreate={({ templateId, websiteName }) => {
+              // Navigate to STEP 2 using router state
+              navigate('/website/setup', { state: { templateId, websiteName } });
+              setIsModalOpen(false);
+            }}
+          />
     </motion.div>
   );
 };
