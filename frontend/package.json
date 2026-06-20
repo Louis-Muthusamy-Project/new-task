@@ -16,6 +16,7 @@
     "@ant-design/icons": "^6.2.5",
     "@vitejs/plugin-react": "^6.0.2",
     "antd": "^6.4.3",
+    "axios": "^1.18.0",
     "classnames": "^2.5.1",
     "framer-motion": "^12.40.0",
     "jszip": "^3.10.1",

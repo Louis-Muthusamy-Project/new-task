@@ -1,6 +1,8 @@
+
 const API_BASE = import.meta.env.VITE_WEBSITE_WIZARD_API_BASE || 'http://localhost:5500/api';
 
 async function requestMultipart(path, { file, name, folder } = {}) {
+  console.log("data",file,name,folder,path)
   const form = new FormData();
   if (file) form.append('file', file);
   if (name) form.append('name', name);
@@ -25,7 +27,7 @@ async function requestMultipart(path, { file, name, folder } = {}) {
 
 export const websiteWizardCloudinaryApi = {
   uploadTemplateZipToCloudinary: async ({ file, name, folder } = {}) => {
-    return requestMultipart('/templates/library/upload-zip-cloudinary', { file, name, folder });
+    return requestMultipart('/website/upload-template', { file, name, folder });
   },
 };
 

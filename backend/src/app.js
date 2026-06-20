@@ -1,19 +1,26 @@
-const express = require('express');
-const cors = require('cors');
-const routes = require('./routes');
-const errorMiddleware = require('./middlewares/errorMiddleware');
+const express = require("express");
+const mongoose = require("mongoose");
+require("dotenv").config();
+
+const routes = require("./routes");
 
 const app = express();
 
-// Middlewares
-app.use(cors());
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Routes
-app.use('/api', routes);
+const cors = require("cors");
+app.use(cors());
 
-// Global Error Handler
-app.use(errorMiddleware);
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log("MongoDB connected"))
+  .catch((err) => console.error("MongoDB connection error:", err));
+
+app.use("/api", routes);
+
+app.use(require('./middlewares/errorMiddleware'));
 
 module.exports = app;
+

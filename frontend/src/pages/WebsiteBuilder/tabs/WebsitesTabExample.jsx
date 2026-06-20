@@ -4,20 +4,7 @@ import { Plus } from "lucide-react";
 import WebsiteTemplateLibraryModal from "./WebsiteTemplateLibraryModal";
 import WebsiteEditPage from "./WebsiteEditPage";
 
-/**
- * Example of how to wire the two pieces together inside your real
- * WebsitesTab.jsx (or wherever "Browse Templates" currently lives in
- * WebsiteBuilder.jsx). This is the part that makes "upload a ZIP ->
- * save -> go to the next page" actually happen:
- *
- *   1. "view" tracks whether we're showing the website list, the modal,
- *      or the post-creation edit page.
- *   2. WebsiteTemplateLibraryModal's onCreate fires once a ZIP is parsed
- *      (or a template is chosen) — we store that as `activeWebsite` and
- *      switch the view to "edit".
- *   3. WebsiteEditPage receives that data and renders the pages list,
- *      tracking pixels, chat widget, and domain sections.
- */
+
 const WebsitesTabExample = () => {
   const [view, setView] = useState("list"); // "list" | "edit"
   const [modalOpen, setModalOpen] = useState(false);

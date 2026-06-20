@@ -4,27 +4,6 @@ import { Search, ArrowLeft, LayoutTemplate, CheckCircle2 } from "lucide-react";
 
 const { Title, Text } = Typography;
 
-/**
- * WebsiteTemplatePage
- * ---------------------------------------------------------------
- * Lands here when the "Create New Website" modal's "From templates"
- * card is selected and "Create" / "Browse Templates" is clicked.
- *
- * Flow:
- *   CreateWebsiteModal (From templates selected, name="hi")
- *     -> onCreate({ type: "templates", name })
- *     -> navigate to this page (router state carries `websiteName`)
- *     -> user picks a template
- *     -> POST /api/websites  { name, templateId }
- *     -> navigate to WebsiteEditPage with the created website
- *
- * Props (works whether you use react-router or local view-state):
- *  - websiteName: string            name typed in the creation modal
- *  - onBack(): go back to the websites list / reopen modal
- *  - onSelectTemplate(website): called with the created website record,
- *      so the parent can switch view to WebsiteEditPage
- *  - apiBaseUrl: string             defaults to "/api"
- */
 const CATEGORIES = [
   "All",
   "Real Estate",
@@ -37,12 +16,16 @@ const CATEGORIES = [
   "Nonprofit",
 ];
 
+import { websiteWizardApi } from '../../../api/websiteWizardApi';
+
 const WebsiteTemplatePage = ({
   websiteName: initialWebsiteName = "",
   onBack,
   onSelectTemplate,
   apiBaseUrl = "/api",
 }) => {
+
+
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -52,19 +35,16 @@ const WebsiteTemplatePage = ({
   const [creating, setCreating] = useState(false);
   const [websiteName, setWebsiteName] = useState(initialWebsiteName);
 
+
   useEffect(() => {
     let cancelled = false;
     const fetchTemplates = async () => {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`${apiBaseUrl}/templates`);
-        if (!res.ok) throw new Error(`Failed to load templates (${res.status})`);
-        const data = await res.json();
+        const data = await websiteWizardApi.listTemplates();
         if (!cancelled) setTemplates(Array.isArray(data) ? data : data.templates || []);
       } catch (err) {
-        // Fallback demo data so the page is usable even before the
-        // backend / templates collection is seeded.
         if (!cancelled) {
           setError(err.message);
           setTemplates(FALLBACK_TEMPLATES);
@@ -77,7 +57,8 @@ const WebsiteTemplatePage = ({
     return () => {
       cancelled = true;
     };
-  }, [apiBaseUrl]);
+  }, []);
+
 
   const filtered = useMemo(() => {
     return templates.filter((t) => {
@@ -94,17 +75,15 @@ const WebsiteTemplatePage = ({
     if (!selectedId || !websiteName.trim()) return;
     setCreating(true);
     try {
-      const res = await fetch(`${apiBaseUrl}/websites`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: websiteName.trim(), templateId: selectedId }),
+      const website = await websiteWizardApi.createWebsite({
+        name: websiteName.trim(),
+        description: "",
+        status: "Draft",
+        templateId: selectedId,
       });
-      if (!res.ok) throw new Error(`Failed to create website (${res.status})`);
-      const website = await res.json();
+
       onSelectTemplate && onSelectTemplate(website);
     } catch (err) {
-      // Even if the API call fails, let the parent decide what to do —
-      // pass a locally-shaped website object so the flow isn't blocked.
       const template = templates.find((t) => t._id === selectedId || t.id === selectedId);
       onSelectTemplate &&
         onSelectTemplate({
@@ -123,6 +102,7 @@ const WebsiteTemplatePage = ({
       setCreating(false);
     }
   };
+
 
   return (
     <div>

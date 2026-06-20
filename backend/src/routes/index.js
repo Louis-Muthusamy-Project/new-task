@@ -2,7 +2,20 @@ const express = require('express');
 const router = express.Router();
 const healthRoutes = require('./healthRoutes');
 
-// Mount routes
+
 router.use('/health', healthRoutes);
 
+// Mount routes
+router.use('/website-builder', require('./websiteRoutes'));
+router.use('/website-builder', require('./pageRoutes'));
+router.use('/website-builder', require('./mediaRoutes'));
+router.use('/website-builder', require('./domainRoutes'));
+router.use('/website-builder', require('./publishRoutes'));
+
+// Templates endpoint used by WebsiteTemplatePage.jsx
+router.use('/templates', require('./templatesRoutes'));
+
 module.exports = router;
+
+
+

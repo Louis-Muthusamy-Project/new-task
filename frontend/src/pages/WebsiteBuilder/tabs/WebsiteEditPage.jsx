@@ -16,17 +16,6 @@ const { TextArea } = Input;
 let idCounter = 0;
 const nextId = () => `pg-${Date.now()}-${idCounter++}`;
 
-/**
- * Shown right after a website is created (from the Template Library modal).
- * Mirrors the "website settings + pages" screen: details & tracking on the
- * left, the page list (Home / sub-pages) on the right.
- *
- * Props:
- *  - website: { name, description, status, faviconUrl, pages: [{id,name,slug,isHome,status}], tracking, chatWidgetId, domain }
- *  - onBack(): called when "Back" is pressed
- *  - onChange(nextWebsite): called whenever the website state changes (save/publish/page edits)
- *  - justCreated: show the "Website created successfully." banner
- */
 const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreated = true }) => {
   const [website, setWebsite] = useState(() => ({
     name: initialWebsite?.name || "Untitled Website",
@@ -61,6 +50,7 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
 
   const updateField = (field, value) => {
     commit({ ...website, [field]: value });
+    console.log(website)
   };
 
   const updateTracking = (field, value) => {
@@ -127,6 +117,7 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
   const handleSaveWebsite = () => {
     setSavedNotice("Website saved.");
     setTimeout(() => setSavedNotice(null), 2500);
+    console.log("hgjgj")
   };
 
   const handlePublishToggle = (status) => {

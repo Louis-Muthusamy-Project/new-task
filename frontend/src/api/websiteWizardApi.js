@@ -1,9 +1,10 @@
 
-const API_BASE = import.meta.env.VITE_WEBSITE_WIZARD_API_BASE || 'http://localhost:5500/api';
+const API_BASE = 'http://localhost:5500/api' ;
 
 
 
 async function request(path, { method = 'GET', body } = {}) {
+  console.log(API_BASE,path)
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
@@ -26,13 +27,68 @@ function unwrapSuccess(json) {
 }
 
 export const websiteWizardApi = {
-  createWebsite: async (payload) => unwrapSuccess(await request('/websites/create', { method: 'POST', body: payload })),
-  getWebsite: async (id) => unwrapSuccess(await request(`/websites/${id}`, { method: 'GET' })),
-  updateWebsite: async (id, payload) => unwrapSuccess(await request(`/websites/${id}`, { method: 'PUT', body: payload })),
+  // Templates API (backend may not provide these yet; callers should handle failures)
+  listTemplates: async () => unwrapSuccess(await request('/templates', { method: 'GET' })),
 
-  createPage: async (payload) => unwrapSuccess(await request('/pages/create', { method: 'POST', body: payload })),
-  listPagesByWebsite: async (websiteId) => unwrapSuccess(await request(`/pages/${websiteId}`, { method: 'GET' })),
-  updatePage: async (pageId, payload) => unwrapSuccess(await request(`/pages/${pageId}`, { method: 'PUT', body: payload })),
-  deletePage: async (pageId) => unwrapSuccess(await request(`/pages/${pageId}`, { method: 'DELETE' })),
+  // Website Builder API (MERN backend)
+  // Base: /api/website-builder
+
+  createWebsite: async (payload) =>
+    unwrapSuccess(
+      await request('/website-builder/websites', {
+        method: 'POST',
+        body: payload,
+      })
+    ),
+
+  getWebsite: async (id) =>
+    unwrapSuccess(
+      await request(`/website-builder/websites/${id}`, { method: 'GET' })
+    ),
+
+  updateWebsite: async (id, payload) =>
+    unwrapSuccess(
+      await request(`/website-builder/websites/${id}`, {
+        method: 'PATCH',
+        body: payload,
+      })
+    ),
+
+  deleteWebsite: async (id) =>
+    unwrapSuccess(
+      await request(`/website-builder/websites/${id}`, { method: 'DELETE' })
+    ),
+
+  // Pages API
+  // Base: /api/website-builder/websites/:websiteId/pages
+  createPage: async (payload) =>
+    unwrapSuccess(
+      await request(`/website-builder/websites/${payload.websiteId}/pages`, {
+        method: 'POST',
+        body: payload,
+      })
+    ),
+
+  listPagesByWebsite: async (websiteId) =>
+    unwrapSuccess(
+      await request(`/website-builder/websites/${websiteId}/pages`, {
+        method: 'GET',
+      })
+    ),
+
+  updatePage: async (pageId, payload) =>
+    unwrapSuccess(
+      await request(`/website-builder/pages/${pageId}`, {
+        method: 'PUT',
+        body: payload,
+      })
+    ),
+
+  deletePage: async (pageId) =>
+    unwrapSuccess(
+      await request(`/website-builder/pages/${pageId}`, { method: 'DELETE' })
+    ),
 };
+
+
 
