@@ -281,36 +281,51 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
       const parsed = await parseWebsiteZip(zipFile);
       const finalName = websiteName.trim() || zipTemplateName.trim() || parsed.siteName;
 
-      // Upload ZIP to Cloudinary via backend and persist returned URL
+      // Upload ZIP to Cloudinary via backend and persist returned URL.
+      // Hoist `response` outside the inner try so it is accessible after it.
       let cloudinaryUrl = '';
+      let response = null; // FIX: was `resp` declared inside inner try, causing ReferenceError outside
+
       try {
         const { websiteWizardCloudinaryApi } = await import('../../../api/websiteWizardCloudinaryApi');
-        const resp = await websiteWizardCloudinaryApi.uploadTemplateZipToCloudinary({
+        response = await websiteWizardCloudinaryApi.uploadTemplateZipToCloudinary({
           file: zipFile,
           name: zipTemplateName.trim() || parsed.siteName,
         });
 
-        // Debug required by task
-        console.log('response.website._id:', resp?.website?._id);
-        console.log('response.pages.length:', Array.isArray(resp?.pages) ? resp.pages.length : 'not-an-array');
+        // Defensive check: backend must return a response object
+        if (!response) {
+          throw new Error("Upload response missing — backend returned empty.");
+        }
 
-        // New backend response shape: { website, pages }
-        cloudinaryUrl = resp?.website?.templateZipCloudinaryUrl || resp?.cloudinaryUrl || '';
+        // Debug logging
+        console.log("Upload Response:", response);
+        console.log("Website ID:", response?.website?._id);
+        console.log("Pages Returned:", response?.pages);
+
+        // New backend response shape: { success:true, website:{...}, pages:[...] }
+        cloudinaryUrl =
+          response?.website?.settings?.cloudinary?.url ||
+          response?.website?.templateZipCloudinaryUrl ||
+          response?.cloudinaryUrl ||
+          '';
       } catch (uploadErr) {
-        // Cloudinary failing shouldn't block creating the website draft; but we show the error.
+        // Cloudinary failing shouldn't block creating the website draft; show the error.
+        console.error("Cloudinary upload error:", uploadErr);
         setError(uploadErr?.message || 'Cloudinary upload failed');
+        // response stays null — pages fall back to locally-parsed pages below
       }
 
       onCreate({
-        // IMPORTANT: pass the real backend-created website + pages so the editor
-        // can fetch/render immediately using the correct MongoDB websiteId.
-        website: resp?.website,
+        // Pass the real backend-created website + pages so the editor
+        // can fetch/render immediately using the correct MongoDB _id.
+        website: response?.website,             // FIX: was resp?.website (ReferenceError)
         websiteName: finalName,
         description: "Website Template",
         source: "zip",
         templateName: zipTemplateName.trim() || parsed.siteName,
         templateZipCloudinaryUrl: cloudinaryUrl,
-        pages: resp?.pages || parsed.pages,
+        pages: response?.pages || parsed.pages, // FIX: was resp?.pages (ReferenceError)
       });
     } catch (err) {
       setError(err.message || "Couldn't read that ZIP.");

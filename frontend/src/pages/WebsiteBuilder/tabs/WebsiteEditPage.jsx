@@ -71,9 +71,14 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
 
       console.log("[WebsiteEditPage] Pages State:", normalizedPages);
 
-      commit({
-        ...website,
-        pages: normalizedPages,
+      // FIX: use functional updater to avoid stale closure on `website`.
+      // Previously: commit({ ...website, pages: normalizedPages }) captured the
+      // `website` value from the outer closure at the time fetchPages was defined,
+      // which could be stale if state had changed between mount and the API response.
+      setWebsite((prev) => {
+        const next = { ...prev, pages: normalizedPages };
+        onChange && onChange(next);
+        return next;
       });
     } catch (err) {
       console.error("[WebsiteEditPage] fetchPages failed:", err);

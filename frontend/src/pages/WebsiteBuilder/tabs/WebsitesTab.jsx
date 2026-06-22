@@ -690,9 +690,27 @@ const WebsitesTab = ({ itemVariants }) => {
           <TemplateLibraryModal
             open={isModalOpen}
             onCancel={() => setIsModalOpen(false)}
-            onCreate={({ templateId, websiteName }) => {
-              // Navigate to STEP 2 using router state
-              navigate('/website/setup', { state: { templateId, websiteName } });
+            onCreate={(payload) => {
+              // payload shape from TemplateLibraryModal:
+              //   { website, websiteName, description, source, templateName,
+              //     templateZipCloudinaryUrl, pages }
+              // For ZIP uploads, payload.website is the MongoDB Website doc returned
+              // by the backend; payload.pages are the persisted WebsitePage docs.
+              const backendWebsite = payload.website; // may be undefined for prebuilt templates
+              const newWebsite = {
+                // Use real MongoDB _id if available so WebsiteEditPage.fetchPages() works
+                _id: backendWebsite?._id || null,
+                key: backendWebsite?._id || Date.now().toString(),
+                name: payload.websiteName || backendWebsite?.name || "Untitled Website",
+                description: payload.description || backendWebsite?.description || "Website Template",
+                lastUpdated: "Just now",
+                pages: (payload.pages && payload.pages.length) || 1,
+                isNew: true,
+                rawPages: payload.pages || [], // persisted or locally-parsed page objects
+              };
+              setWebsites((prev) => [...prev, newWebsite]);
+              setActiveWebsite(newWebsite);
+              setView("edit");
               setIsModalOpen(false);
             }}
           />
