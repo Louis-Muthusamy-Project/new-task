@@ -62,17 +62,32 @@ exports.createPage = async (req, res) => {
   const { name, slug, isHome, status, content, seo } = req.body;
   const resolvedSlug = slug ? slugify(slug) : slugify(name);
 
+  const pageName =
+    req.body.name ||
+    req.body.title ||
+    req.body.pageName ||
+    "Untitled Page";
+
+  // Duplicate prevention (unique index is { websiteId, slug })
+  const existingPage = await WebsitePage.findOne({
+    websiteId: website._id,
+    slug: resolvedSlug,
+    isDeleted: false,
+  });
+
+  if (existingPage) {
+    const err = new Error(`Page slug already exists for this website: ${resolvedSlug}`);
+    err.statusCode = 409;
+    throw err;
+  }
+
+  // If creating a Home page, ensure only one Home exists for this website
   if (isHome) {
     await WebsitePage.updateMany(
       { websiteId: website._id, isHome: true },
       { $set: { isHome: false } }
     );
   }
-  const pageName =
-    req.body.name ||
-    req.body.title ||
-    req.body.pageName ||
-    "Untitled Page";
 
   const page = await WebsitePage.create({
     websiteId: website._id,

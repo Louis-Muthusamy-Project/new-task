@@ -31,9 +31,7 @@ const WebsiteSetupPage = () => {
   const [chatWidgetId, setChatWidgetId] = useState('');
   const [customDomain, setCustomDomain] = useState('');
 
-  const [pages, setPages] = useState([
-    { id: 'p1', title: 'Home', slug: '/home', isHome: true, status: 'Draft' },
-  ]);
+  const [pages, setPages] = useState([]);
   const [newPageTitle, setNewPageTitle] = useState('');
 
   const homePage = useMemo(() => pages.find((p) => p.isHome), [pages]);
@@ -42,7 +40,8 @@ const WebsiteSetupPage = () => {
     const title = newPageTitle.trim();
     if (!title) return;
 
-    const slug = '/' + title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
+    const slug = title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
+
     const newPage = {
       id: String(Date.now()),
       title,

@@ -33,10 +33,7 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
     },
     chatWidgetId: initialWebsite?.chatWidgetId || null,
     domain: initialWebsite?.domain || null,
-    pages: (initialWebsite?.pages && initialWebsite.pages.length > 0
-      ? initialWebsite.pages
-      : [{ id: nextId(), name: "Home", slug: "/", isHome: true, status: "Draft" }]
-    ),
+    pages: initialWebsite?.pages || []
   }));
 
   const [newPageTitle, setNewPageTitle] = useState("");
@@ -71,8 +68,9 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
     const page = {
       id: nextId(),
       name: title,
-      slug: `/${baseSlug}-${slugify(title)}`,
+      slug: `${baseSlug}-${slugify(title)}`,
       isHome: false,
+
       status: "Draft",
     };
     commit({ ...website, pages: [...website.pages, page] });
@@ -100,17 +98,15 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
       ...source,
       id: nextId(),
       name: `${source.name} Copy`,
-      slug: `${source.slug}-copy`,
+      slug: source.slug.endsWith('-copy') ? source.slug : `${source.slug}-copy`,
+
       isHome: false,
     };
     commit({ ...website, pages: [...website.pages, copy] });
   };
 
   const deletePage = (id) => {
-    const target = website.pages.find((p) => p.id === id);
-    if (!target) return;
     const remaining = website.pages.filter((p) => p.id !== id);
-    if (target.isHome && remaining.length > 0) remaining[0].isHome = true;
     commit({ ...website, pages: remaining });
   };
 

@@ -30,6 +30,7 @@ const uploadBufferToCloudinary = (fileBuffer, options = {}) => {
       (error, result) => {
         if (error) return reject(error);
         resolve(result);
+        console.log(result)
       }
     );
 
