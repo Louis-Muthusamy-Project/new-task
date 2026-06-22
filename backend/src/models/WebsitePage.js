@@ -26,9 +26,17 @@ const WebsitePageSchema = new Schema(
     },
     status: {
       type: String,
-      enum: ['Draft', 'Published'],
+      enum: ['Draft', 'Published', 'draft', 'published'],
       default: 'Draft',
       index: true,
+      // Normalize possible casing mismatch coming from imports.
+      set: (v) => {
+        if (!v) return 'Draft';
+        const s = String(v);
+        if (s.toLowerCase() === 'draft') return 'Draft';
+        if (s.toLowerCase() === 'published') return 'Published';
+        return s;
+      },
     },
     content: {
       type: Schema.Types.Mixed,

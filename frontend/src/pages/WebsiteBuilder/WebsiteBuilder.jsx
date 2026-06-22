@@ -71,17 +71,17 @@ const WebsiteBuilder = () => {
               ].map((kpi, i) => (
                 <Col xs={24} sm={12} lg={4} style={{ flex: '1 1 200px', minWidth: 200}} key={i}>
                   <motion.div variants={itemVariants} whileHover={{ y: -4, transition: { duration: 0.2 } }} style={{ height: '100%' }}>
-                    <Card 
-                      bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', height: '100%' }} 
-                      style={{ 
-                        borderRadius: 12, 
-                        height: '100%',
-                        background: 'var(--bg-secondary)',
-                        border: '1px solid var(--border-color)',
-                        boxShadow: 'var(--shadow-sm)',
-                        overflow: 'hidden'
-                      }}
-                    >
+                      <Card
+                        styles={{ body: { padding: 0, display: 'flex', flexDirection: 'column', height: '100%' } }}
+                        style={{
+                          borderRadius: 12,
+                          height: '100%',
+                          background: 'var(--bg-secondary)',
+                          border: '1px solid var(--border-color)',
+                          boxShadow: 'var(--shadow-sm)',
+                          overflow: 'hidden',
+                        }}
+                      >
                       <div style={{ 
                         height: 32, 
                         background: 'var(--bg-tertiary)', 
@@ -170,11 +170,13 @@ const WebsiteBuilder = () => {
             </Row>
 
             <motion.div variants={itemVariants}>
-              <Card 
-                title={<div style={{ paddingTop: 8 }}><Title level={5} style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Recent Activity</Title><Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>Changes across all sites — last 7 days</Text></div>} 
-                extra={<Button type="link" style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent-secondary)' }}>View Full History →</Button>}
-                className="glassmorphism" style={{ borderRadius: 16, marginBottom: 40, border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }} bodyStyle={{ padding: 24 }}
-              >
+                <Card
+                  title={<div style={{ paddingTop: 8 }}><Title level={5} style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Recent Activity</Title><Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>Changes across all sites — last 7 days</Text></div>}
+                  extra={<Button type="link" style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent-secondary)' }}>View Full History →</Button>}
+                  className="glassmorphism"
+                  style={{ borderRadius: 16, marginBottom: 40, border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}
+                  styles={{ body: { padding: 24 } }}
+                >
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingLeft: 8 }}>
                   {[
                     { user: 'Divya Das', action: 'published "Prestige Somerville — Phase 2 launch page"', site: 'prestigeestates.com/somerville-ph2', time: '2 hrs ago', dot: 'var(--accent-primary)' },

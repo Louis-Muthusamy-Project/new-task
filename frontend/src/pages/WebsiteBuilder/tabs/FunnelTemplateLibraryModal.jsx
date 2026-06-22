@@ -37,7 +37,7 @@ const FunnelTemplateLibraryModal = ({ open, onCancel, onCreate, initialFunnelNam
       width={1200}
       closeIcon={<Button type="text" icon={<CloseIcon size={20} />} onClick={onCancel} style={{ color: "var(--text-secondary)" }} />}
       style={{ top: 20 }}
-      bodyStyle={{ padding: 0, borderRadius: 16, overflow: "hidden" }}
+      styles={{ body: { padding: 0, borderRadius: 16, overflow: "hidden" } }}
       className="glassmorphism-modal"
     >
       <div style={{ display: "flex", height: "85vh", maxHeight: 900 }}>

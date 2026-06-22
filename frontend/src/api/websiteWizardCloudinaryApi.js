@@ -22,7 +22,9 @@ async function requestMultipart(path, { file, name, folder } = {}) {
   if (!json || json.success === false) {
     throw new Error(json?.error || 'Unknown API error');
   }
-  return json.data;
+  // Backend now returns: { success:true, website:{...}, pages:[...] }
+  // Do not unwrap json.data (legacy) because it's not present anymore.
+  return json;
 }
 
 export const websiteWizardCloudinaryApi = {

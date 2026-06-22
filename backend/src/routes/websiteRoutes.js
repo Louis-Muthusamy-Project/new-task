@@ -23,5 +23,11 @@ router.patch("/websites/:id", asyncHandler(websiteController.updateWebsite));
 // DELETE /api/website-builder/websites/:id
 router.delete("/websites/:id", asyncHandler(websiteController.deleteWebsite));
 
+// GET /api/website-builder/websites/:id/preview
+router.get("/websites/:id/preview", asyncHandler(websiteController.previewWebsite));
+
+// POST /api/website-builder/websites/:id/duplicate
+router.post("/websites/:id/duplicate", asyncHandler(websiteController.duplicateWebsite));
+
 module.exports = router;
 

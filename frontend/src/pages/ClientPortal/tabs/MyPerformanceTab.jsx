@@ -150,7 +150,7 @@ const MyPerformanceTab = () => {
                       <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: 600 }}>{sig.name}</Text>
                       <Text style={{ color: '#fff', fontSize: 13, fontWeight: 800 }}>{sig.value}</Text>
                     </div>
-                    <Progress percent={sig.value} showInfo={false} strokeColor="var(--accent-primary)" trailColor="rgba(255,255,255,0.1)" size="small" />
+railColor="rgba(255,255,255,0.1)" size="small" showInfo={false} strokeColor="var(--accent-primary)"
                   </Col>
                 ))}
               </Row>

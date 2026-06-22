@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Typography, Input, Select, Button, Row, Col, Space } from "antd";
+import { Typography, Input, Select, Button, Row, Col, Space, message } from "antd";
 import {
   CheckCircle2,
   Pencil,
@@ -9,6 +9,7 @@ import {
   Plus,
   Home as HomeIcon,
 } from "lucide-react";
+import { websiteWizardApi } from "../../../api/websiteWizardApi";
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -17,6 +18,35 @@ let idCounter = 0;
 const nextId = () => `pg-${Date.now()}-${idCounter++}`;
 
 const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreated = true }) => {
+  // The real MongoDB _id, if this website was persisted (key may be Date.now() for new locals).
+  const websiteDbId = initialWebsite?.key || initialWebsite?._id || null;
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  const handlePreview = async (pageSlug = null) => {
+    if (!websiteDbId || websiteDbId.length < 24) {
+      // Locally-created website not yet saved to DB — open a blank tab with a notice.
+      message.info("Save your website first to preview it.");
+      return;
+    }
+    setPreviewLoading(true);
+    try {
+      const previewData = await websiteWizardApi.previewWebsite(websiteDbId);
+      // Determine target URL: prefer custom domain, else page slug path.
+      const targetPage = pageSlug
+        ? previewData.pages?.find((p) => p.slug === pageSlug)
+        : previewData.pages?.find((p) => p.isHome) || previewData.pages?.[0];
+      const base =
+        previewData.website?.domain
+          ? `https://${previewData.website.domain}`
+          : window.location.origin;
+      const url = targetPage ? `${base}/${targetPage.slug}` : base;
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      message.error(err.message || "Failed to load preview.");
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
   const [website, setWebsite] = useState(() => ({
     name: initialWebsite?.name || "Untitled Website",
     description: initialWebsite?.description || "Website Template",
@@ -489,6 +519,8 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
                     <Button
                       size="small"
                       icon={<Eye size={13} />}
+                      loading={previewLoading}
+                      onClick={() => handlePreview(page.slug)}
                       style={{ borderRadius: 8, background: "var(--accent-success)", color: "#fff", border: "none", fontWeight: 600 }}
                     >
                       Preview

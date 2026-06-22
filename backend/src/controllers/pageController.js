@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const Website = require('../models/Website');
 const WebsitePage = require('../models/WebsitePage');
-
+const { slugify, generateUniqueSlug } = require('../utils/slugUtils');
 
 /**
  * WebsitePage has no ownerId/teamId of its own — ownership is always
@@ -34,21 +34,36 @@ const invalidIdError = (message) => {
   return error;
 };
 
-const slugify = (str) =>
-  String(str)
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'page';
+/**
+ * Translates a MongoDB E11000 duplicate-key error into a friendly 409
+ * so that callers never see an unhandled 500 for slug collisions.
+ * Returns null for any other error type (caller should re-throw).
+ */
+const handleDuplicateKeyError = (err) => {
+  if (err.code === 11000 && err.keyPattern && err.keyPattern.slug) {
+    const slug = err.keyValue?.slug ?? 'unknown';
+    const conflict = new Error(
+      `Page slug "${slug}" already exists for this website. ` +
+      `Use a different slug or omit it to have one generated automatically.`
+    );
+    conflict.statusCode = 409;
+    return conflict;
+  }
+  return null;
+};
 
 /**
  * POST /api/websites/:websiteId/pages
  * Creates a new page under the given website. Accepts a `content` field
  * holding the page builder JSON (stored as-is via Schema.Types.Mixed).
+ *
+ * Slug handling:
+ *   - If a slug is provided, it is slugified and made unique by appending
+ *     -1, -2, … if necessary (rather than rejecting the request).
+ *   - If no slug is provided, one is derived from the page name.
  */
 exports.createPage = async (req, res) => {
   const { websiteId } = req.params;
-
 
   if (!mongoose.Types.ObjectId.isValid(websiteId)) {
     throw invalidIdError('Invalid website id.');
@@ -59,29 +74,21 @@ exports.createPage = async (req, res) => {
     throw notFoundError('Website not found.');
   }
 
-  const { name, slug, isHome, status, content, seo } = req.body;
-  const resolvedSlug = slug ? slugify(slug) : slugify(name);
+  const { slug, isHome, status, content, seo } = req.body;
 
   const pageName =
     req.body.name ||
     req.body.title ||
     req.body.pageName ||
-    "Untitled Page";
+    'Untitled Page';
 
-  // Duplicate prevention (unique index is { websiteId, slug })
-  const existingPage = await WebsitePage.findOne({
-    websiteId: website._id,
-    slug: resolvedSlug,
-    isDeleted: false,
-  });
+  // Derive base slug from explicit input or page name.
+  const baseSlug = slugify(slug || pageName);
 
-  if (existingPage) {
-    const err = new Error(`Page slug already exists for this website: ${resolvedSlug}`);
-    err.statusCode = 409;
-    throw err;
-  }
+  // Find a collision-free slug in one DB round-trip.
+  const resolvedSlug = await generateUniqueSlug(baseSlug, website._id);
 
-  // If creating a Home page, ensure only one Home exists for this website
+  // If creating a Home page, ensure only one Home exists for this website.
   if (isHome) {
     await WebsitePage.updateMany(
       { websiteId: website._id, isHome: true },
@@ -89,15 +96,24 @@ exports.createPage = async (req, res) => {
     );
   }
 
-  const page = await WebsitePage.create({
-    websiteId: website._id,
-    name: pageName,
-    slug: resolvedSlug,
-    isHome: !!isHome,
-    status: status || 'Draft',
-    content: req.body.pageJson || content || {},
-    seo: seo || undefined,
-  });
+  let page;
+  try {
+    page = await WebsitePage.create({
+      websiteId: website._id,
+      name: pageName,
+      slug: resolvedSlug,
+      isHome: !!isHome,
+      status: status || 'Draft',
+      content: req.body.pageJson || content || {},
+      seo: seo || undefined,
+    });
+  } catch (err) {
+    // Last-resort guard: if a concurrent insert won the race, surface a
+    // clean 409 instead of an opaque 500.
+    const conflict = handleDuplicateKeyError(err);
+    if (conflict) throw conflict;
+    throw err;
+  }
 
   res.status(201).json({
     success: true,
@@ -166,6 +182,11 @@ exports.getPageById = async (req, res) => {
  * PUT /api/pages/:id
  * Replaces page metadata and/or page builder JSON content. Ownership is
  * enforced via the page's parent website.
+ *
+ * Slug handling:
+ *   - If slug is unchanged or not provided, no collision check is needed.
+ *   - If slug changes, generateUniqueSlug ensures the new value does not
+ *     collide with any other page in the same website (excluding itself).
  */
 exports.updatePage = async (req, res) => {
   const { id } = req.params;
@@ -193,7 +214,13 @@ exports.updatePage = async (req, res) => {
   }
 
   if (updates.slug) {
-    updates.slug = slugify(updates.slug);
+    const baseSlug = slugify(updates.slug);
+    // Only run the uniqueness check when the slug is actually changing.
+    if (baseSlug !== page.slug) {
+      updates.slug = await generateUniqueSlug(baseSlug, page.websiteId, page._id);
+    } else {
+      updates.slug = baseSlug;
+    }
   }
 
   if (updates.status === 'Published' && page.status !== 'Published') {
@@ -207,11 +234,18 @@ exports.updatePage = async (req, res) => {
     );
   }
 
-  const updatedPage = await WebsitePage.findByIdAndUpdate(
-    id,
-    { $set: updates },
-    { new: true, runValidators: true }
-  );
+  let updatedPage;
+  try {
+    updatedPage = await WebsitePage.findByIdAndUpdate(
+      id,
+      { $set: updates },
+      { new: true, runValidators: true }
+    );
+  } catch (err) {
+    const conflict = handleDuplicateKeyError(err);
+    if (conflict) throw conflict;
+    throw err;
+  }
 
   res.status(200).json({
     success: true,
@@ -249,4 +283,3 @@ exports.deletePage = async (req, res) => {
     data: { id: page._id, deleted: true },
   });
 };
-

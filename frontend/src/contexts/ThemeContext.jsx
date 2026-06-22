@@ -41,14 +41,15 @@ export const ThemeProvider = ({ children }) => {
         colorBorderSecondary: isDark ? '#334155' : '#e2e8f0',
       },
       Menu: {
-        colorItemBg: 'transparent',
+        itemBg: 'transparent',
       },
       Layout: {
-        colorBgHeader: isDark ? '#1e293b' : '#ffffff',
-        colorBgBody: isDark ? '#0f172a' : '#f4f7fb',
+        headerBg: isDark ? '#1e293b' : '#ffffff',
+        bodyBg: isDark ? '#0f172a' : '#f4f7fb',
       }
     }
   };
+
 
   return (
     <ThemeContext.Provider value={{ theme, isDark, toggleTheme }}>

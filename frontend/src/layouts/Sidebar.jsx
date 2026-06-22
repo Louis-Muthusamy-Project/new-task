@@ -171,13 +171,13 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
 
   if (!screens.lg && screens.lg !== undefined) {
     return (
-      <Drawer
+        <Drawer
         placement="left"
         closable={false}
         onClose={() => setMobileMenuOpen(false)}
         open={mobileMenuOpen}
-        bodyStyle={{ padding: 0, overflow: 'hidden' }}
-        width={280}
+        styles={{ body: { padding: 0, overflow: 'hidden' } }}
+        size="default"
       >
         {sidebarContent}
       </Drawer>

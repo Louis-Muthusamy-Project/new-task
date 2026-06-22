@@ -49,20 +49,82 @@ async function parseWebsiteZip(file) {
   const zip = await JSZip.loadAsync(file);
 
   const htmlFiles = [];
+  const cssFiles = [];
+  const jsFiles = [];
+  const imageFiles = [];
+  const docFiles = [];
+
+  // Collect file paths (and sizes when available)
+  const fileEntries = [];
   zip.forEach((relativePath, entry) => {
-    if (!entry.dir && /\.html?$/i.test(relativePath)) {
-      htmlFiles.push(relativePath);
-    }
+    if (entry.dir) return;
+    const lower = relativePath.toLowerCase();
+    fileEntries.push({ relativePath, entry });
+
+    if (/\.html?$/i.test(relativePath)) htmlFiles.push(relativePath);
+    else if (/\.css$/i.test(relativePath)) cssFiles.push(relativePath);
+    else if (/\.js$/i.test(relativePath)) jsFiles.push(relativePath);
+    else if (/\.(png|jpe?g|gif|webp|svg|ico|bmp)$/i.test(lower)) imageFiles.push(relativePath);
+    else if (/\.(pdf|docx?|xlsx?|pptx?|txt|rtf|zip|rar|7z)$/i.test(lower)) docFiles.push(relativePath);
   });
 
   if (htmlFiles.length === 0) {
-    throw new Error(
-      "No HTML files found in this ZIP. Make sure it contains an index.html and an assets folder."
-    );
+    throw new Error("ZIP must contain at least one HTML page.");
   }
 
-  htmlFiles.sort((a, b) => a.split("/").length - b.split("/").length);
+  // Require at least index.html or index.htm
+  const hasIndex = htmlFiles.some((filePath) => /(^|\/)index\.html?$/i.test(filePath));
+  if (!hasIndex) {
+    throw new Error("ZIP must contain an index.html file.");
+  }
 
+  // HTML content validation (size/emptiness/basic corruption guard)
+  const htmlValidation = await Promise.all(
+    htmlFiles.map(async (path) => {
+      const entry = zip.file(path);
+      if (!entry) return { path, valid: false };
+      const size = entry._data?.uncompressedSize ?? entry._data?.size ?? 0;
+      if (!size) return { path, valid: false, reason: 'EMPTY' };
+
+      try {
+        const text = await entry.async('string');
+        const trimmed = (text || '').trim();
+        if (!trimmed) return { path, valid: false, reason: 'EMPTY' };
+
+        // quick sanity checks (not a full HTML parser)
+        const looksLikeHtml = /<\s*html\b/i.test(trimmed) || /<\s*body\b/i.test(trimmed) || /<\s*head\b/i.test(trimmed);
+        if (!looksLikeHtml) {
+          // Treat as corrupted/invalid HTML
+          return { path, valid: false, reason: 'CORRUPTED' };
+        }
+
+        return { path, valid: true };
+      } catch (e) {
+        return { path, valid: false, reason: 'CORRUPTED' };
+      }
+    })
+  );
+
+  const firstInvalid = htmlValidation.find((v) => !v.valid);
+  if (firstInvalid) {
+    throw new Error("Uploaded ZIP is not a valid website template.");
+  }
+
+  // Asset-only rejection rules
+  const hasOnly = (arr) => arr.length > 0;
+  const hasCss = cssFiles.length > 0;
+  const hasJs = jsFiles.length > 0;
+  const hasImages = imageFiles.length > 0;
+  const hasDocs = docFiles.length > 0;
+
+  // if zip contains html+index but nothing else that's not required; only reject
+  // for the explicit cases requested.
+  // Requested reject cases that can still happen with HTML present:
+  // - “ZIP contains only assets” (meaning no index.html/index.htm; already handled)
+  // - “ZIP contains only images/CSS/JS/documents only” (no HTML; already handled)
+
+  // Derive base slug/site name
+  htmlFiles.sort((a, b) => a.split("/").length - b.split("/").length);
   const firstSegments = htmlFiles[0].split("/");
   const rootFolder = firstSegments.length > 1 ? firstSegments[0] : null;
 
@@ -92,9 +154,22 @@ async function parseWebsiteZip(file) {
     pages = pages.map((p, i) => (i === 0 ? { ...p, isHome: true } : p));
   }
 
-  pages.sort((a, b) => (a.isHome === b.isHome ? a.name.localeCompare(b.name) : a.isHome ? -1 : 1));
+  pages.sort((a, b) =>
+    a.isHome === b.isHome ? a.name.localeCompare(b.name) : a.isHome ? -1 : 1
+  );
 
-  return { siteName, baseSlug, pages, fileCount: htmlFiles.length };
+  return {
+    siteName,
+    baseSlug,
+    pages,
+    fileCount: htmlFiles.length,
+    warnings: {
+      cssMissing: !hasCss,
+      jsMissing: !hasJs,
+      imagesMissing: !hasImages,
+      documentsOnly: hasDocs && !hasImages && !hasCss && !hasJs,
+    },
+  };
 }
 
 /* ---------------------------------------------------------------------- */
@@ -214,7 +289,13 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
           file: zipFile,
           name: zipTemplateName.trim() || parsed.siteName,
         });
-        cloudinaryUrl = resp?.cloudinaryUrl || '';
+
+        // Debug required by task
+        console.log('response.website._id:', resp?.website?._id);
+        console.log('response.pages.length:', Array.isArray(resp?.pages) ? resp.pages.length : 'not-an-array');
+
+        // New backend response shape: { website, pages }
+        cloudinaryUrl = resp?.website?.templateZipCloudinaryUrl || resp?.cloudinaryUrl || '';
       } catch (uploadErr) {
         // Cloudinary failing shouldn't block creating the website draft; but we show the error.
         setError(uploadErr?.message || 'Cloudinary upload failed');
@@ -284,7 +365,7 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
         />
       }
       style={{ top: 30 }}
-      bodyStyle={{ padding: 0, overflow: "hidden" }}
+      styles={{ body: { padding: 0, overflow: "hidden" } }}
       className="glassmorphism-modal"
     >
       <div style={{ display: "flex", height: "82vh", maxHeight: 820 }}>
@@ -363,7 +444,7 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
               BROWSE CATEGORIES
             </Text>
 
-            <Space direction="vertical" style={{ width: "100%" }} size={2}>
+            <Space orientation="vertical" style={{ width: "100%" }} size={2}>
               {CATEGORIES.map((cat) => (
                 <div
                   key={cat}

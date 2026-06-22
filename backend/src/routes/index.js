@@ -15,7 +15,14 @@ router.use('/website-builder', require('./publishRoutes'));
 // Templates endpoint used by WebsiteTemplatePage.jsx
 router.use('/templates', require('./templatesRoutes'));
 
+// Website template ZIP upload used by websiteWizardCloudinaryApi.js
+router.use('/website', require('./websiteRoutesTemplates'));
+
 module.exports = router;
+
+
+
+
 
 
 

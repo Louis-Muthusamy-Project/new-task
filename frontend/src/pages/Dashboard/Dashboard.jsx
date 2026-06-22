@@ -38,7 +38,7 @@ const Dashboard = () => {
     { title: 'MOS SCORE', dataIndex: 'mos', key: 'mos', render: val => (
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <strong style={{ minWidth: 24, color: 'var(--text-primary)' }}>{val}</strong>
-        <Progress percent={val} showInfo={false} size="small" strokeColor="var(--accent-secondary)" trailColor="var(--bg-tertiary)" style={{ width: 100 }} />
+<Progress percent={val} showInfo={false} size="small" strokeColor="var(--accent-secondary)" railColor="var(--bg-tertiary)" style={{ width: 100 }} />
       </div>
     )},
     { title: 'STATUS', dataIndex: 'status', key: 'status', render: val => (
@@ -215,7 +215,7 @@ const Dashboard = () => {
                         <Text strong style={{ fontSize: 14, color: 'var(--text-primary)' }}>{t.name}</Text>
                         <Text style={{ fontSize: 13, color: t.color, fontWeight: 600 }}>{t.logged}h / {t.capacity}h <span style={{ marginLeft: 8, fontWeight: 700 }}>{Math.round((t.logged/t.capacity)*100)}%</span></Text>
                       </div>
-                      <Progress percent={(t.logged/t.capacity)*100} showInfo={false} strokeColor={t.color} trailColor="var(--bg-tertiary)" size="small" />
+<Progress percent={(t.logged/t.capacity)*100} showInfo={false} strokeColor={t.color} railColor="var(--bg-tertiary)" size="small" />
                     </div>
                   </div>
                 ))}

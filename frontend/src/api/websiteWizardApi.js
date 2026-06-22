@@ -59,6 +59,11 @@ export const websiteWizardApi = {
       await request(`/website-builder/websites/${id}`, { method: 'DELETE' })
     ),
 
+  previewWebsite: async (id) =>
+    unwrapSuccess(
+      await request(`/website-builder/websites/${id}/preview`, { method: 'GET' })
+    ),
+
   // Pages API
   // Base: /api/website-builder/websites/:websiteId/pages
   createPage: async (payload) =>

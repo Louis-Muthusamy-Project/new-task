@@ -215,3 +215,85 @@ exports.deleteWebsite = async (req, res) => {
     data: { id: website._id, deleted: true },
   });
 };
+
+/**
+ * POST /api/website-builder/websites/:id/duplicate
+ * Duplicates a website and all its non-deleted pages.
+ * The copy is always created in Draft status with domain cleared.
+ */
+const { duplicateWebsite } = require('../services/duplicateService');
+
+exports.duplicateWebsite = async (req, res) => {
+  const { id } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw invalidIdError();
+  }
+
+  const ownerCtx = {
+    ownerId: req?.user?.id || req?.user?._id || null,
+    teamId:  req?.user?.teamId || null,
+  };
+
+  const { website, pageCount } = await duplicateWebsite(id, ownerCtx);
+
+  res.status(201).json({
+    success: true,
+    data: website,
+    meta: { pagesCopied: pageCount },
+  });
+};
+
+/**
+ * GET /api/website-builder/websites/:id/preview
+ * Returns a preview payload for the website: website metadata + all
+ * non-deleted pages (sorted home-first, then by creation date).
+ *
+ * Errors handled:
+ *   400 – invalid ObjectId
+ *   404 – website not found or soft-deleted
+ *   404 – ownership mismatch (reported as "not found" to avoid leaking ids)
+ */
+exports.previewWebsite = async (req, res) => {
+  const { id } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw invalidIdError();
+  }
+
+  // Enforce ownership the same way every other controller action does.
+  const website = await Website.findOne({
+    _id: id,
+    ...buildOwnershipFilter(req),
+    isDeleted: false,
+  }).lean();
+
+  if (!website) {
+    throw notFoundError();
+  }
+
+  // Lazy-require to avoid circular dependency risk (WebsitePage is only
+  // needed here and in the duplicate flow).
+  const WebsitePage = require('../models/WebsitePage');
+
+  const pages = await WebsitePage.find(
+    { websiteId: website._id, isDeleted: false },
+    // Exclude heavy content from the page listing — callers can fetch
+    // individual pages via GET /pages/:id when they need builder JSON.
+    { content: 0, __v: 0 }
+  )
+    .sort({ isHome: -1, createdAt: 1 })
+    .lean();
+
+  res.status(200).json({
+    success: true,
+    data: {
+      website,
+      pages,
+      meta: {
+        pageCount: pages.length,
+        hasHomePage: pages.some((p) => p.isHome),
+      },
+    },
+  });
+};

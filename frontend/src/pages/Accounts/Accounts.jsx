@@ -63,7 +63,7 @@ const Accounts = () => {
       render: val => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <strong style={{ minWidth: 24, color: 'var(--text-primary)' }}>{val}</strong>
-          <Progress percent={val} showInfo={false} size="small" strokeColor={val > 70 ? 'var(--accent-secondary)' : val > 50 ? 'var(--accent-warning)' : 'var(--accent-danger)'} trailColor="var(--bg-tertiary)" style={{ width: 60 }} />
+          <Progress percent={val} showInfo={false} size="small" strokeColor={val > 70 ? 'var(--accent-secondary)' : val > 50 ? 'var(--accent-warning)' : 'var(--accent-danger)'} railColor="var(--bg-tertiary)" style={{ width: 60 }} />
         </div>
       )
     },

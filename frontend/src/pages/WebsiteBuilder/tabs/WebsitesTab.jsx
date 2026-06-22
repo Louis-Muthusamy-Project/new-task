@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Button, Input, Radio, Table, Typography, Space, Modal, Card, Select, Row, Col, Badge, Tag, Divider, Popconfirm } from "antd";
+import { Button, Input, Radio, Table, Typography, Space, Modal, Card, Select, Row, Col, Badge, Tag, Divider, Popconfirm, message } from "antd";
 import { Plus, Search, Folder, Sparkles, LayoutTemplate, Link2, Settings, FileText, Monitor, Smartphone, UploadCloud, ChevronRight, PenTool, ExternalLink, ArrowLeft, ArrowRight, Info, Activity, Trash2 } from "lucide-react";
 
 import { motion } from "framer-motion";
@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import TemplateLibraryModal from '../websiteWizard/TemplateLibraryModal';
 import WebsiteTemplatePage from './WebsiteTemplatePage';
 import WebsiteEditPage from './WebsiteEditPage';
+import { websiteWizardApi } from "../../../api/websiteWizardApi";
 
 const { Title, Text } = Typography;
 
@@ -201,6 +202,40 @@ const CreateWebsiteModal = ({ open, onCancel, onCreate }) => {
 };
 
 const ManageWebsiteView = ({ activeWebsite, setView, itemVariants }) => {
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  const handlePreview = async () => {
+    const id = activeWebsite?.key;
+    // If backend uses Mongo ObjectId, length is 24.
+    // If you store other id types, this guard may be too strict.
+    if (!id || id.length < 1) {
+      message.info("Save your website first to preview it.");
+      return;
+    }
+
+    setPreviewLoading(true);
+    try {
+      if (!websiteWizardApi?.previewWebsite) {
+        throw new Error("Preview API is not available.");
+      }
+
+      const previewData = await websiteWizardApi.previewWebsite(id);
+      const pages = previewData?.pages || [];
+      const homePage = pages.find((p) => p.isHome) || pages[0];
+
+      const base = previewData?.website?.domain
+        ? `https://${previewData.website.domain}`
+        : window.location.origin;
+
+      const url = homePage?.slug ? `${base}/${homePage.slug}` : base;
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      message.error(err?.message || "Failed to load preview.");
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
   return (
     <motion.div variants={itemVariants} className="builder-view-container">
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, cursor: 'pointer', color: 'var(--accent-primary)', fontWeight: 700 }} onClick={() => setView("list")}>
@@ -390,7 +425,7 @@ const ManageWebsiteView = ({ activeWebsite, setView, itemVariants }) => {
                     </div>
                     <div style={{ display: 'flex', gap: 12, paddingLeft: 64 }}>
                       <Button type="primary" style={{ background: "var(--accent-primary)", border: "none", borderRadius: 8, fontWeight: 700, padding: "0 20px" }} icon={<PenTool size={14} />}>Edit in Builder</Button>
-                      <Button style={{ background: "var(--bg-primary)", borderColor: "var(--border-color)", color: 'var(--text-primary)', borderRadius: 8, fontWeight: 600, padding: "0 20px" }} icon={<Monitor size={14} />}>Preview</Button>
+                      <Button loading={previewLoading} onClick={handlePreview} style={{ background: "var(--bg-primary)", borderColor: "var(--border-color)", color: 'var(--text-primary)', borderRadius: 8, fontWeight: 600, padding: "0 20px" }} icon={<Monitor size={14} />}>Preview</Button>
                       <Button style={{ background: "var(--bg-primary)", borderColor: "var(--border-color)", color: 'var(--text-primary)', borderRadius: 8, fontWeight: 600, padding: "0 20px" }}>Duplicate</Button>
                       <Button danger style={{ background: "rgba(239, 68, 68, 0.1)", border: "none", color: "var(--accent-danger)", borderRadius: 8, fontWeight: 700, padding: "0 20px" }} icon={<Trash2 size={14} />}>Delete</Button>
                     </div>
@@ -416,7 +451,7 @@ const ManageWebsiteView = ({ activeWebsite, setView, itemVariants }) => {
                       </div>
                       <div style={{ display: 'flex', gap: 12, paddingLeft: 64 }}>
                         <Button type="primary" style={{ background: "var(--accent-primary)", border: "none", borderRadius: 8, fontWeight: 700, padding: "0 20px" }} icon={<PenTool size={14} />}>Edit in Builder</Button>
-                        <Button style={{ background: "var(--bg-primary)", borderColor: "var(--border-color)", color: 'var(--text-primary)', borderRadius: 8, fontWeight: 600, padding: "0 20px" }} icon={<Monitor size={14} />}>Preview</Button>
+                        <Button loading={previewLoading} onClick={handlePreview} style={{ background: "var(--bg-primary)", borderColor: "var(--border-color)", color: 'var(--text-primary)', borderRadius: 8, fontWeight: 600, padding: "0 20px" }} icon={<Monitor size={14} />}>Preview</Button>
                         <Button style={{ background: "var(--bg-primary)", borderColor: "var(--border-color)", color: 'var(--text-primary)', borderRadius: 8, fontWeight: 600, padding: "0 20px" }}>Duplicate</Button>
                         <Button danger style={{ background: "rgba(239, 68, 68, 0.1)", border: "none", color: "var(--accent-danger)", borderRadius: 8, fontWeight: 700, padding: "0 20px" }} icon={<Trash2 size={14} />}>Delete</Button>
                       </div>
