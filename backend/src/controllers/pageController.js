@@ -144,6 +144,11 @@ exports.getPagesByWebsite = async (req, res) => {
 
   const pages = await WebsitePage.find(filter).sort({ isHome: -1, createdAt: 1 });
 
+  console.log('[getPagesByWebsite] websiteId:', website._id, 'pagesCount:', pages.length);
+  if (Array.isArray(pages) && pages.length > 0) {
+    console.log('[getPagesByWebsite] firstPageSlugs:', pages.slice(0, 10).map((p) => p.slug));
+  }
+
   res.status(200).json({
     success: true,
     data: pages,

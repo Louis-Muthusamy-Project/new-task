@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Typography, Input, Select, Button, Row, Col, Space, message } from "antd";
 import {
   CheckCircle2,
@@ -19,8 +19,66 @@ const nextId = () => `pg-${Date.now()}-${idCounter++}`;
 
 const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreated = true }) => {
   // The real MongoDB _id, if this website was persisted (key may be Date.now() for new locals).
-  const websiteDbId = initialWebsite?.key || initialWebsite?._id || null;
+  // Prefer real MongoDB _id. Some flows may pass a local placeholder `key`.
+  const candidateId = initialWebsite?._id || initialWebsite?.key || null;
+  const websiteDbId = typeof candidateId === 'string' && candidateId.length >= 24 ? candidateId : null;
+
+  const normalizeSlug = (slug) => {
+    if (!slug) return slug;
+    let s = String(slug).trim();
+    // Normalize leading slash convention.
+    if (s === "/" || s.toLowerCase() === "/home") return "home";
+    if (s.startsWith("/")) s = s.slice(1);
+    return s;
+  };
   const [previewLoading, setPreviewLoading] = useState(false);
+
+  useEffect(() => {
+    fetchPages();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [websiteDbId]);
+
+  const fetchPages = async () => {
+    if (!websiteDbId || websiteDbId.length < 24) return;
+
+    try {
+      console.log("[WebsiteEditPage] websiteId:", websiteDbId);
+      const resp = await websiteWizardApi.listPagesByWebsite(websiteDbId);
+      console.log("[WebsiteEditPage] pages API response (raw):", resp);
+
+      // websiteWizardApi.listPagesByWebsite unwraps {success:true, data: pages} and returns pages.
+      const apiPages = Array.isArray(resp) ? resp : resp?.data;
+
+      if (!Array.isArray(apiPages)) {
+        console.warn("[WebsiteEditPage] Unexpected pages payload shape:", resp);
+        return;
+      }
+
+      const normalizedPages = apiPages.map((p) => {
+        const slug = normalizeSlug(p.slug);
+        const isHome = p.isHome || slug === "home" || slug === "index";
+        return {
+          id: p.id || p._id || nextId(),
+          name: p.name || p.title || "Untitled",
+          slug,
+          isHome,
+          status: p.status || "Draft",
+          // Keep original builder content if the editor later needs it
+          content: p.content,
+          seo: p.seo,
+        };
+      });
+
+      console.log("[WebsiteEditPage] Pages State:", normalizedPages);
+
+      commit({
+        ...website,
+        pages: normalizedPages,
+      });
+    } catch (err) {
+      console.error("[WebsiteEditPage] fetchPages failed:", err);
+    }
+  };
 
   const handlePreview = async (pageSlug = null) => {
     if (!websiteDbId || websiteDbId.length < 24) {
@@ -71,6 +129,7 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
   const [savedNotice, setSavedNotice] = useState(null);
 
   const commit = (next) => {
+    // Keep latest website snapshot when refetching pages.
     setWebsite(next);
     onChange && onChange(next);
   };

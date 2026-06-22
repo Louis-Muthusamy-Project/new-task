@@ -70,8 +70,9 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
     const zip = await JSZip.loadAsync(req.file.buffer);
 
     const htmlPaths = [];
-  zip.forEach((relativePath, entry) => {
-    if (!entry || entry.dir) return;
+
+    zip.forEach((relativePath, entry) => {
+      if (!entry || entry.dir) return;
     const lower = relativePath.toLowerCase();
     if (/(^|\/)index\.html?$/.test(lower)) {
       htmlPaths.push(relativePath);
@@ -128,7 +129,10 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
   const ownerId = req?.user?.id || req?.user?._id;
 
   // Create Website
+  // NOTE: keep both `name` and `websiteName` fields populated to avoid
+  // mismatches between different controller/UI code paths.
   const website = await Website.create({
+
     // Website schema in this repo uses `ownerId` as required.
     // ZIP endpoint is public; if unauthenticated, we set a placeholder owner.
     // (JWT auth will populate req.user in secured flows.)
@@ -138,7 +142,9 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
 
 
 
+    websiteName: resolvedWebsiteName,
     name: resolvedWebsiteName,
+
 
 
     description: description || 'Website Template',
@@ -159,13 +165,19 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
 
   // Create pages
   const pages = [];
+  console.log('[upload-template] creating pages for websiteId:', website._id);
   for (const { path, html } of validHtml) {
     const fileName = path.split('/').pop();
     const base = fileName.replace(/\.html?$/i, '');
     const isHome = base.toLowerCase() === 'index';
 
     const pageName = isHome ? 'Home' : normalizeName(base);
-    const pageSlug = isHome ? '/' : `/${slugifyPath(base)}`;
+
+    // Normalize slug format to match the normal page-creation flow.
+    // Normal flow uses: home/about/contact (no leading slash).
+    // ZIP import should do the same.
+    const pageSlug = isHome ? 'home' : slugifyPath(base);
+
 
     const page = await WebsitePage.create({
       websiteId: website._id,
@@ -179,14 +191,17 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
       },
     });
 
+    console.log('[upload-template] created pageId:', page._id, 'slug:', page.slug);
     pages.push(page);
   }
 
+  console.log('[upload-template] DONE import. websiteId:', website._id, 'pageCount:', pages.length);
+
     res.status(200).json({
-      success: true,
-      website,
-      pages,
-    });
+    success: true,
+    website,
+    pages,
+  });
   } catch (error) {
     console.error('[upload-template] Fatal error:', error);
     return res.status(500).json({

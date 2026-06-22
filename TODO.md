@@ -1,22 +1,10 @@
-# Upload-template investigation & fix
+# TODO
 
-## Step 1: Instrument logging + error handling
-- [x] Inspect request flow for upload-template (frontend → /api/website/upload-template → multer → controller → Cloudinary → Mongo)
-- [x] Add detailed logging in:
-  - backend/src/controllers/websiteTemplateController.js
-  - backend/src/middlewares/errorMiddleware.js
-  - backend/src/config/cloudinary.js
-- [x] Make controller return meaningful JSON errors (try/catch, validate env + uploadResult)
-
-
-## Step 2: Reproduce & capture root cause
-- [ ] Run backend and perform 2+ uploads
-- [ ] Capture server console output + exact error stack on the *second* request
-
-## Step 3: Fix root cause
-- [ ] Based on captured stack, implement functional fix (DB constraint handling, request parsing, Cloudinary env, etc.)
-- [ ] Add/adjust frontend validation if field names mismatch
-
-## Step 4: Verify
-- [ ] Confirm multiple uploads succeed without HTTP 500
+- [ ] Update `frontend/src/pages/WebsiteBuilder/tabs/WebsiteEditPage.jsx`:
+  - [ ] Add `useEffect`-based `fetchPages()` calling `websiteWizardApi.listPagesByWebsite(websiteDbId)`.
+  - [ ] Normalize slugs (convert `/about` -> `about`, `/` -> `home`).
+  - [ ] Update `website.pages` with fetched pages so ZIP-imported pages render immediately.
+  - [ ] Add debug logs for websiteId + raw pages response.
+  - [ ] Ensure preview logic uses normalized slugs.
+- [ ] Run frontend build/dev check (optional) / verify no runtime errors.
 

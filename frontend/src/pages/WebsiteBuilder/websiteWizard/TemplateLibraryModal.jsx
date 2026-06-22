@@ -302,12 +302,15 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
       }
 
       onCreate({
+        // IMPORTANT: pass the real backend-created website + pages so the editor
+        // can fetch/render immediately using the correct MongoDB websiteId.
+        website: resp?.website,
         websiteName: finalName,
         description: "Website Template",
         source: "zip",
         templateName: zipTemplateName.trim() || parsed.siteName,
         templateZipCloudinaryUrl: cloudinaryUrl,
-        pages: parsed.pages,
+        pages: resp?.pages || parsed.pages,
       });
     } catch (err) {
       setError(err.message || "Couldn't read that ZIP.");
