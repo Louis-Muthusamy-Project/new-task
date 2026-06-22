@@ -107,7 +107,6 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
 
   const handlePreview = async (pageSlug = null) => {
     if (!websiteDbId || websiteDbId.length < 24) {
-      // Locally-created website not yet saved to DB — open a blank tab with a notice.
       message.info("Save your website first to preview it.");
       return;
     }

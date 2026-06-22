@@ -267,6 +267,7 @@ exports.previewWebsite = async (req, res) => {
     ...buildOwnershipFilter(req),
     isDeleted: false,
   }).lean();
+  console.log(website)
 
   if (!website) {
     throw notFoundError();
