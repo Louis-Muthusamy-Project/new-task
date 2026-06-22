@@ -25,6 +25,7 @@ import {
 const Dashboard = lazy(() => import('./pages/Dashboard/Dashboard'));
 const CRM = lazy(() => import('./pages/CRM/CRM'));
 const WebsiteBuilder = lazy(() => import('./pages/WebsiteBuilder/WebsiteBuilder'));
+const BccBuilder = lazy(() => import('./pages/WebsiteBuilder/websiteWizard/BccBuilder'));
 const Strategy = lazy(() => import('./pages/Strategy/Strategy'));
 const WebsiteSetupPage = lazy(() => import('./pages/WebsiteBuilder/websiteWizard/WebsiteSetupPage'));
 
@@ -215,6 +216,14 @@ const AppRoutes = () => {
           </Route>
         </Route>
 
+        {/* Full-screen builder — no sidebar/header wrapper */}
+        <Route element={<ProtectedRoute allowedRoles={['superadmin', 'admin']} />}>
+          <Route
+            path="workspace/website/builder/:websiteId/:pageId"
+            element={<BccBuilder />}
+          />
+        </Route>
+
         {/* Agency Routes */}
         <Route element={<ProtectedRoute allowedRoles={['superadmin', 'agency']} />}>
           <Route path="/agency" element={<AgencyLayout />}>
@@ -265,4 +274,3 @@ function App() {
 }
 
 export default App;
-

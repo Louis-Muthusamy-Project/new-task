@@ -44,7 +44,7 @@ const CreateWebsiteModal = ({ open, onCancel, onCreate }) => {
     >
       <div style={{ display: "flex", gap: 24, marginBottom: 32 }}>
         {/* From blank */}
-        <div 
+        <div
           onClick={() => setSelectedType("blank")}
           style={{
             flex: 1,
@@ -73,7 +73,7 @@ const CreateWebsiteModal = ({ open, onCancel, onCreate }) => {
         </div>
 
         {/* Create with AI */}
-        <div 
+        <div
           onClick={() => setSelectedType("ai")}
           style={{
             flex: 1,
@@ -105,7 +105,7 @@ const CreateWebsiteModal = ({ open, onCancel, onCreate }) => {
         </div>
 
         {/* From templates */}
-        <div 
+        <div
           onClick={() => setSelectedType("templates")}
           style={{
             flex: 1,
@@ -136,12 +136,12 @@ const CreateWebsiteModal = ({ open, onCancel, onCreate }) => {
 
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8, color: 'var(--text-primary)' }}>WEBSITE NAME <span style={{ color: "var(--accent-danger)" }}>*</span></div>
-        <Input 
+        <Input
           size="large"
-          placeholder="e.g. Prestige Estates Luxury Launch" 
+          placeholder="e.g. Prestige Estates Luxury Launch"
           value={websiteName}
           onChange={(e) => setWebsiteName(e.target.value)}
-          style={{ borderRadius: 8 }} 
+          style={{ borderRadius: 8 }}
         />
       </div>
 
@@ -149,23 +149,23 @@ const CreateWebsiteModal = ({ open, onCancel, onCreate }) => {
         <div style={{ border: "2px solid rgba(13, 148, 136, 0.2)", background: "rgba(13, 148, 136, 0.05)", borderRadius: 16, padding: 24, marginBottom: 24 }}>
           <div style={{ marginBottom: 24 }}>
             <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8, color: "var(--accent-secondary)" }}>INDUSTRY</div>
-            <Input 
+            <Input
               size="large"
-              placeholder="e.g. Dental clinic, Real estate" 
+              placeholder="e.g. Dental clinic, Real estate"
               value={industry}
               onChange={(e) => setIndustry(e.target.value)}
-              style={{ borderRadius: 8 }} 
+              style={{ borderRadius: 8 }}
             />
           </div>
 
           <div style={{ marginBottom: 24 }}>
             <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8, color: "var(--accent-secondary)" }}>DESCRIBE YOUR BUSINESS <span style={{ color: "var(--accent-danger)" }}>*</span></div>
-            <TextArea 
+            <TextArea
               size="large"
-              placeholder="What you do, who you serve, and what visitors should do next." 
+              placeholder="What you do, who you serve, and what visitors should do next."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              style={{ minHeight: 120, borderRadius: 8 }} 
+              style={{ minHeight: 120, borderRadius: 8 }}
             />
           </div>
 
@@ -183,15 +183,15 @@ const CreateWebsiteModal = ({ open, onCancel, onCreate }) => {
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 32, paddingTop: 24, borderTop: '1px solid var(--border-color)' }}>
         <Button size="large" onClick={onCancel} style={{ borderRadius: 8, fontWeight: 700, padding: "0 32px", borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'var(--bg-primary)' }}>Cancel</Button>
-        <Button 
+        <Button
           size="large"
-          type="primary" 
+          type="primary"
           onClick={handleCreate}
           disabled={!isFormValid}
-          style={{ 
-            background: selectedType === "ai" ? "var(--accent-secondary)" : (selectedType === "templates" ? "var(--accent-info)" : "var(--accent-primary)"), 
-            border: "none", 
-            borderRadius: 8, fontWeight: 800, padding: "0 32px" 
+          style={{
+            background: selectedType === "ai" ? "var(--accent-secondary)" : (selectedType === "templates" ? "var(--accent-info)" : "var(--accent-primary)"),
+            border: "none",
+            borderRadius: 8, fontWeight: 800, padding: "0 32px"
           }}
         >
           {selectedType === "ai" ? "Generate Website with AI" : (selectedType === "templates" ? "Browse Templates" : "Create Empty Site")}
@@ -202,6 +202,18 @@ const CreateWebsiteModal = ({ open, onCancel, onCreate }) => {
 };
 
 const ManageWebsiteView = ({ activeWebsite, setView, itemVariants }) => {
+  const navigate = useNavigate();
+
+  const handleEditInBuilder = (pageName, pageSlug, pageId) => {
+    const websiteId = activeWebsite?._id || activeWebsite?.key;
+    const resolvedPageId = pageId || pageSlug;
+    console.log("websiteId", websiteId);
+    console.log("pageId", resolvedPageId);
+    navigate(
+      `/workspace/website/builder/${websiteId}/${resolvedPageId}`,
+      { state: { websiteId, pageId: resolvedPageId, pageName, pageSlug } }
+    );
+  };
   const [previewLoading, setPreviewLoading] = useState(false);
 
   const handlePreview = async () => {
@@ -250,7 +262,7 @@ const ManageWebsiteView = ({ activeWebsite, setView, itemVariants }) => {
       </div>
 
       <div style={{ maxWidth: 1200 }}>
-        
+
         {activeWebsite.isNew && (
           <div style={{ marginBottom: 32, padding: "16px 24px", background: "rgba(16, 185, 129, 0.1)", border: "1px solid rgba(16, 185, 129, 0.2)", borderRadius: 12, color: "var(--accent-success)", fontWeight: 600, fontSize: 14 }}>
             Website created successfully. Content was generated from your brief (add OPENAI_API_KEY for full AI generation).
@@ -261,13 +273,13 @@ const ManageWebsiteView = ({ activeWebsite, setView, itemVariants }) => {
           {/* Left Sidebar */}
           <Col span={8}>
             <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-              
+
               <Card bodyStyle={{ padding: 32 }} style={{ borderRadius: 24, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', boxShadow: 'var(--shadow-sm)' }}>
                 <div style={{ marginBottom: 24 }}>
                   <div style={{ fontSize: 12, fontWeight: 800, color: "var(--text-tertiary)", letterSpacing: 0.5, marginBottom: 8 }}>WEBSITE NAME</div>
                   <Input size="large" defaultValue={activeWebsite.name} style={{ borderRadius: 8 }} />
                 </div>
-                
+
                 <div style={{ marginBottom: 24 }}>
                   <div style={{ fontSize: 12, fontWeight: 800, color: "var(--text-tertiary)", letterSpacing: 0.5, marginBottom: 8 }}>DESCRIPTION</div>
                   <TextArea size="large" defaultValue={activeWebsite.description || ""} style={{ borderRadius: 8, minHeight: 80 }} />
@@ -296,9 +308,9 @@ const ManageWebsiteView = ({ activeWebsite, setView, itemVariants }) => {
 
                 {/* Tracking Pixels */}
                 <div style={{ border: "1px solid var(--border-color)", borderRadius: 16, padding: 24, marginBottom: 32, background: "var(--bg-primary)" }}>
-                  <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 8, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}><Activity size={16} color="var(--accent-primary)"/> Tracking pixels</div>
+                  <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 8, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}><Activity size={16} color="var(--accent-primary)" /> Tracking pixels</div>
                   <div style={{ color: "var(--text-secondary)", fontSize: 12, marginBottom: 20, fontWeight: 500 }}>Injected on every public page for this website.</div>
-                  
+
                   <Row gutter={16} style={{ marginBottom: 16 }}>
                     <Col span={12}>
                       <div style={{ fontSize: 10, fontWeight: 800, color: "var(--text-tertiary)", letterSpacing: 0.5, marginBottom: 6 }}>META (FB) PIXEL</div>
@@ -335,7 +347,7 @@ const ManageWebsiteView = ({ activeWebsite, setView, itemVariants }) => {
                 <Button type="primary" size="large" block style={{ background: "var(--accent-primary)", border: "none", borderRadius: 12, fontWeight: 800, height: 48, marginBottom: 16, boxShadow: 'var(--shadow-md)' }}>
                   Save Website Settings
                 </Button>
-                
+
                 <Row gutter={16}>
                   <Col span={12}>
                     <Button type="primary" size="large" block style={{ background: "var(--accent-success)", border: "none", borderRadius: 12, fontWeight: 700, height: 48 }}>
@@ -382,7 +394,7 @@ const ManageWebsiteView = ({ activeWebsite, setView, itemVariants }) => {
           {/* Right Area */}
           <Col span={16}>
             <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-              
+
               <div style={{ padding: "20px 24px", background: "rgba(59, 130, 246, 0.1)", border: "1px solid rgba(59, 130, 246, 0.2)", borderRadius: 16, fontSize: 14, fontWeight: 600, color: 'var(--accent-primary)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                 <Info size={20} style={{ flexShrink: 0, marginTop: 2 }} />
                 <div>Header and footer are synced from your home page. Other pages use them automatically in the builder and when published.</div>
@@ -394,7 +406,7 @@ const ManageWebsiteView = ({ activeWebsite, setView, itemVariants }) => {
                   <div style={{ color: "var(--text-tertiary)", fontSize: 13, fontWeight: 700 }}>{activeWebsite.pages} total</div>
                 </div>
                 <div style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 32, fontWeight: 500 }}>Home page sets global header & footer for all other pages.</div>
-                
+
                 <div style={{ display: "flex", gap: 16, marginBottom: 40, background: 'var(--bg-primary)', padding: 16, borderRadius: 16, border: '1px solid var(--border-color)' }}>
                   <Input size="large" placeholder="New page title (e.g. Services)" style={{ flex: 1, borderRadius: 8 }} />
                   <Button size="large" type="primary" style={{ background: "var(--text-primary)", border: "none", borderRadius: 8, fontWeight: 800, padding: "0 32px" }}>
@@ -424,7 +436,7 @@ const ManageWebsiteView = ({ activeWebsite, setView, itemVariants }) => {
                       </Select>
                     </div>
                     <div style={{ display: 'flex', gap: 12, paddingLeft: 64 }}>
-                      <Button type="primary" style={{ background: "var(--accent-primary)", border: "none", borderRadius: 8, fontWeight: 700, padding: "0 20px" }} icon={<PenTool size={14} />}>Edit in Builder</Button>
+                      <Button type="primary" onClick={() => handleEditInBuilder("Home", "home", null)} style={{ background: "var(--accent-primary)", border: "none", borderRadius: 8, fontWeight: 700, padding: "0 20px" }} icon={<PenTool size={14} />}>Edit in Builder</Button>
                       <Button loading={previewLoading} onClick={handlePreview} style={{ background: "var(--bg-primary)", borderColor: "var(--border-color)", color: 'var(--text-primary)', borderRadius: 8, fontWeight: 600, padding: "0 20px" }} icon={<Monitor size={14} />}>Preview</Button>
                       <Button style={{ background: "var(--bg-primary)", borderColor: "var(--border-color)", color: 'var(--text-primary)', borderRadius: 8, fontWeight: 600, padding: "0 20px" }}>Duplicate</Button>
                       <Button danger style={{ background: "rgba(239, 68, 68, 0.1)", border: "none", color: "var(--accent-danger)", borderRadius: 8, fontWeight: 700, padding: "0 20px" }} icon={<Trash2 size={14} />}>Delete</Button>
@@ -474,7 +486,7 @@ const WebsitesTab = ({ itemVariants }) => {
   const [folderView, setFolderView] = useState("home");
   const [searchText, setSearchText] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  
+
   const [websites, setWebsites] = useState([]);
   const [activeWebsite, setActiveWebsite] = useState(null);
   const [view, setView] = useState("list");
@@ -594,7 +606,7 @@ const WebsitesTab = ({ itemVariants }) => {
       align: "right",
       render: (_, r) => (
         <Space>
-          <span 
+          <span
             style={{ color: "var(--accent-primary)", fontWeight: 700, cursor: "pointer", display: 'flex', alignItems: 'center', gap: 4 }}
             onClick={() => {
               setActiveWebsite({ ...r, isNew: false });
@@ -621,17 +633,17 @@ const WebsitesTab = ({ itemVariants }) => {
         </div>
         <Space>
           <Button size="large" icon={<Folder size={18} />} style={{ borderRadius: 8, fontWeight: 700, borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'var(--bg-secondary)', height: 44 }}>Folders</Button>
-          <Button 
+          <Button
             size="large"
-            icon={<Sparkles size={18} />} 
+            icon={<Sparkles size={18} />}
             onClick={() => setIsModalOpen(true)}
             style={{ color: "var(--accent-secondary)", borderColor: "var(--accent-secondary)", background: "rgba(13, 148, 136, 0.05)", borderRadius: 8, fontWeight: 800, height: 44, padding: '0 20px' }}
           >
             Build with AI <Tag style={{ margin: '0 0 0 8px', background: 'var(--accent-secondary)', color: '#fff', border: 'none', borderRadius: 12, padding: '2px 8px', fontSize: 10 }}>BETA</Tag>
           </Button>
-          <Button 
+          <Button
             size="large"
-            type="primary" 
+            type="primary"
             icon={<Plus size={18} />}
             onClick={() => setIsModalOpen(true)}
             style={{ background: 'var(--accent-primary)', border: 'none', borderRadius: 8, fontWeight: 800, height: 44, padding: '0 24px', boxShadow: 'var(--shadow-md)' }}
@@ -686,34 +698,34 @@ const WebsitesTab = ({ itemVariants }) => {
         />
       </Card>
 
-         
-          <TemplateLibraryModal
-            open={isModalOpen}
-            onCancel={() => setIsModalOpen(false)}
-            onCreate={(payload) => {
-              // payload shape from TemplateLibraryModal:
-              //   { website, websiteName, description, source, templateName,
-              //     templateZipCloudinaryUrl, pages }
-              // For ZIP uploads, payload.website is the MongoDB Website doc returned
-              // by the backend; payload.pages are the persisted WebsitePage docs.
-              const backendWebsite = payload.website; // may be undefined for prebuilt templates
-              const newWebsite = {
-                // Use real MongoDB _id if available so WebsiteEditPage.fetchPages() works
-                _id: backendWebsite?._id || null,
-                key: backendWebsite?._id || Date.now().toString(),
-                name: payload.websiteName || backendWebsite?.name || "Untitled Website",
-                description: payload.description || backendWebsite?.description || "Website Template",
-                lastUpdated: "Just now",
-                pages: (payload.pages && payload.pages.length) || 1,
-                isNew: true,
-                rawPages: payload.pages || [], // persisted or locally-parsed page objects
-              };
-              setWebsites((prev) => [...prev, newWebsite]);
-              setActiveWebsite(newWebsite);
-              setView("edit");
-              setIsModalOpen(false);
-            }}
-          />
+
+      <TemplateLibraryModal
+        open={isModalOpen}
+        onCancel={() => setIsModalOpen(false)}
+        onCreate={(payload) => {
+          // payload shape from TemplateLibraryModal:
+          //   { website, websiteName, description, source, templateName,
+          //     templateZipCloudinaryUrl, pages }
+          // For ZIP uploads, payload.website is the MongoDB Website doc returned
+          // by the backend; payload.pages are the persisted WebsitePage docs.
+          const backendWebsite = payload.website; // may be undefined for prebuilt templates
+          const newWebsite = {
+            // Use real MongoDB _id if available so WebsiteEditPage.fetchPages() works
+            _id: backendWebsite?._id || null,
+            key: backendWebsite?._id || Date.now().toString(),
+            name: payload.websiteName || backendWebsite?.name || "Untitled Website",
+            description: payload.description || backendWebsite?.description || "Website Template",
+            lastUpdated: "Just now",
+            pages: (payload.pages && payload.pages.length) || 1,
+            isNew: true,
+            rawPages: payload.pages || [], // persisted or locally-parsed page objects
+          };
+          setWebsites((prev) => [...prev, newWebsite]);
+          setActiveWebsite(newWebsite);
+          setView("edit");
+          setIsModalOpen(false);
+        }}
+      />
     </motion.div>
   );
 };

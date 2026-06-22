@@ -1,4 +1,3 @@
-
 const API_BASE = 'http://localhost:5500/api' ;
 
 
@@ -81,6 +80,11 @@ export const websiteWizardApi = {
       })
     ),
 
+  getPage: async (pageId) =>
+    unwrapSuccess(
+      await request(`/website-builder/pages/${pageId}`, { method: 'GET' })
+    ),
+
   updatePage: async (pageId, payload) =>
     unwrapSuccess(
       await request(`/website-builder/pages/${pageId}`, {
@@ -94,6 +98,3 @@ export const websiteWizardApi = {
       await request(`/website-builder/pages/${pageId}`, { method: 'DELETE' })
     ),
 };
-
-
-

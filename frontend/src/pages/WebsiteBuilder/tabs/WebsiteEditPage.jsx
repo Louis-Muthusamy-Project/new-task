@@ -10,6 +10,7 @@ import {
   Home as HomeIcon,
 } from "lucide-react";
 import { websiteWizardApi } from "../../../api/websiteWizardApi";
+import { useNavigate } from "react-router-dom";
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -22,6 +23,25 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
   // Prefer real MongoDB _id. Some flows may pass a local placeholder `key`.
   const candidateId = initialWebsite?._id || initialWebsite?.key || null;
   const websiteDbId = typeof candidateId === 'string' && candidateId.length >= 24 ? candidateId : null;
+  const navigate = useNavigate();
+
+  const handleEditInBuilder = (page) => {
+    const websiteId = websiteDbId || candidateId;
+    const pageId = page.id;
+    console.log("websiteId", websiteId);
+    console.log("pageId", pageId);
+    navigate(
+      `/workspace/website/builder/${websiteId}/${pageId}`,
+      {
+        state: {
+          websiteId,
+          pageId,
+          pageName: page.name,
+          pageSlug: page.slug,
+        },
+      }
+    );
+  };
 
   const normalizeSlug = (slug) => {
     if (!slug) return slug;
@@ -576,6 +596,7 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
                     <Button
                       size="small"
                       icon={<Pencil size={13} />}
+                      onClick={() => handleEditInBuilder(page)}
                       style={{ borderRadius: 8, background: "var(--accent-secondary)", color: "#fff", border: "none", fontWeight: 600 }}
                     >
                       Edit
