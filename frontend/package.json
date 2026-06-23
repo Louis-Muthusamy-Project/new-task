@@ -19,6 +19,8 @@
     "axios": "^1.18.0",
     "classnames": "^2.5.1",
     "framer-motion": "^12.40.0",
+    "grapesjs": "^0.23.2",
+    "grapesjs-preset-webpage": "^1.0.3",
     "jszip": "^3.10.1",
     "lucide-react": "^1.17.0",
     "react": "^19.2.7",

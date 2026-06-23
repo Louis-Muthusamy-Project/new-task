@@ -1,12 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import { Button, Input, message, Select, Spin, Tag, Tooltip } from "antd";
+import { Button, message, Select, Spin, Tag, Tooltip } from "antd";
 import {
   AlertCircle,
   ArrowLeft,
-  Check,
   CheckCircle2,
-  Code2,
   Eye,
   LayoutGrid,
   Monitor,
@@ -16,7 +14,10 @@ import {
 } from "lucide-react";
 import { websiteWizardApi } from "../../../api/websiteWizardApi";
 
-const { TextArea } = Input;
+import GrapesPageEditor from "./GrapesPageEditor";
+import useUnsavedChangesWarning from "./useUnsavedChangesWarning";
+
+const { Option } = Select;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -24,32 +25,6 @@ const { TextArea } = Input;
 
 /** True when a string looks like a 24-char MongoDB ObjectId */
 const isMongoId = (s) => typeof s === "string" && /^[a-f\d]{24}$/i.test(s);
-
-/**
- * Normalise whatever is stored in page.content into something the builder
- * can work with.
- *
- * Possible shapes coming from the backend:
- *   ZIP import  → { html: "<html>…</html>", sourcePath: "index.html" }
- *   Blank page  → {} or null
- *   Future JSON → { sections: […], … }
- */
-function parseContent(raw) {
-  if (!raw) return { type: "empty", html: "", json: null };
-
-  // ZIP-imported HTML page
-  if (typeof raw.html === "string" && raw.html.trim()) {
-    return { type: "html", html: raw.html, json: null };
-  }
-
-  // Structured builder JSON (future / extensible)
-  if (raw.sections || raw.blocks || raw.components) {
-    return { type: "json", html: null, json: raw };
-  }
-
-  // Anything else: treat as empty
-  return { type: "empty", html: "", json: null };
-}
 
 /** Persist the full page record to sessionStorage so refresh works */
 const STORAGE_KEY = (pageId) => `jeema_page_${pageId}`;
@@ -69,9 +44,15 @@ function getCachedPage(pageId) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
+function safeGetInitialContent(page) {
+  const rawContent = page?.content || null;
+
+  // Required contract (from task): page.content.html + page.content.css
+  const html = typeof rawContent?.html === "string" ? rawContent.html : "";
+  const css = typeof rawContent?.css === "string" ? rawContent.css : "";
+
+  return { html, css };
+}
 
 const StatusBadge = ({ status }) => {
   const isPublished = status === "Published";
@@ -93,113 +74,6 @@ const StatusBadge = ({ status }) => {
   );
 };
 
-/** Renders raw HTML inside a sandboxed iframe */
-const HtmlCanvas = ({ html, viewport }) => {
-  const iframeRef = useRef(null);
-
-  useEffect(() => {
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-    const doc = iframe.contentDocument || iframe.contentWindow?.document;
-    if (!doc) return;
-    doc.open();
-    doc.write(html || "<p style='padding:40px;color:#999;font-family:sans-serif'>Empty page</p>");
-    doc.close();
-  }, [html]);
-
-  const width = viewport === "mobile" ? 390 : "100%";
-
-  return (
-    <div
-      style={{
-        flex: 1,
-        display: "flex",
-        justifyContent: "center",
-        background: "#e5e7eb",
-        overflowY: "auto",
-        padding: viewport === "mobile" ? "24px 0" : 0,
-      }}
-    >
-      <iframe
-        ref={iframeRef}
-        title="page-canvas"
-        sandbox="allow-scripts allow-same-origin"
-        style={{
-          width,
-          minHeight: "100%",
-          border: "none",
-          background: "#fff",
-          boxShadow: viewport === "mobile" ? "0 4px 24px rgba(0,0,0,0.15)" : "none",
-          display: "block",
-        }}
-      />
-    </div>
-  );
-};
-
-/** Editable HTML source view */
-const HtmlEditor = ({ html, onChange }) => (
-  <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-    <div
-      style={{
-        padding: "8px 16px",
-        background: "var(--bg-secondary)",
-        borderBottom: "1px solid var(--border-color)",
-        fontSize: 12,
-        fontFamily: "monospace",
-        color: "var(--text-tertiary)",
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-      }}
-    >
-      <Code2 size={14} /> HTML source — edit directly or use the visual canvas above
-    </div>
-    <TextArea
-      value={html}
-      onChange={(e) => onChange(e.target.value)}
-      style={{
-        flex: 1,
-        fontFamily: "monospace",
-        fontSize: 13,
-        lineHeight: 1.6,
-        resize: "none",
-        border: "none",
-        borderRadius: 0,
-        background: "var(--bg-primary)",
-        color: "var(--text-primary)",
-        padding: 16,
-        height: "100%",
-      }}
-      autoSize={false}
-    />
-  </div>
-);
-
-/** Empty / blank page state */
-const EmptyCanvas = ({ pageName }) => (
-  <div
-    style={{
-      flex: 1,
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 16,
-      background: "#f3f4f6",
-      color: "#9ca3af",
-    }}
-  >
-    <LayoutGrid size={56} strokeWidth={1} color="#d1d5db" />
-    <div style={{ fontWeight: 700, fontSize: 18, color: "#6b7280" }}>
-      {pageName} — blank page
-    </div>
-    <div style={{ fontSize: 14, color: "#9ca3af" }}>
-      Add HTML in the source editor below, or import content from a ZIP.
-    </div>
-  </div>
-);
-
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
@@ -209,50 +83,55 @@ const BccBuilder = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Route state carries metadata the list already knows; use as fast initial values
+  // Route state carries metadata the list already knows
   const routeState = location.state || {};
 
-  // --------------- page data -----------------------------------------------
-  const [page, setPage] = useState(null);           // full page record from API
+  const [page, setPage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
 
-  // --------------- editor state --------------------------------------------
-  const [htmlContent, setHtmlContent] = useState("");
-  const [contentType, setContentType] = useState("empty"); // "html" | "empty" | "json"
+  // GrapesJS content props (state lives here so refresh works)
+  const [html, setHtml] = useState("");
+  const [css, setCss] = useState("");
+
+  // Dirty tracking
   const [isDirty, setIsDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState(null);
 
-  // --------------- UI state ------------------------------------------------
-  const [viewport, setViewport] = useState("desktop"); // "desktop" | "mobile"
-  const [showSource, setShowSource] = useState(false);
+  const [viewport, setViewport] = useState("desktop"); // preserved UI selection
   const [pageStatus, setPageStatus] = useState("Draft");
+
+  useUnsavedChangesWarning(isDirty);
+
+  const displayName = page?.name || routeState.pageName || "Page";
+  const displaySlug = page?.slug || routeState.pageSlug || pageId;
+
+  // Derived once
+  const initialContent = useMemo(() => safeGetInitialContent(page), [page]);
 
   // -------------------------------------------------------------------------
   // Load page on mount
   // -------------------------------------------------------------------------
   useEffect(() => {
-    console.log("websiteId", websiteId);
-    console.log("pageId", pageId);
-
     const load = async () => {
       setLoading(true);
       setLoadError(null);
 
-      // 1. Check sessionStorage first — handles refresh without re-fetch
       const cached = getCachedPage(pageId);
       if (cached) {
-        console.log("[JeemaBuilder] restored from sessionStorage cache");
-        applyPageData(cached, false);
+        setPage(cached);
+        setPageStatus(cached?.status || "Draft");
+        const initial = safeGetInitialContent(cached);
+        setHtml(initial.html);
+        setCss(initial.css);
+        setIsDirty(false);
         setLoading(false);
         return;
       }
 
-      // 2. If pageId is not a real Mongo ObjectId (e.g. local "pg-…" or slug)
-      //    we can't hit the API; use whatever the router state has.
+      // For non-mongo ids we can't call backend
       if (!isMongoId(pageId)) {
-        console.log("[JeemaBuilder] pageId is not a Mongo ObjectId — using route state");
         const synthetic = {
           _id: pageId,
           websiteId,
@@ -263,18 +142,28 @@ const BccBuilder = () => {
           content: null,
           seo: {},
         };
-        applyPageData(synthetic, false);
+
+        setPage(synthetic);
+        setPageStatus("Draft");
+        setHtml("");
+        setCss("");
+        setIsDirty(false);
         setLoading(false);
         return;
       }
 
-      // 3. Fetch from API
       try {
         const data = await websiteWizardApi.getPage(pageId);
-        console.log("[JeemaBuilder] page loaded from API:", data);
-        applyPageData(data, true);
+        setPage(data);
+        setPageStatus(data?.status || "Draft");
+
+        const initial = safeGetInitialContent(data);
+        setHtml(initial.html);
+        setCss(initial.css);
+
+        cachePage(data._id || pageId, data);
       } catch (err) {
-        console.error("[JeemaBuilder] failed to load page:", err);
+        console.error("[BccBuilder] failed to load page:", err);
         setLoadError(err?.message || "Failed to load page.");
       } finally {
         setLoading(false);
@@ -285,33 +174,13 @@ const BccBuilder = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [websiteId, pageId]);
 
-  /** Unpack an API page record into editor state */
-  const applyPageData = useCallback((data, cache) => {
-    setPage(data);
-    setPageStatus(data.status || "Draft");
-
-    const parsed = parseContent(data.content);
-    setContentType(parsed.type);
-    setHtmlContent(parsed.html || "");
-
-    if (cache) {
-      cachePage(data._id || pageId, data);
-    }
-    setIsDirty(false);
-  }, [pageId]);
-
-  // -------------------------------------------------------------------------
-  // HTML edits
-  // -------------------------------------------------------------------------
-  const handleHtmlChange = useCallback((value) => {
-    setHtmlContent(value);
-    setIsDirty(true);
-    // Keep the cache up-to-date so refresh preserves unsaved edits too
-    if (page) {
-      const updated = { ...page, content: { html: value, sourcePath: page.content?.sourcePath || "index.html" } };
-      cachePage(pageId, updated);
-    }
-  }, [page, pageId]);
+  // When page changes (e.g. from cache), ensure editor props match
+  useEffect(() => {
+    if (!page) return;
+    const initial = safeGetInitialContent(page);
+    setHtml(initial.html);
+    setCss(initial.css);
+  }, [page, initialContent.html, initialContent.css]);
 
   // -------------------------------------------------------------------------
   // Save
@@ -324,37 +193,36 @@ const BccBuilder = () => {
 
     setSaving(true);
     try {
-      const contentPayload =
-        contentType === "html"
-          ? { html: htmlContent, sourcePath: page?.content?.sourcePath || "index.html" }
-          : contentType === "empty" && htmlContent.trim()
-          ? { html: htmlContent, sourcePath: "index.html" }
-          : page?.content || {};
-
       const payload = {
-        content: contentPayload,
+        content: {
+          html,
+          css,
+        },
         status: pageStatus,
         ...(page?.name && { name: page.name }),
         ...(page?.slug && { slug: page.slug }),
         ...(page?.seo && { seo: page.seo }),
       };
 
-      console.log("[JeemaBuilder] saving page", pageId, payload);
       const updated = await websiteWizardApi.updatePage(pageId, payload);
-      console.log("[JeemaBuilder] save response:", updated);
 
-      // Refresh local state from server response
-      applyPageData(updated, true);
+      setPage(updated);
+      setPageStatus(updated?.status || "Draft");
+      const initial = safeGetInitialContent(updated);
+      setHtml(initial.html);
+      setCss(initial.css);
+
+      cachePage(updated._id || pageId, updated);
       setSavedAt(new Date());
       setIsDirty(false);
       message.success("Page saved.");
     } catch (err) {
-      console.error("[JeemaBuilder] save failed:", err);
+      console.error("[BccBuilder] save failed:", err);
       message.error(err?.message || "Save failed.");
     } finally {
       setSaving(false);
     }
-  }, [pageId, page, contentType, htmlContent, pageStatus, applyPageData]);
+  }, [pageId, page, html, css, pageStatus]);
 
   // Keyboard shortcut: Ctrl/Cmd + S
   useEffect(() => {
@@ -369,12 +237,6 @@ const BccBuilder = () => {
   }, [handleSave]);
 
   // -------------------------------------------------------------------------
-  // Derived display values (use route state while loading for instant title)
-  // -------------------------------------------------------------------------
-  const displayName = page?.name || routeState.pageName || "Page";
-  const displaySlug = page?.slug || routeState.pageSlug || pageId;
-
-  // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
   return (
@@ -387,9 +249,6 @@ const BccBuilder = () => {
         overflow: "hidden",
       }}
     >
-      {/* ------------------------------------------------------------------ */}
-      {/* Toolbar                                                             */}
-      {/* ------------------------------------------------------------------ */}
       <div
         style={{
           height: 56,
@@ -404,7 +263,6 @@ const BccBuilder = () => {
           zIndex: 100,
         }}
       >
-        {/* Left */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
           <Tooltip title="Back to pages">
             <Button
@@ -462,7 +320,6 @@ const BccBuilder = () => {
           </div>
         </div>
 
-        {/* Centre: viewport */}
         <div
           style={{
             display: "flex",
@@ -517,43 +374,25 @@ const BccBuilder = () => {
           </Tooltip>
         </div>
 
-        {/* Right */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          {/* Status selector */}
           <Select
             value={pageStatus}
-            onChange={(v) => { setPageStatus(v); setIsDirty(true); }}
+            onChange={(v) => {
+              setPageStatus(v);
+              setIsDirty(true);
+            }}
             size="small"
             style={{ width: 110 }}
-            options={[
-              { value: "Draft", label: "Draft" },
-              { value: "Published", label: "Published" },
-            ]}
-          />
+          >
+            <Option value="Draft">Draft</Option>
+            <Option value="Published">Published</Option>
+          </Select>
 
-          {/* Source toggle */}
-          <Tooltip title="Toggle HTML source editor">
-            <Button
-              icon={<Code2 size={15} />}
-              onClick={() => setShowSource((s) => !s)}
-              style={{
-                borderRadius: 8,
-                height: 34,
-                background: showSource ? "rgba(59,130,246,0.1)" : "var(--bg-primary)",
-                borderColor: showSource ? "var(--accent-primary)" : "var(--border-color)",
-                color: showSource ? "var(--accent-primary)" : "var(--text-primary)",
-              }}
-            />
-          </Tooltip>
-
-          {/* Preview */}
           <Tooltip title="Open preview in new tab">
             <Button
               icon={<Eye size={15} />}
               onClick={() => {
-                if (page?.slug) {
-                  window.open(`/${page.slug}`, "_blank", "noopener,noreferrer");
-                }
+                if (page?.slug) window.open(`/${page.slug}`, "_blank", "noopener,noreferrer");
               }}
               style={{
                 borderRadius: 8,
@@ -565,7 +404,6 @@ const BccBuilder = () => {
             />
           </Tooltip>
 
-          {/* Save indicator */}
           {savedAt && !isDirty && (
             <span
               style={{
@@ -587,7 +425,6 @@ const BccBuilder = () => {
             </span>
           )}
 
-          {/* Save button */}
           <Button
             type="primary"
             icon={saving ? <RefreshCw size={15} className="spin" /> : <Save size={15} />}
@@ -609,9 +446,6 @@ const BccBuilder = () => {
         </div>
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Body                                                                */}
-      {/* ------------------------------------------------------------------ */}
       {loading ? (
         <div
           style={{
@@ -653,7 +487,6 @@ const BccBuilder = () => {
         </div>
       ) : (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          {/* Page metadata strip */}
           <div
             style={{
               padding: "8px 20px",
@@ -667,9 +500,15 @@ const BccBuilder = () => {
               fontFamily: "monospace",
             }}
           >
-            <span><b style={{ color: "var(--text-secondary)" }}>websiteId</b>: {websiteId}</span>
-            <span><b style={{ color: "var(--text-secondary)" }}>pageId</b>: {pageId}</span>
-            <span><b style={{ color: "var(--text-secondary)" }}>type</b>: {contentType}</span>
+            <span>
+              <b style={{ color: "var(--text-secondary)" }}>websiteId</b>: {websiteId}
+            </span>
+            <span>
+              <b style={{ color: "var(--text-secondary)" }}>pageId</b>: {pageId}
+            </span>
+            <span>
+              <b style={{ color: "var(--text-secondary)" }}>type</b>: grapesjs
+            </span>
             {page?.isHome && (
               <Tag
                 style={{
@@ -686,39 +525,23 @@ const BccBuilder = () => {
               </Tag>
             )}
             <span style={{ marginLeft: "auto", color: "var(--text-tertiary)" }}>
-              {contentType === "html"
-                ? `${htmlContent.length.toLocaleString()} chars`
-                : "blank page"}
+              {html?.length ? `${html.length.toLocaleString()} chars` : "blank page"}
             </span>
           </div>
 
-          {/* Canvas area */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-            {contentType === "html" || (contentType === "empty" && !showSource) ? (
-              <HtmlCanvas
-                html={htmlContent || "<p style='padding:40px;color:#aaa;font-family:sans-serif;font-size:15px'>This page has no content yet. Use the source editor to add HTML.</p>"}
-                viewport={viewport}
-              />
-            ) : contentType === "empty" && !htmlContent ? (
-              <EmptyCanvas pageName={displayName} />
-            ) : null}
-
-            {showSource && (
-              <div
-                style={{
-                  height: showSource && contentType !== "html" ? "100%" : 320,
-                  flexShrink: 0,
-                  borderTop: contentType === "html" ? "1px solid var(--border-color)" : "none",
-                  display: "flex",
-                  flexDirection: "column",
-                }}
-              >
-                <HtmlEditor html={htmlContent} onChange={handleHtmlChange} />
-              </div>
-            )}
+          <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+            <GrapesPageEditor
+              height="100%"
+              initialHtml={html}
+              initialCss={css}
+              onChange={({ html: nextHtml, css: nextCss }) => {
+                setHtml(nextHtml);
+                setCss(nextCss);
+                setIsDirty(true);
+              }}
+            />
           </div>
 
-          {/* SEO strip */}
           {page?.seo && (
             <div
               style={{
@@ -733,12 +556,17 @@ const BccBuilder = () => {
               }}
             >
               <span style={{ fontWeight: 700, color: "var(--text-secondary)" }}>SEO</span>
-              {page.seo.title && <span>Title: <b style={{ color: "var(--text-primary)" }}>{page.seo.title}</b></span>}
+              {page.seo.title && (
+                <span>
+                  Title: <b style={{ color: "var(--text-primary)" }}>{page.seo.title}</b>
+                </span>
+              )}
               {page.seo.description && (
                 <span>
                   Description:{" "}
                   <b style={{ color: "var(--text-primary)" }}>
-                    {page.seo.description.slice(0, 60)}{page.seo.description.length > 60 ? "…" : ""}
+                    {page.seo.description.slice(0, 60)}
+                    {page.seo.description.length > 60 ? "…" : ""}
                   </b>
                 </span>
               )}
@@ -751,3 +579,4 @@ const BccBuilder = () => {
 };
 
 export default BccBuilder;
+
