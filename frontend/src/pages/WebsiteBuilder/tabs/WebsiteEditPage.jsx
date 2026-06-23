@@ -28,8 +28,6 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
   const handleEditInBuilder = (page) => {
     const websiteId = websiteDbId || candidateId;
     const pageId = page.id;
-    console.log("websiteId", websiteId);
-    console.log("pageId", pageId);
     navigate(
       `/workspace/website/builder/${websiteId}/${pageId}`,
       {
@@ -62,9 +60,7 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
     if (!websiteDbId || websiteDbId.length < 24) return;
 
     try {
-      console.log("[WebsiteEditPage] websiteId:", websiteDbId);
       const resp = await websiteWizardApi.listPagesByWebsite(websiteDbId);
-      console.log("[WebsiteEditPage] pages API response (raw):", resp);
 
       // websiteWizardApi.listPagesByWebsite unwraps {success:true, data: pages} and returns pages.
       const apiPages = Array.isArray(resp) ? resp : resp?.data;
@@ -89,12 +85,6 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
         };
       });
 
-      console.log("[WebsiteEditPage] Pages State:", normalizedPages);
-
-      // FIX: use functional updater to avoid stale closure on `website`.
-      // Previously: commit({ ...website, pages: normalizedPages }) captured the
-      // `website` value from the outer closure at the time fetchPages was defined,
-      // which could be stale if state had changed between mount and the API response.
       setWebsite((prev) => {
         const next = { ...prev, pages: normalizedPages };
         onChange && onChange(next);
@@ -105,28 +95,30 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
     }
   };
 
-  const handlePreview = async (pageSlug = null) => {
-    if (!websiteDbId || websiteDbId.length < 24) {
-      message.info("Save your website first to preview it.");
-      return;
-    }
-    setPreviewLoading(true);
+  const handlePreview = async () => {
+    if (!websiteDbId) return;
+
     try {
-      const previewData = await websiteWizardApi.previewWebsite(websiteDbId);
-      // Determine target URL: prefer custom domain, else page slug path.
-      const targetPage = pageSlug
-        ? previewData.pages?.find((p) => p.slug === pageSlug)
-        : previewData.pages?.find((p) => p.isHome) || previewData.pages?.[0];
-      const base =
-        previewData.website?.domain
-          ? `https://${previewData.website.domain}`
-          : window.location.origin;
-      const url = targetPage ? `${base}/${targetPage.slug}` : base;
-      window.open(url, "_blank", "noopener,noreferrer");
+      const previewData =
+        await websiteWizardApi.previewWebsite(websiteDbId);
+
+      const homePage =
+        previewData.pages?.find((p) => p.isHome) ||
+        previewData.pages?.[0];
+
+      if (!homePage?.content?.html) {
+        message.error("No HTML content found");
+        return;
+      }
+
+      const previewWindow = window.open("", "_blank");
+
+      previewWindow.document.open();
+      previewWindow.document.write(homePage.content.html);
+      previewWindow.document.close();
     } catch (err) {
-      message.error(err.message || "Failed to load preview.");
-    } finally {
-      setPreviewLoading(false);
+      console.error(err);
+      message.error("Preview failed");
     }
   };
   const [website, setWebsite] = useState(() => ({
@@ -160,7 +152,6 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
 
   const updateField = (field, value) => {
     commit({ ...website, [field]: value });
-    console.log(website)
   };
 
   const updateTracking = (field, value) => {
@@ -226,7 +217,6 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
   const handleSaveWebsite = () => {
     setSavedNotice("Website saved.");
     setTimeout(() => setSavedNotice(null), 2500);
-    console.log("hgjgj")
   };
 
   const handlePublishToggle = (status) => {

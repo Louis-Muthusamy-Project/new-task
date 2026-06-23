@@ -35,6 +35,10 @@ const websiteSchema = new mongoose.Schema(
     // (colors, fonts, sections, layout config, etc.) without needing
     // to keep editing the schema every time the form changes.
     settings: { type: mongoose.Schema.Types.Mixed },
+    isDeleted: {
+      type: Boolean,
+      default: false
+    },
   },
   { timestamps: true }
 );

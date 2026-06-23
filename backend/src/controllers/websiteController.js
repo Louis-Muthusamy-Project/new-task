@@ -256,18 +256,12 @@ exports.duplicateWebsite = async (req, res) => {
  */
 exports.previewWebsite = async (req, res) => {
   const { id } = req.params;
-
   if (!mongoose.Types.ObjectId.isValid(id)) {
     throw invalidIdError();
   }
 
   // Enforce ownership the same way every other controller action does.
-  const website = await Website.findOne({
-    _id: id,
-    ...buildOwnershipFilter(req),
-    isDeleted: false,
-  }).lean();
-  console.log(website)
+ const website = await Website.findById(id);
 
   if (!website) {
     throw notFoundError();
@@ -277,12 +271,10 @@ exports.previewWebsite = async (req, res) => {
   // needed here and in the duplicate flow).
   const WebsitePage = require('../models/WebsitePage');
 
-  const pages = await WebsitePage.find(
-    { websiteId: website._id, isDeleted: false },
-    // Exclude heavy content from the page listing — callers can fetch
-    // individual pages via GET /pages/:id when they need builder JSON.
-    { content: 0, __v: 0 }
-  )
+ const pages = await WebsitePage.find({
+  websiteId: website._id,
+  isDeleted: false
+})
     .sort({ isHome: -1, createdAt: 1 })
     .lean();
 
