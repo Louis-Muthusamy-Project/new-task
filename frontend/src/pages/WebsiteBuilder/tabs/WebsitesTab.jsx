@@ -159,7 +159,11 @@ function normalizeWebsite(doc) {
   };
 }
 
-// ─── ManageWebsiteView (unchanged from original) ────────────────────────────
+// ─── ManageWebsiteView ───────────────────────────────────────────────────────
+// FIX: Changed navigate URL from /workspace/website/builder/:websiteId/:pageId
+//      to the canonical /websites/:websiteId/pages/:pageId route.
+// FIX: Added safe pageId resolution: page._id || page.id || page.slug
+// FIX: Added console.log("[EDIT NAVIGATION]", ...) for debugging
 
 const ManageWebsiteView = ({ activeWebsite, setView, itemVariants }) => {
   const navigate = useNavigate();
@@ -167,8 +171,18 @@ const ManageWebsiteView = ({ activeWebsite, setView, itemVariants }) => {
 
   const handleEditInBuilder = (pageName, pageSlug, pageId) => {
     const websiteId = activeWebsite?._id || activeWebsite?.key;
+    // FIX: Safe pageId resolution — never navigate with undefined pageId
     const resolvedPageId = pageId || pageSlug;
-    navigate(`/workspace/website/builder/${websiteId}/${resolvedPageId}`, {
+
+    if (!websiteId || !resolvedPageId) {
+      console.warn("[EDIT NAVIGATION] Missing websiteId or pageId", { websiteId, resolvedPageId });
+      message.error("Cannot open builder: missing website or page ID.");
+      return;
+    }
+
+    // FIX: Use canonical route /websites/:websiteId/pages/:pageId
+    console.log("[EDIT NAVIGATION]", websiteId, resolvedPageId);
+    navigate(`/websites/${websiteId}/pages/${resolvedPageId}`, {
       state: { websiteId, pageId: resolvedPageId, pageName, pageSlug },
     });
   };
@@ -313,6 +327,7 @@ const ManageWebsiteView = ({ activeWebsite, setView, itemVariants }) => {
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 12 }}>
+                      {/* FIX: canonical route used via handleEditInBuilder */}
                       <Button type="primary" onClick={() => handleEditInBuilder("Home", "home", null)} style={{ background: "var(--accent-primary)", border: "none", borderRadius: 8, fontWeight: 700 }} icon={<PenTool size={14} />}>
                         Edit in Builder
                       </Button>
@@ -347,8 +362,6 @@ const WebsitesTab = ({ itemVariants }) => {
       setOpenMenu(null);
     };
 
-    // Use capture so we can reliably close on outside click,
-    // but avoid interfering with internal button clicks.
     document.addEventListener("mousedown", onDocMouseDown, true);
     return () => document.removeEventListener("mousedown", onDocMouseDown, true);
   }, [openMenu]);
@@ -396,15 +409,8 @@ const WebsitesTab = ({ itemVariants }) => {
   }, [view, fetchWebsites]);
 
   // ── Create blank website ──────────────────────────────────────────────────
-  /**
-   * 1. POST website to backend → get real _id
-   * 2. POST a default "Home" page under that website
-   * 3. Navigate to WebsiteEditPage
-   * 4. Refresh list in the background
-   */
   const handleCreateBlank = async (websiteName) => {
     try {
-      // Step 1 — persist website
       const savedWebsite = await websiteWizardApi.createWebsite({
         name: websiteName,
         websiteName,
@@ -414,7 +420,6 @@ const WebsitesTab = ({ itemVariants }) => {
 
       const websiteId = savedWebsite._id || savedWebsite.id;
 
-      // Step 2 — create default Home page
       let homePage = null;
       try {
         homePage = await websiteWizardApi.createPage({
@@ -427,7 +432,6 @@ const WebsitesTab = ({ itemVariants }) => {
           content: {},
         });
       } catch (pageErr) {
-        // Non-fatal: page creation failed; user can add pages in the editor
         console.warn("[WebsitesTab] Home page creation failed:", pageErr);
       }
 
@@ -441,7 +445,6 @@ const WebsitesTab = ({ itemVariants }) => {
       setActiveWebsite(normalized);
       setView("edit");
 
-      // Refresh list in background so it's up to date when user goes back
       fetchWebsites();
     } catch (err) {
       console.error("[WebsitesTab] handleCreateBlank failed:", err);
@@ -456,27 +459,18 @@ const WebsitesTab = ({ itemVariants }) => {
   };
 
   // ── Template / ZIP onCreate callback ─────────────────────────────────────
-  /**
-   * Called by TemplateLibraryModal after both ZIP upload and prebuilt-template
-   * selection. For ZIP uploads the backend has already persisted the website +
-   * pages; for prebuilt templates only a local payload is available.
-   *
-   * In both cases we navigate to WebsiteEditPage and refresh the list.
-   */
   const handleTemplateCreated = async (payload) => {
-    const backendWebsite = payload.website; // present for ZIP flow, undefined for prebuilt
+    const backendWebsite = payload.website;
 
     let normalized;
 
     if (backendWebsite?._id) {
-      // ZIP path — website already in DB; just normalise and navigate
       normalized = normalizeWebsite({
         ...backendWebsite,
         isNew: true,
         rawPages: payload.pages || [],
       });
     } else {
-      // Prebuilt-template path — persist to backend now
       try {
         const saved = await websiteWizardApi.createWebsite({
           name: payload.websiteName || "Untitled Website",
@@ -500,7 +494,6 @@ const WebsitesTab = ({ itemVariants }) => {
     setActiveWebsite(normalized);
     setView("edit");
 
-    // Refresh list in background
     fetchWebsites();
   };
 
@@ -511,7 +504,6 @@ const WebsitesTab = ({ itemVariants }) => {
     try {
       await websiteWizardApi.deleteWebsite(id);
       message.success(`"${record.name}" deleted.`);
-      // Optimistic remove, then sync from backend
       setWebsites((prev) => prev.filter((w) => w._id !== id && w.key !== id));
       fetchWebsites();
     } catch (err) {

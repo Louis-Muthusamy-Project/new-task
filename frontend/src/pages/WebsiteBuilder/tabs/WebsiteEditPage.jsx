@@ -19,15 +19,28 @@ let idCounter = 0;
 const nextId = () => `pg-${Date.now()}-${idCounter++}`;
 
 const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreated = true }) => {
-  // The real MongoDB _id, if this website was persisted (key may be Date.now() for new locals).
-  // Prefer real MongoDB _id. Some flows may pass a local placeholder `key`.
   const candidateId = initialWebsite?._id || initialWebsite?.key || null;
   const websiteDbId = typeof candidateId === 'string' && candidateId.length >= 24 ? candidateId : null;
   const navigate = useNavigate();
 
+  // FIX: Canonical route /websites/:websiteId/pages/:pageId
+  // FIX: Safe pageId resolution: page._id || page.id || page.slug
+  // FIX: Guard against undefined pageId before navigating
+  // FIX: console.log("[EDIT NAVIGATION]", ...) for debugging
   const handleEditInBuilder = (page) => {
     const websiteId = websiteDbId || candidateId;
-    const resolvedPageId = page.id || page._id;
+
+    // Safe pageId resolution — never navigate with undefined pageId
+    const resolvedPageId = page._id || page.id || page.slug;
+
+    if (!websiteId || !resolvedPageId) {
+      console.warn("[EDIT NAVIGATION] Missing websiteId or pageId", { websiteId, resolvedPageId, page });
+      message.error("Cannot open builder: missing website or page ID.");
+      return;
+    }
+
+    // FIX: Use canonical route /websites/:websiteId/pages/:pageId
+    console.log("[EDIT NAVIGATION]", websiteId, resolvedPageId);
     navigate(
       `/websites/${websiteId}/pages/${resolvedPageId}`,
       {
@@ -44,7 +57,6 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
   const normalizeSlug = (slug) => {
     if (!slug) return slug;
     let s = String(slug).trim();
-    // Normalize leading slash convention.
     if (s === "/" || s.toLowerCase() === "/home") return "home";
     if (s.startsWith("/")) s = s.slice(1);
     return s;
@@ -62,7 +74,6 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
     try {
       const resp = await websiteWizardApi.listPagesByWebsite(websiteDbId);
 
-      // websiteWizardApi.listPagesByWebsite unwraps {success:true, data: pages} and returns pages.
       const apiPages = Array.isArray(resp) ? resp : resp?.data;
 
       if (!Array.isArray(apiPages)) {
@@ -74,12 +85,13 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
         const slug = normalizeSlug(p.slug);
         const isHome = p.isHome || slug === "home" || slug === "index";
         return {
+          // FIX: Preserve both _id and id so handleEditInBuilder can resolve either
+          _id: p._id,
           id: p.id || p._id || nextId(),
           name: p.name || p.title || "Untitled",
           slug,
           isHome,
           status: p.status || "Draft",
-          // Keep original builder content if the editor later needs it
           content: p.content,
           seo: p.seo,
         };
@@ -145,7 +157,6 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
   const [savedNotice, setSavedNotice] = useState(null);
 
   const commit = (next) => {
-    // Keep latest website snapshot when refetching pages.
     setWebsite(next);
     onChange && onChange(next);
   };
@@ -582,6 +593,7 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
                   </div>
 
                   <Space wrap>
+                    {/* FIX: Edit button uses handleEditInBuilder which now uses canonical route */}
                     <Button
                       size="small"
                       icon={<Pencil size={13} />}

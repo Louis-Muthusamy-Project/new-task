@@ -4,6 +4,16 @@ import { Spin, Alert } from 'antd';
 import { websiteWizardApi } from '../../api/websiteWizardApi';
 import BccBuilder from './websiteWizard/BccBuilder';
 
+/**
+ * WebsitesRouteWrapper
+ *
+ * Handles /websites/:websiteId  (no pageId in URL).
+ * Looks up the website's pages and redirects to the first/home page
+ * using the CANONICAL route: /websites/:websiteId/pages/:pageId
+ *
+ * BccBuilder reads { websiteId, pageId } from useParams(), which matches
+ * the param names in App.jsx, so browser refresh always works correctly.
+ */
 const WebsitesRouteWrapper = () => {
   const { websiteId, pageId } = useParams();
   const navigate = useNavigate();
@@ -28,17 +38,23 @@ const WebsitesRouteWrapper = () => {
         setPages(safePages);
 
         if (!safePages.length) {
-          // No pages to redirect to; stay and let BccBuilder show its own loader/error
-          // by navigating to an empty editor-like state.
-          // We still avoid blank routes by routing to BccBuilder with a dummy id.
-          navigate(`/websites/${websiteId}/pages/`, { replace: true });
+          // No pages found — nothing to redirect to; stay and show an informative error.
+          setError('This website has no pages yet. Go back and add a page first.');
           return;
         }
 
         const first = safePages.find((p) => p.isHome) || safePages[0];
-        if (!first?._id && !first?.id) return;
 
-        const firstPageId = first._id || first.id;
+        // FIX: Safe pageId resolution: _id || id || slug
+        const firstPageId = first?._id || first?.id || first?.slug;
+
+        if (!firstPageId) {
+          setError('Could not resolve a page ID for this website.');
+          return;
+        }
+
+        // FIX: Use canonical route /websites/:websiteId/pages/:pageId
+        console.log('[EDIT NAVIGATION]', websiteId, firstPageId);
         navigate(`/websites/${websiteId}/pages/${firstPageId}`, { replace: true });
       } catch (e) {
         if (cancelled) return;
@@ -80,4 +96,3 @@ const WebsitesRouteWrapper = () => {
 };
 
 export default WebsitesRouteWrapper;
-

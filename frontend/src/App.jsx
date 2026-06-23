@@ -105,7 +105,6 @@ const ProtectedRoute = ({ allowedRoles }) => {
     if (role === 'agency') return <Navigate to="/agency/overview" replace />;
     if (role === 'client') return <Navigate to="/client/dashboard" replace />;
 
-    // Fallback for unknown/other roles
     return <Navigate to="/" replace />;
   }
 
@@ -172,9 +171,12 @@ const AppRoutes = () => {
             <Route path="workspace/crm" element={<CRM />} />
             <Route path="workspace/automation" element={<Automation />} />
             <Route path="workspace/tasks" element={<Tasks />} />
+            {/*
+              FIX: workspace/website/* still mounts WebsiteBuilder (the tab shell).
+              The old /workspace/website/builder/:websiteId/:pageId builder route
+              is REMOVED. All edit navigation now uses /websites/:websiteId/pages/:pageId.
+            */}
             <Route path="workspace/website/*" element={<WebsiteBuilder />} />
-            <Route path="websites/:websiteId" element={<WebsiteBuilder />} />
-            <Route path="websites/:websiteId/pages/:pageId" element={<WebsiteBuilder />} />
             <Route path="/website/setup" element={<WebsiteSetupPage />} />
 
 
@@ -224,13 +226,23 @@ const AppRoutes = () => {
           </Route>
         </Route>
 
-        {/* Full-screen builder — no sidebar/header wrapper */}
+        {/*
+          CANONICAL BUILDER ROUTES — outside AppLayout (no sidebar/header).
+
+          FIX: Removed the old /workspace/website/builder/:websiteId/:pageId route entirely.
+          The single canonical route for the page editor is:
+            /websites/:websiteId/pages/:pageId  →  BccBuilder
+          The wrapper route /websites/:websiteId  →  WebsitesRouteWrapper
+          automatically redirects to the first page using the canonical URL.
+
+          Both BccBuilder and WebsitesRouteWrapper read { websiteId, pageId }
+          from useParams(), which matches the :websiteId / :pageId param names
+          defined here — so refresh always works with no blank screen.
+        */}
         <Route element={<ProtectedRoute allowedRoles={['superadmin', 'admin']} />}>
-          <Route
-            path="workspace/website/builder/:websiteId/:pageId"
-            element={<BccBuilder />}
-          />
+          {/* Step 1 — website-only URL: redirect to first page */}
           <Route path="websites/:websiteId" element={<WebsitesRouteWrapper />} />
+          {/* Step 2 — CANONICAL full-screen page editor */}
           <Route
             path="websites/:websiteId/pages/:pageId"
             element={<BccBuilder />}
