@@ -23,14 +23,9 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
   const websiteDbId = typeof candidateId === 'string' && candidateId.length >= 24 ? candidateId : null;
   const navigate = useNavigate();
 
-  // FIX: Canonical route /websites/:websiteId/pages/:pageId
-  // FIX: Safe pageId resolution: page._id || page.id || page.slug
-  // FIX: Guard against undefined pageId before navigating
-  // FIX: console.log("[EDIT NAVIGATION]", ...) for debugging
   const handleEditInBuilder = (page) => {
     const websiteId = websiteDbId || candidateId;
 
-    // Safe pageId resolution — never navigate with undefined pageId
     const resolvedPageId = page._id || page.id || page.slug;
 
     if (!websiteId || !resolvedPageId) {
@@ -39,7 +34,6 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
       return;
     }
 
-    // FIX: Use canonical route /websites/:websiteId/pages/:pageId
     console.log("[EDIT NAVIGATION]", websiteId, resolvedPageId);
     navigate(
       `/websites/${websiteId}/pages/${resolvedPageId}`,
@@ -65,7 +59,6 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
 
   useEffect(() => {
     fetchPages();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [websiteDbId]);
 
   const fetchPages = async () => {

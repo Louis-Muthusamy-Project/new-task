@@ -2,12 +2,8 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import grapesjs from 'grapesjs';
 import presetWebpage from 'grapesjs-preset-webpage';
 
-// GrapesJS editor wrapper
-// - Prevents infinite update loops between GrapesJS and React
-// - Accepts backend responses that may be full HTML documents
-//   by extracting <body> HTML for components and <style> tag CSS for styles.
-
 const GrapesPageEditor = ({
+  pageKey,
   height = '100%',
   initialHtml = '',
   initialCss = '',
@@ -21,8 +17,8 @@ const GrapesPageEditor = ({
   // Prevent recursion when we programmatically set GrapesJS content
   const isSyncingRef = useRef(false);
 
-  // Prevent re-applying initial content repeatedly
-  const contentLoadedRef = useRef(false);
+  // Only apply incoming props once per pageKey
+  const loadedForPageKeyRef = useRef(null);
 
   const config = useMemo(() => {
     return {
@@ -66,18 +62,15 @@ const GrapesPageEditor = ({
 
       const bodyHtml = doc.body ? doc.body.innerHTML || '' : '';
 
-      // Merge extracted <style> css with provided initialCss
       const mergedCss = [cssBase.trim(), extractedCss]
         .filter(Boolean)
         .join('\n');
 
-      // If bodyHtml looks like a parsed result (even if input wasn't full doc), use it.
       return {
         componentsHtml: bodyHtml,
         stylesCss: mergedCss,
       };
     } catch {
-      // Fallback: treat initialHtml as GrapesJS components directly
       return {
         componentsHtml: html,
         stylesCss: cssBase,
@@ -106,14 +99,12 @@ const GrapesPageEditor = ({
       });
     };
 
-    // Attach events
     editor.on('component:update', handler);
     editor.on('component:add', handler);
     editor.on('component:remove', handler);
     editor.on('styleManager:change', handler);
     editor.on('style:change', handler);
     editor.on('canvas:drop', handler);
-
     editor.on('asset:add', handler);
     editor.on('asset:upload', handler);
 
@@ -126,23 +117,25 @@ const GrapesPageEditor = ({
         console.warn('[GrapesPageEditor] destroy failed:', e);
       }
       editorRef.current = null;
-      contentLoadedRef.current = false;
+      loadedForPageKeyRef.current = null;
       isSyncingRef.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Apply incoming props to GrapesJS.
-  // - Only loads content once
-  // - Only calls setComponents/setStyle when editor content actually differs
+  // Root fix: prevent clobbering after the first successful load for a given pageKey.
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
 
     const { componentsHtml, stylesCss } = normalizeToBodyAndCss(initialHtml, initialCss);
-
     const nextHtml = String(componentsHtml ?? '');
     const nextCss = String(stylesCss ?? '');
+
+    console.log('[INITIAL HTML LENGTH]', initialHtml?.length);
+    console.log('[SET COMPONENTS]', nextHtml?.length);
+    console.log('[CURRENT HTML]', editor.getHtml()?.length);
 
     const currentHtml = editor.getHtml();
     const currentCss = editor.getCss();
@@ -150,38 +143,53 @@ const GrapesPageEditor = ({
     const htmlChanged = nextHtml !== currentHtml;
     const cssChanged = nextCss !== currentCss;
 
-    if (!contentLoadedRef.current) {
-      if (!htmlChanged && !cssChanged) {
-        contentLoadedRef.current = true;
-        return;
-      }
+    // Empty content protection (requested)
+    const nextTrimLen = nextHtml.trim().length;
+    const currentHtmlTrimLen = String(currentHtml || '').trim().length;
+    if (nextTrimLen < 100 && currentHtmlTrimLen > 1000) {
+      console.warn('Blocked suspicious overwrite', {
+        pageKey,
+        nextTrimLen,
+        currentHtmlTrimLen,
+      });
+      return;
+    }
 
-      isSyncingRef.current = true;
-      try {
-        if (htmlChanged) editor.setComponents(nextHtml);
-        if (cssChanged) editor.setStyle(nextCss);
-      } catch (e) {
-        console.warn('[GrapesPageEditor] setComponents/setStyle failed:', e);
-      } finally {
-        isSyncingRef.current = false;
-        contentLoadedRef.current = true;
+    const isFirstApplyForThisPage = loadedForPageKeyRef.current !== pageKey;
+
+    if (!isFirstApplyForThisPage) {
+      // After initial load for this pageKey: ignore prop updates
+      if (htmlChanged || cssChanged) {
+        console.warn('[GrapesPageEditor] Ignored prop overwrite after initial load', {
+          pageKey,
+          htmlLen: nextHtml.length,
+          cssLen: nextCss.length,
+        });
       }
       return;
     }
 
-    // After initial load: do not clobber user edits unless props truly changed.
-    if (htmlChanged || cssChanged) {
+    // First apply for this pageKey
+    if (htmlChanged) {
       isSyncingRef.current = true;
       try {
-        if (htmlChanged) editor.setComponents(nextHtml);
-        if (cssChanged) editor.setStyle(nextCss);
-      } catch (e) {
-        console.warn('[GrapesPageEditor] sync failed:', e);
+        editor.setComponents(nextHtml);
       } finally {
         isSyncingRef.current = false;
       }
     }
-  }, [initialHtml, initialCss]);
+
+    if (cssChanged) {
+      isSyncingRef.current = true;
+      try {
+        editor.setStyle(nextCss);
+      } finally {
+        isSyncingRef.current = false;
+      }
+    }
+
+    loadedForPageKeyRef.current = pageKey;
+  }, [initialHtml, initialCss, pageKey]);
 
   return (
     <div

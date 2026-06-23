@@ -532,6 +532,7 @@ const BccBuilder = () => {
           <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
             <GrapesPageEditor
               height="100%"
+              pageKey={pageId}
               initialHtml={html}
               initialCss={css}
               onChange={({ html: nextHtml, css: nextCss }) => {

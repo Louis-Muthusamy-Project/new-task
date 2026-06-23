@@ -1,20 +1,6 @@
-# TODO
-- [ ] Update `frontend/src/pages/WebsiteBuilder/tabs/WebsitesTab.jsx` action UI:
-  - [ ] Remove existing Preview/Edit/Delete buttons (ActionButton + Popconfirm wrapper in row)
-  - [ ] Add kebab menu button using `FiMoreVertical`
-- [x] Implement dropdown with options: Preview, Edit, Delete
-
-- [x] Wire options to existing handlers: `handlePreviewWebsite`, `handleEditWebsite`, `handleDelete`
-- [x] Keep delete confirmation behavior (Popconfirm)
-
-  - [ ] Ensure only one dropdown can be open at a time and close on outside click or selection
-
-  - [ ] Apply styling requirements for button, dropdown, menu items (z-index high, shadow, border, rounding)
-  - [ ] Ensure responsive behavior
-  - [ ] Run frontend build/lint (if available) to confirm no syntax/import issues
-  - [ ] Keep delete confirmation behavior (Popconfirm)
-  - [ ] Ensure only one dropdown can be open at a time and close on outside click or selection
-  - [ ] Apply styling requirements for button, dropdown, menu items (z-index high, shadow, border, rounding)
-  - [ ] Ensure responsive behavior
-- [ ] Run frontend build/lint (if available) to confirm no syntax/import issues
-
+- [ ] Add temporary logs in WebsiteEditPage and GrapesPageEditor (requested by task).
+- [ ] Identify exact overwrite trigger by correlating logs (page/html length drop, GrapesPageEditor sync calls).
+- [ ] Fix root cause: prevent GrapesPageEditor from calling setComponents/setStyle after initial load unless pageId/websiteId/user switch.
+- [ ] Add empty-content protection to block suspicious overwrites.
+- [ ] Ensure no new loops: verify GrapesPageEditor onChange does not re-trigger props sync.
+- [ ] Run frontend tests/build (at least `npm test`/`npm run build`) and manually verify: open Page A, wait 1-3s, canvas stays stable; switch pages A/B and back.
