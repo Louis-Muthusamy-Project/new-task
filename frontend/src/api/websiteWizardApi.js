@@ -1,9 +1,7 @@
-const API_BASE = 'http://localhost:5500/api' ;
-
-
+const API_BASE = import.meta.env?.VITE_WEBSITE_WIZARD_API_BASE || 'http://localhost:5500/api';
 
 async function request(path, { method = 'GET', body } = {}) {
-  console.log(API_BASE,path)
+  console.log('[websiteWizardApi]', method, API_BASE + path);
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
@@ -26,11 +24,21 @@ function unwrapSuccess(json) {
 }
 
 export const websiteWizardApi = {
-  // Templates API (backend may not provide these yet; callers should handle failures)
-  listTemplates: async () => unwrapSuccess(await request('/templates', { method: 'GET' })),
+  // ─── Websites ────────────────────────────────────────────────────────────
 
-  // Website Builder API (MERN backend)
-  // Base: /api/website-builder
+  /**
+   * GET /api/website-builder/websites
+   * Returns { data: Website[], meta: { total, ... } }
+   * We return the raw json so callers can access both .data and .meta.
+   */
+  getAllWebsites: async () => {
+    const json = await request('/website-builder/websites', { method: 'GET' });
+    if (!json || json.success === false) {
+      throw new Error(json?.error || 'Unknown API error');
+    }
+    // Return raw json — callers read json.data (array) and json.meta (pagination)
+    return json;
+  },
 
   createWebsite: async (payload) =>
     unwrapSuccess(
@@ -63,8 +71,8 @@ export const websiteWizardApi = {
       await request(`/website-builder/websites/${id}/preview`, { method: 'GET' })
     ),
 
-  // Pages API
-  // Base: /api/website-builder/websites/:websiteId/pages
+  // ─── Pages ───────────────────────────────────────────────────────────────
+
   createPage: async (payload) =>
     unwrapSuccess(
       await request(`/website-builder/websites/${payload.websiteId}/pages`, {
@@ -97,4 +105,8 @@ export const websiteWizardApi = {
     unwrapSuccess(
       await request(`/website-builder/pages/${pageId}`, { method: 'DELETE' })
     ),
+
+  // ─── Templates ───────────────────────────────────────────────────────────
+
+  listTemplates: async () => unwrapSuccess(await request('/templates', { method: 'GET' })),
 };

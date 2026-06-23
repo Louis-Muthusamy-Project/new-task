@@ -298,11 +298,6 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
           throw new Error("Upload response missing — backend returned empty.");
         }
 
-        // Debug logging
-        console.log("Upload Response:", response);
-        console.log("Website ID:", response?.website?._id);
-        console.log("Pages Returned:", response?.pages);
-
         // New backend response shape: { success:true, website:{...}, pages:[...] }
         cloudinaryUrl =
           response?.website?.settings?.cloudinary?.url ||

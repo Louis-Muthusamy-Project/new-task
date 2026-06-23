@@ -1,10 +1,20 @@
 # TODO
+- [ ] Update `frontend/src/pages/WebsiteBuilder/tabs/WebsitesTab.jsx` action UI:
+  - [ ] Remove existing Preview/Edit/Delete buttons (ActionButton + Popconfirm wrapper in row)
+  - [ ] Add kebab menu button using `FiMoreVertical`
+- [x] Implement dropdown with options: Preview, Edit, Delete
 
-- [ ] Update `frontend/src/pages/WebsiteBuilder/tabs/WebsiteEditPage.jsx`:
-  - [ ] Add `useEffect`-based `fetchPages()` calling `websiteWizardApi.listPagesByWebsite(websiteDbId)`.
-  - [ ] Normalize slugs (convert `/about` -> `about`, `/` -> `home`).
-  - [ ] Update `website.pages` with fetched pages so ZIP-imported pages render immediately.
-  - [ ] Add debug logs for websiteId + raw pages response.
-  - [ ] Ensure preview logic uses normalized slugs.
-- [ ] Run frontend build/dev check (optional) / verify no runtime errors.
+- [x] Wire options to existing handlers: `handlePreviewWebsite`, `handleEditWebsite`, `handleDelete`
+- [x] Keep delete confirmation behavior (Popconfirm)
+
+  - [ ] Ensure only one dropdown can be open at a time and close on outside click or selection
+
+  - [ ] Apply styling requirements for button, dropdown, menu items (z-index high, shadow, border, rounding)
+  - [ ] Ensure responsive behavior
+  - [ ] Run frontend build/lint (if available) to confirm no syntax/import issues
+  - [ ] Keep delete confirmation behavior (Popconfirm)
+  - [ ] Ensure only one dropdown can be open at a time and close on outside click or selection
+  - [ ] Apply styling requirements for button, dropdown, menu items (z-index high, shadow, border, rounding)
+  - [ ] Ensure responsive behavior
+- [ ] Run frontend build/lint (if available) to confirm no syntax/import issues
 

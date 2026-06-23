@@ -27,13 +27,13 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
 
   const handleEditInBuilder = (page) => {
     const websiteId = websiteDbId || candidateId;
-    const pageId = page.id;
+    const resolvedPageId = page.id || page._id;
     navigate(
-      `/workspace/website/builder/${websiteId}/${pageId}`,
+      `/websites/${websiteId}/pages/${resolvedPageId}`,
       {
         state: {
           websiteId,
-          pageId,
+          pageId: resolvedPageId,
           pageName: page.name,
           pageSlug: page.slug,
         },

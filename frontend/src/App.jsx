@@ -11,6 +11,8 @@ import AgencyLayout from './layouts/AgencyLayout';
 import ClientLayout from './layouts/ClientLayout';
 import PlaceholderPage from './components/PlaceholderPage';
 
+import BccBuilder from './pages/WebsiteBuilder/websiteWizard/BccBuilder';
+
 // Icons used only by placeholders (keep synchronous)
 import {
   Users,
@@ -25,7 +27,8 @@ import {
 const Dashboard = lazy(() => import('./pages/Dashboard/Dashboard'));
 const CRM = lazy(() => import('./pages/CRM/CRM'));
 const WebsiteBuilder = lazy(() => import('./pages/WebsiteBuilder/WebsiteBuilder'));
-const BccBuilder = lazy(() => import('./pages/WebsiteBuilder/websiteWizard/BccBuilder'));
+const WebsitesRouteWrapper = lazy(() => import('./pages/WebsiteBuilder/WebsitesRouteWrapper'));
+
 const Strategy = lazy(() => import('./pages/Strategy/Strategy'));
 const WebsiteSetupPage = lazy(() => import('./pages/WebsiteBuilder/websiteWizard/WebsiteSetupPage'));
 
@@ -94,19 +97,21 @@ function ScrollToTop() {
 const ProtectedRoute = ({ allowedRoles }) => {
   const { role } = useAuth();
 
-  if (!role) {
-    return <Navigate to="/signin" replace />;
-  }
+  if (!role) return <Navigate to="/signin" replace />;
 
   if (allowedRoles && !allowedRoles.includes(role)) {
     if (role === 'superadmin') return <Navigate to="/superadmin/dashboard" replace />;
     if (role === 'admin') return <Navigate to="/dashboard" replace />;
     if (role === 'agency') return <Navigate to="/agency/overview" replace />;
     if (role === 'client') return <Navigate to="/client/dashboard" replace />;
+
+    // Fallback for unknown/other roles
+    return <Navigate to="/" replace />;
   }
 
   return <Outlet />;
 };
+
 
 const AppRoutes = () => {
   const { role } = useAuth();
@@ -168,7 +173,10 @@ const AppRoutes = () => {
             <Route path="workspace/automation" element={<Automation />} />
             <Route path="workspace/tasks" element={<Tasks />} />
             <Route path="workspace/website/*" element={<WebsiteBuilder />} />
+            <Route path="websites/:websiteId" element={<WebsiteBuilder />} />
+            <Route path="websites/:websiteId/pages/:pageId" element={<WebsiteBuilder />} />
             <Route path="/website/setup" element={<WebsiteSetupPage />} />
+
 
             <Route path="intelligence/analytics" element={<Analytics />} />
             <Route path="intelligence/mos" element={<MOSScore />} />
@@ -222,7 +230,13 @@ const AppRoutes = () => {
             path="workspace/website/builder/:websiteId/:pageId"
             element={<BccBuilder />}
           />
+          <Route path="websites/:websiteId" element={<WebsitesRouteWrapper />} />
+          <Route
+            path="websites/:websiteId/pages/:pageId"
+            element={<BccBuilder />}
+          />
         </Route>
+
 
         {/* Agency Routes */}
         <Route element={<ProtectedRoute allowedRoles={['superadmin', 'agency']} />}>
