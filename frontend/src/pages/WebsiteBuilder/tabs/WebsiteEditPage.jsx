@@ -62,23 +62,38 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
   }, [websiteDbId]);
 
   const fetchPages = async () => {
-    if (!websiteDbId || websiteDbId.length < 24) return;
+    if (!websiteDbId || websiteDbId.length < 24) {
+      console.warn("[WebsiteEditPage] fetchPages skipped — invalid websiteDbId:", websiteDbId);
+      return;
+    }
+
+    console.log("[WebsiteEditPage] fetchPages START for websiteId:", websiteDbId);
 
     try {
+      // unwrapSuccess returns json.data directly, so resp is the pages array
       const resp = await websiteWizardApi.listPagesByWebsite(websiteDbId);
 
+      // listPagesByWebsite calls unwrapSuccess which returns json.data (the array).
+      // Defensively handle both shapes.
       const apiPages = Array.isArray(resp) ? resp : resp?.data;
+
+      console.log("[WebsiteEditPage] fetchPages raw resp type:", typeof resp, "isArray:", Array.isArray(resp), "count:", apiPages?.length);
 
       if (!Array.isArray(apiPages)) {
         console.warn("[WebsiteEditPage] Unexpected pages payload shape:", resp);
         return;
       }
 
+      console.log("[WebsiteEditPage] fetchPages received", apiPages.length, "pages from backend");
+
       const normalizedPages = apiPages.map((p) => {
         const slug = normalizeSlug(p.slug);
-        const isHome = p.isHome || slug === "home" || slug === "index";
+        // FIX: isHome should also check the database field — "home" slug is the
+        // primary indicator after our slug fix, but keep p.isHome as authoritative.
+        const isHome = !!p.isHome || slug === "home" || slug === "index";
+        console.log("[WebsiteEditPage] normalizing page:", p.name, "slug:", slug, "isHome:", isHome, "_id:", p._id);
         return {
-          // FIX: Preserve both _id and id so handleEditInBuilder can resolve either
+          // Preserve both _id and id so handleEditInBuilder can resolve either
           _id: p._id,
           id: p.id || p._id || nextId(),
           name: p.name || p.title || "Untitled",
@@ -89,6 +104,8 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
           seo: p.seo,
         };
       });
+
+      console.log("[WebsiteEditPage] fetchPages normalized", normalizedPages.length, "pages — setting state");
 
       setWebsite((prev) => {
         const next = { ...prev, pages: normalizedPages };

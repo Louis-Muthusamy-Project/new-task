@@ -125,6 +125,65 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, error: 'Uploaded ZIP contains HTML files but they are empty.' });
   }
 
+  // Collect all CSS files from the ZIP so we can inline them into the HTML.
+  // This is necessary because relative paths like href="css/style.css" break
+  // when the HTML is rendered in a new window via document.write().
+  const cssByPath = {};
+  zip.forEach((relativePath, entry) => {
+    if (entry.dir) return;
+    if (/\.css$/i.test(relativePath)) {
+      cssByPath[relativePath] = entry;
+    }
+  });
+
+  /**
+   * Given HTML content and the file's own path inside the ZIP, find all
+   * <link rel="stylesheet" href="..."> references and inline the CSS content
+   * as <style> blocks so that the page renders correctly without the original
+   * asset files.
+   */
+  const inlineCssIntoHtml = async (html, htmlPath) => {
+    const htmlDir = htmlPath.includes('/') ? htmlPath.substring(0, htmlPath.lastIndexOf('/') + 1) : '';
+    const linkRe = /<link\b[^>]*\brel=["']stylesheet["'][^>]*\bhref=["']([^"']+)["'][^>]*\/?>/gi;
+    const linkRe2 = /<link\b[^>]*\bhref=["']([^"']+)["'][^>]*\brel=["']stylesheet["'][^>]*\/?>/gi;
+
+    const replacements = [];
+
+    for (const re of [linkRe, linkRe2]) {
+      let match;
+      re.lastIndex = 0;
+      while ((match = re.exec(html)) !== null) {
+        const fullTag = match[0];
+        const href = match[1];
+        if (!href || href.startsWith('http') || href.startsWith('//') || href.startsWith('data:')) continue;
+
+        // Resolve relative path from the HTML file's directory inside the ZIP
+        const cssPath = (htmlDir + href).replace(/\\/g, '/').replace(/\/\.\//g, '/');
+        const cssEntry = cssByPath[cssPath] || cssByPath[href];
+
+        if (cssEntry) {
+          try {
+            const cssContent = await cssEntry.async('string');
+            if (cssContent && cssContent.trim()) {
+              replacements.push({ fullTag, cssContent });
+              console.log('[upload-template] inlining CSS:', cssPath, '(' + cssContent.length + ' chars)');
+            }
+          } catch (e) {
+            console.warn('[upload-template] failed to read CSS:', cssPath, e.message);
+          }
+        } else {
+          console.warn('[upload-template] CSS file not found in ZIP:', cssPath, '(href:', href + ')');
+        }
+      }
+    }
+
+    let result = html;
+    for (const { fullTag, cssContent } of replacements) {
+      result = result.replace(fullTag, `<style>\n${cssContent}\n</style>`);
+    }
+    return result;
+  };
+
   const resolvedWebsiteName = (websiteName || name || req.file.originalname || 'Imported Website').toString();
   const ownerId = req?.user?.id || req?.user?._id;
 
@@ -178,6 +237,10 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
     // ZIP import should do the same.
     const pageSlug = isHome ? 'home' : slugifyPath(base);
 
+    // FIX: Inline CSS from ZIP files so the stored HTML renders correctly
+    // without needing the original asset files.
+    console.log('[upload-template] inlining CSS for page:', pageName, 'path:', path);
+    const htmlWithInlinedCss = await inlineCssIntoHtml(html, path);
 
     const page = await WebsitePage.create({
       websiteId: website._id,
@@ -186,12 +249,12 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
       isHome,
       status: 'Draft',
       content: {
-        html,
+        html: htmlWithInlinedCss,
         sourcePath: path,
       },
     });
 
-    console.log('[upload-template] created pageId:', page._id, 'slug:', page.slug);
+    console.log('[upload-template] created pageId:', page._id, 'slug:', page.slug, 'htmlLength:', htmlWithInlinedCss.length);
     pages.push(page);
   }
 
@@ -217,4 +280,3 @@ module.exports = {
   upload,
   uploadTemplateZipToCloudinary,
 };
-

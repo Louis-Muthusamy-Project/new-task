@@ -139,10 +139,15 @@ async function parseWebsiteZip(file) {
     const fileName = path.split("/").pop();
     const baseName = fileName.replace(/\.html?$/i, "");
     const isHome = baseName.toLowerCase() === "index";
+    // FIX: Use "home" (no leading slash) for the home page so it matches the
+    // backend's normalisation. Non-home pages use just the slugified base name
+    // (without the site prefix) so backend slug deduplication works cleanly.
+    const slug = isHome ? "home" : slugify(baseName);
+    console.log('[parseWebsiteZip] page slug:', slug, 'isHome:', isHome, 'path:', path);
     return {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name: isHome ? siteName : toTitleCase(baseName),
-      slug: isHome ? `/${baseSlug}` : `/${baseSlug}-${slugify(baseName)}`,
+      name: isHome ? "Home" : toTitleCase(baseName),
+      slug,
       isHome,
       status: "Draft",
       sourcePath: path,
@@ -299,46 +304,53 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
       const parsed = await parseWebsiteZip(zipFile);
       const finalName = websiteName.trim() || zipTemplateName.trim() || parsed.siteName;
 
-      // Upload ZIP to Cloudinary via backend and persist returned URL.
-      // Hoist `response` outside the inner try so it is accessible after it.
-      let cloudinaryUrl = '';
-      let response = null; // FIX: was `resp` declared inside inner try, causing ReferenceError outside
+      // Upload ZIP to backend (which also saves to Cloudinary AND creates website+pages in DB).
+      // The backend POST /api/website/upload-template returns { success, website, pages }.
+      let response = null;
 
       try {
         const { websiteWizardCloudinaryApi } = await import('../../../api/websiteWizardCloudinaryApi');
         response = await websiteWizardCloudinaryApi.uploadTemplateZipToCloudinary({
           file: zipFile,
           name: zipTemplateName.trim() || parsed.siteName,
+          websiteName: finalName,
         });
 
-        // Defensive check: backend must return a response object
-        if (!response) {
-          throw new Error("Upload response missing — backend returned empty.");
-        }
+        console.log('[handleCreateFromZip] backend response:', {
+          success: response?.success,
+          websiteId: response?.website?._id,
+          pagesCount: response?.pages?.length,
+        });
 
-        // New backend response shape: { success:true, website:{...}, pages:[...] }
-        cloudinaryUrl =
-          response?.website?.settings?.cloudinary?.url ||
-          response?.website?.templateZipCloudinaryUrl ||
-          response?.cloudinaryUrl ||
-          '';
+        if (!response?.success) {
+          throw new Error(response?.error || 'Backend upload returned failure.');
+        }
       } catch (uploadErr) {
-        // Cloudinary failing shouldn't block creating the website draft; show the error.
-        console.error("Cloudinary upload error:", uploadErr);
-        setError(uploadErr?.message || 'Cloudinary upload failed');
-        // response stays null — pages fall back to locally-parsed pages below
+        // Cloudinary/backend failing: log clearly so developer can diagnose,
+        // but do NOT call onCreate with a null website — that causes a second
+        // createWebsite call with stub pages that have no content.
+        console.error('[handleCreateFromZip] Backend upload error:', uploadErr);
+        setError(uploadErr?.message || 'Upload failed. Check backend logs.');
+        return; // FIX: stop here — do not call onCreate with broken data
       }
 
+      const cloudinaryUrl =
+        response?.website?.settings?.cloudinary?.url ||
+        response?.website?.templateZipCloudinaryUrl ||
+        '';
+
+      console.log('[handleCreateFromZip] calling onCreate with websiteId:', response.website?._id, 'pages:', response.pages?.length);
+
       onCreate({
-        // Pass the real backend-created website + pages so the editor
-        // can fetch/render immediately using the correct MongoDB _id.
-        website: response?.website,             // FIX: was resp?.website (ReferenceError)
+        // Pass the real backend-created website + pages so the editor can
+        // fetch/render immediately using the correct MongoDB _id.
+        website: response.website,
         websiteName: finalName,
         description: "Website Template",
         source: "zip",
         templateName: zipTemplateName.trim() || parsed.siteName,
         templateZipCloudinaryUrl: cloudinaryUrl,
-        pages: response?.pages || parsed.pages, // FIX: was resp?.pages (ReferenceError)
+        pages: response.pages || [],
       });
     } catch (err) {
       setError(err.message || "Couldn't read that ZIP.");
