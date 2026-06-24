@@ -53,7 +53,7 @@ exports.createWebsite = async (req, res) => {
   const ownerId = req?.user?.id || req?.user?._id || null;
 
   const website = await Website.create({
-    websiteName: resolvedWebsiteName,
+    name: resolvedWebsiteName,
     description: description || '',
     domain: customDomain || domain || '',
     category: category || undefined,

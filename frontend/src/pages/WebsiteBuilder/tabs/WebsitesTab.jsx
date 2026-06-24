@@ -465,6 +465,13 @@ const WebsitesTab = ({ itemVariants }) => {
     let normalized;
 
     if (backendWebsite?._id) {
+      // ── [VERIFY 7] Pages landing in Websites tab ────────────────────────
+      console.group('%c[VERIFY 7] handleTemplateCreated — fast path (backendWebsite._id exists)', 'color:#10b981;font-weight:bold');
+      console.log('backendWebsite._id   :', backendWebsite._id);
+      console.log('payload.pages.length :', (payload.pages || []).length);
+      console.table((payload.pages || []).map((p) => ({ _id: p._id || p.id, name: p.name, slug: p.slug, isHome: p.isHome })));
+      console.groupEnd();
+
       normalized = normalizeWebsite({
         ...backendWebsite,
         isNew: true,

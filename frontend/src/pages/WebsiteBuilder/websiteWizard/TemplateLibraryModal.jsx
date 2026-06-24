@@ -158,6 +158,15 @@ async function parseWebsiteZip(file) {
     a.isHome === b.isHome ? a.name.localeCompare(b.name) : a.isHome ? -1 : 1
   );
 
+  // ── [VERIFY LOG 1] ZIP parse complete ─────────────────────────────────────
+  console.group('%c[VERIFY 1] parseWebsiteZip — result', 'color:#10b981;font-weight:bold');
+  console.log('siteName     :', siteName);
+  console.log('baseSlug     :', baseSlug);
+  console.log('HTML files   :', htmlFiles);
+  console.log('page count   :', pages.length);
+  console.table(pages.map(({ name, slug, isHome, status, sourcePath }) => ({ name, slug, isHome, status, sourcePath })));
+  console.groupEnd();
+
   return {
     siteName,
     baseSlug,
@@ -259,6 +268,15 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
         custom: true,
         parsed,
       };
+
+      // ── [VERIFY LOG 2] Template stored in library ────────────────────────
+      console.group('%c[VERIFY 2] handleUploadToLibrary — template entry stored', 'color:#3b82f6;font-weight:bold');
+      console.log('entry.id             :', entry.id);
+      console.log('entry.name           :', entry.name);
+      console.log('entry.parsed.pages   :', entry.parsed.pages.length, 'pages');
+      console.table(entry.parsed.pages.map(({ name, slug, isHome, status }) => ({ name, slug, isHome, status })));
+      console.groupEnd();
+
       setCustomTemplates((prev) => [entry, ...prev]);
       setUploadedNotice(`"${entry.name}" was added to Created by you.`);
       resetZipPanel();
@@ -330,26 +348,129 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
   };
 
   // Bottom bar "Create Website" — uses the selected prebuilt/custom template card.
-  const handleCreateFromTemplate = () => {
+  //
+  // For custom (uploaded) templates the ZIP pages must be persisted to the
+  // backend before handing off to the parent, otherwise the website is created
+  // with no pages in the database.
+  //
+  // Flow for a custom template:
+  //   1. POST /website-builder/websites  → get websiteId
+  //   2. For every page from parsed.pages: POST /website-builder/websites/:id/pages
+  //   3. Call onCreate with the real website + persisted pages, same shape as
+  //      the "Create from ZIP" path so handleTemplateCreated takes the fast if-branch.
+  //
+  // For prebuilt templates (no ZIP content) the old behaviour is preserved —
+  // stub pages are passed and the parent creates the website normally.
+  const handleCreateFromTemplate = async () => {
     const all = [...customTemplates, ...PREBUILT_TEMPLATES];
     const template = all.find((t) => t.id === selectedTemplate);
     if (!template || !websiteName.trim()) return;
 
-    const pages = template.custom
-      ? template.parsed.pages
-      : [
+    // ── Prebuilt template (no ZIP) — unchanged behaviour ──────────────────
+    if (!template.custom) {
+      onCreate({
+        websiteName: websiteName.trim(),
+        description: "Website Template",
+        source: "template",
+        templateName: template.name,
+        pages: [
           { id: `${Date.now()}-home`, name: "Home", slug: "/", isHome: true, status: "Draft" },
           { id: `${Date.now()}-about`, name: "About", slug: "/about", isHome: false, status: "Draft" },
           { id: `${Date.now()}-contact`, name: "Contact", slug: "/contact", isHome: false, status: "Draft" },
-        ];
+        ],
+      });
+      return;
+    }
 
-    onCreate({
-      websiteName: websiteName.trim(),
-      description: "Website Template",
-      source: "template",
-      templateName: template.name,
-      pages,
-    });
+    // ── Custom (uploaded) template — persist website + pages ───────────────
+    setParsing(true);
+    setError(null);
+    try {
+      const { websiteWizardApi } = await import('../../../api/websiteWizardApi');
+
+      // 1. Create the website record.
+      const savedWebsite = await websiteWizardApi.createWebsite({
+        name: websiteName.trim(),
+        websiteName: websiteName.trim(),
+        description: "Website Template",
+        status: "Draft",
+      });
+
+      const websiteId = savedWebsite._id || savedWebsite.id;
+      if (!websiteId) {
+        throw new Error("Website creation did not return an id.");
+      }
+
+      // 2. Create every page that was parsed from the ZIP.
+      //    The backend deduplicates slugs and enforces a single Home page,
+      //    so we don't need to guard for those cases here.
+      //    Sort home page first so it is the authoritative home.
+      const parsedPages = [...(template.parsed.pages || [])].sort(
+        (a, b) => (a.isHome === b.isHome ? 0 : a.isHome ? -1 : 1)
+      );
+
+      // ── [VERIFY LOG 3] Pages ready for website creation ──────────────────
+      console.group('%c[VERIFY 3] handleCreateFromTemplate — pages before website creation', 'color:#f59e0b;font-weight:bold');
+      console.log('template.id          :', template.id);
+      console.log('template.name        :', template.name);
+      console.log('page count           :', parsedPages.length, '(sorted home-first)');
+      console.table(parsedPages.map(({ name, slug, isHome, status }) => ({ name, slug, isHome, status })));
+      console.groupEnd();
+
+      const createdPages = await Promise.all(
+        parsedPages.map(async (page) => {
+          // ── [VERIFY LOG 4] createPage request ──────────────────────────
+          console.log(
+            '%c[VERIFY 4] createPage REQUEST',
+            'color:#8b5cf6;font-weight:bold',
+            { websiteId, name: page.name, slug: page.slug, isHome: page.isHome, status: page.status || 'Draft' }
+          );
+
+          const created = await websiteWizardApi.createPage({
+            websiteId,
+            name: page.name,
+            slug: page.slug,
+            isHome: !!page.isHome,
+            status: page.status || "Draft",
+            content: page.content || {},
+          });
+
+          // ── [VERIFY LOG 5] createPage response ─────────────────────────
+          console.log(
+            '%c[VERIFY 5] createPage RESPONSE',
+            'color:#06b6d4;font-weight:bold',
+            { _id: created._id || created.id, name: created.name, slug: created.slug, isHome: created.isHome, status: created.status }
+          );
+
+          return created;
+        })
+      );
+
+      // ── [VERIFY LOG 6] Final summary ─────────────────────────────────────
+      console.group('%c[VERIFY 6] handleCreateFromTemplate — final result', 'color:#10b981;font-weight:bold');
+      console.log('website._id          :', savedWebsite._id || savedWebsite.id);
+      console.log('website.name         :', savedWebsite.websiteName || savedWebsite.name);
+      console.log('createdPages.length  :', createdPages.length);
+      console.table(createdPages.map((p) => ({ _id: p._id || p.id, name: p.name, slug: p.slug, isHome: p.isHome, status: p.status })));
+      console.groupEnd();
+
+      // 3. Hand off to parent with the real backend objects — same shape as
+      //    the "Create from ZIP" path so handleTemplateCreated takes the
+      //    if (backendWebsite?._id) fast branch and skips a second createWebsite call.
+      onCreate({
+        website: savedWebsite,
+        websiteName: websiteName.trim(),
+        description: "Website Template",
+        source: "template",
+        templateName: template.name,
+        pages: createdPages,
+      });
+    } catch (err) {
+      console.error("[TemplateLibraryModal] handleCreateFromTemplate failed:", err);
+      setError(err?.message || "Failed to create website from template.");
+    } finally {
+      setParsing(false);
+    }
   };
 
   const visibleTemplates = [...customTemplates, ...PREBUILT_TEMPLATES].filter((t) => {
@@ -700,6 +821,7 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
               </Button>
               <Button
                 type="primary"
+                loading={parsing}
                 onClick={handleCreateFromTemplate}
                 disabled={!websiteName.trim() || !selectedTemplate}
                 style={{
