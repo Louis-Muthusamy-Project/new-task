@@ -159,11 +159,6 @@ function normalizeWebsite(doc) {
   };
 }
 
-// ─── ManageWebsiteView ───────────────────────────────────────────────────────
-// FIX: Changed navigate URL from /workspace/website/builder/:websiteId/:pageId
-//      to the canonical /websites/:websiteId/pages/:pageId route.
-// FIX: Added safe pageId resolution: page._id || page.id || page.slug
-// FIX: Added console.log("[EDIT NAVIGATION]", ...) for debugging
 
 const ManageWebsiteView = ({ activeWebsite, setView, itemVariants }) => {
   const navigate = useNavigate();
@@ -180,8 +175,6 @@ const ManageWebsiteView = ({ activeWebsite, setView, itemVariants }) => {
       return;
     }
 
-    // FIX: Use canonical route /websites/:websiteId/pages/:pageId
-    console.log("[EDIT NAVIGATION]", websiteId, resolvedPageId);
     navigate(`/websites/${websiteId}/pages/${resolvedPageId}`, {
       state: { websiteId, pageId: resolvedPageId, pageName, pageSlug },
     });
@@ -467,8 +460,7 @@ const WebsitesTab = ({ itemVariants }) => {
     if (backendWebsite?._id) {
       // ── [VERIFY 7] Pages landing in Websites tab ────────────────────────
       console.group('%c[VERIFY 7] handleTemplateCreated — fast path (backendWebsite._id exists)', 'color:#10b981;font-weight:bold');
-      console.log('backendWebsite._id   :', backendWebsite._id);
-      console.log('payload.pages.length :', (payload.pages || []).length);
+    
       console.table((payload.pages || []).map((p) => ({ _id: p._id || p.id, name: p.name, slug: p.slug, isHome: p.isHome })));
       console.groupEnd();
 

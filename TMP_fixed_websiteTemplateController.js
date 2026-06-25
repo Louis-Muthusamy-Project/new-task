@@ -24,15 +24,16 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
   try {
     // Requested logging (safe-ish)
     console.log('[upload-template] req.body:', req.body);
-    console.log('[upload-template] req.file:',
+    console.log(
+      '[upload-template] req.file:',
       req.file
         ? {
-          fieldname: req.file.fieldname,
-          originalname: req.file.originalname,
-          mimetype: req.file.mimetype,
-          size: req.file.size,
-          bufferLength: req.file.buffer?.length,
-        }
+            fieldname: req.file.fieldname,
+            originalname: req.file.originalname,
+            mimetype: req.file.mimetype,
+            size: req.file.size,
+            bufferLength: req.file.buffer?.length,
+          }
         : req.file
     );
     console.log('[upload-template] req.files:', req.files);
@@ -47,7 +48,11 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
     const { name, folder, websiteName, description, status } = req.body || {};
 
     // Validate Cloudinary env (common root-cause on second request after env reload/first failure)
-    if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+    if (
+      !process.env.CLOUDINARY_CLOUD_NAME ||
+      !process.env.CLOUDINARY_API_KEY ||
+      !process.env.CLOUDINARY_API_SECRET
+    ) {
       return res.status(500).json({
         success: false,
         error: 'Cloudinary environment variables are not set (CLOUDINARY_CLOUD_NAME / CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET).',
@@ -60,7 +65,10 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
       resourceType: 'raw',
     });
 
-    console.log('[upload-template] cloudinary uploadResult keys:', uploadResult ? Object.keys(uploadResult) : uploadResult);
+    console.log(
+      '[upload-template] cloudinary uploadResult keys:',
+      uploadResult ? Object.keys(uploadResult) : uploadResult
+    );
     if (!uploadResult?.public_id || !uploadResult?.secure_url) {
       return res.status(500).json({
         success: false,
@@ -79,7 +87,7 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
       const lower = relativePath.toLowerCase();
       if (/(^|\/)index\.html?$/.test(lower)) {
         htmlPaths.push(relativePath);
-      } else if (/\.html?$/.test(lower)) {
+      } else if (/\.html?$/i.test(lower)) {"
         htmlPaths.push(relativePath);
       }
     });
@@ -160,19 +168,14 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
           const href = match[1];
           if (!href || href.startsWith('http') || href.startsWith('//') || href.startsWith('data:')) continue;
 
-          // Resolve relative path from the HTML file's directory inside the ZIP
           const cssPath = (htmlDir + href).replace(/\\/g, '/').replace(/\/\.\//g, '/');
           const cssEntry = cssByPath[cssPath] || cssByPath[href];
 
           if (cssEntry) {
-            try {
-              const cssContent = await cssEntry.async('string');
-              if (cssContent && cssContent.trim()) {
-                replacements.push({ fullTag, cssContent });
-                console.log('[upload-template] inlining CSS:', cssPath, '(' + cssContent.length + ' chars)');
-              }
-            } catch (e) {
-              console.warn('[upload-template] failed to read CSS:', cssPath, e.message);
+            const cssContent = await cssEntry.async('string');
+            if (cssContent && cssContent.trim()) {
+              replacements.push({ fullTag, cssContent });
+              console.log('[upload-template] inlining CSS:', cssPath, '(' + cssContent.length + ' chars)');
             }
           } else {
             console.warn('[upload-template] CSS file not found in ZIP:', cssPath, '(href:', href + ')');
@@ -190,18 +193,10 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
     const resolvedWebsiteName = (websiteName || name || req.file.originalname || 'Imported Website').toString();
     const ownerId = req?.user?.id || req?.user?._id;
 
-    // Create Website
-    // NOTE: keep both `name` and `websiteName` fields populated to avoid
-    // mismatches between different controller/UI code paths.
     const website = await Website.create({
-      // Website schema in this repo uses `ownerId` as required.
-      // ZIP endpoint is public; if unauthenticated, we set a placeholder owner.
-      // (JWT auth will populate req.user in secured flows.)
       ownerId: ownerId || new (require('mongoose').Types.ObjectId)(),
-
       websiteName: resolvedWebsiteName,
       name: resolvedWebsiteName,
-
       description: description || 'Website Template',
       status: status || 'Draft',
       template: {
@@ -218,13 +213,8 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
       },
     });
 
-    // Create pages
     const pages = [];
     console.log('[upload-template] creating pages for websiteId:', website._id);
-
-    // -------------------------
-    // Asset processing: ZIP-relative -> Data URLs
-    // -------------------------
 
     const ASSET_TYPES = {
       images: new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'ico']),
@@ -275,8 +265,7 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
       return 'application/octet-stream';
     };
 
-    const normalizeZipPath = (p) => (p || '').replace(/\\/g, '/').replace(/^\.\/?/, '');
-
+    const normalizeZipPath = (p) => (p || '').replace(/\\/g, '/').replace(/^\.\/ ?/, '');
     const getHtmlDir = (htmlPath) => {
       const p = normalizeZipPath(htmlPath);
       if (p.includes('/')) return p.substring(0, p.lastIndexOf('/') + 1);
@@ -291,7 +280,6 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
       const baseDir = getHtmlDir(htmlPath);
       const joined = normalizeZipPath(baseDir + trimmed);
 
-      // Normalize ../ segments
       const parts = joined.split('/');
       const out = [];
       for (const part of parts) {
@@ -308,7 +296,6 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
       return `data:${mime};base64,${buffer.toString('base64')}`;
     };
 
-    // Build index of supported assets in the ZIP.
     const assetIndex = {};
     zip.forEach((relativePath, entry) => {
       if (!entry || entry.dir) return;
@@ -319,9 +306,8 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
       }
     });
 
+    // Refactor: no async callback inside String.replace.
     const convertAssetsInHtml = async (html, htmlPath) => {
-      let out = html;
-
       const maybeReplaceUrl = async (zipPath) => {
         if (!zipPath) return null;
         const hit = assetIndex[zipPath];
@@ -331,65 +317,90 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
         return hit.dataUrl;
       };
 
-      const replaceAttrSrcHref = async (input, attr, valueGroupIndex = 1) => {
-        const re = new RegExp(`<${attr}\\b[^>]*\\b${attr}=["']([^"']+)["']`, 'gi');
-        return input;
+      let out = html;
+
+      const rewriteMatches = async (re, replacer) => {
+        const matches = [];
+        let m;
+        re.lastIndex = 0;
+        while ((m = re.exec(out)) !== null) {
+          matches.push({ index: m.index, full: m[0], groups: m.slice(1) });
+        }
+        // Build from original string to avoid replace-without-async issues.
+        let result = '';
+        let last = 0;
+        for (const match of matches) {
+          result += out.slice(last, match.index);
+          const replacement = await replacer(match.full, ...match.groups);
+          result += replacement;
+          last = match.index + match.full.length;
+        }
+        result += out.slice(last);
+        out = result;
       };
 
-      // <img src="..."> / <script src="..."> / <link href="..."> / <a href="..."> is not required, but src/href are.
-      // We'll handle the specific ones requested: img/src, script/src, link/href (favicon), and url(...) in CSS.
-
-      // img/src
-      out = out.replace(/<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi, (tag) => tag);
-
-      // script src
-      out = out.replace(/<script\b[^>]*\bsrc=["']([^"']+)["'][^>]*><\/script>/gi, (tag) => tag);
-
-      // link href (favicon)
-      out = out.replace(/<link\b[^>]*\bhref=["']([^"']+)["'][^>]*>/gi, (tag) => tag);
-
-      // url(...) in CSS/inline styles
-      const urlRe = /url\(\s*(['"]?)([^\s'")]+)\1\s*\)/gi;
-      const urlReMatches = [];
-      let m;
-      while ((m = urlRe.exec(out)) !== null) {
-        urlReMatches.push({ full: m[0], href: m[2] });
-      }
-      for (const item of urlReMatches) {
-        const zipPath = resolveHrefToZipPath(htmlPath, item.href);
-        const dataUrl = await maybeReplaceUrl(zipPath);
-        if (dataUrl) out = out.replace(item.full, `url(${dataUrl})`);
-      }
-
-      // @font-face src: url(...)
-      // (covered by url(...) rewrite above)
-
-      // src/srcset-like, href, and script tags: simple targeted regex replaces.
-      // Images
-      const imgSrcRe = /(<img\b[^>]*\bsrc=["'])([^"']+)(["'][^>]*>)/gi;
-      out = await out.replace(imgSrcRe, async (full, p1, href, p3) => {
-        const zipPath = resolveHrefToZipPath(htmlPath, href);
-        const dataUrl = await maybeReplaceUrl(zipPath);
-        return dataUrl ? `${p1}${dataUrl}${p3}` : full;
-      });
-
-      // favicon + any <link href>
-      const linkHrefRe = /(<link\b[^>]*\bhref=["'])([^"']+)(["'][^>]*>)/gi;
-      out = await out.replace(linkHrefRe, async (full, p1, href, p3) => {
-        const zipPath = resolveHrefToZipPath(htmlPath, href);
-        const dataUrl = await maybeReplaceUrl(zipPath);
-        return dataUrl ? `${p1}${dataUrl}${p3}` : full;
-      });
+      // img src
+      await rewriteMatches(
+        /<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi,
+        async (full, href) => {
+          const zipPath = resolveHrefToZipPath(htmlPath, href);
+          const dataUrl = await maybeReplaceUrl(zipPath);
+          if (!dataUrl) return full;
+          return full.replace(href, dataUrl);
+        }
+      );
 
       // script src
-      const scriptSrcRe = /(<script\b[^>]*\bsrc=["'])([^"']+)(["'][^>]*>)/gi;
-      out = await out.replace(scriptSrcRe, async (full, p1, href, p3) => {
+      await rewriteMatches(
+        /<script\b[^>]*\bsrc=["']([^"']+)["'][^>]*><\/script>/gi,
+        async (full, href) => {
+          const zipPath = resolveHrefToZipPath(htmlPath, href);
+          const dataUrl = await maybeReplaceUrl(zipPath);
+          if (!dataUrl) return full;
+          return full.replace(href, dataUrl);
+        }
+      );
+
+      // link href
+      await rewriteMatches(
+        /<link\b[^>]*\bhref=["']([^"']+)["'][^>]*>/gi,
+        async (full, href) => {
+          const zipPath = resolveHrefToZipPath(htmlPath, href);
+          const dataUrl = await maybeReplaceUrl(zipPath);
+          if (!dataUrl) return full;
+          return full.replace(href, dataUrl);
+        }
+      );
+
+      // url(...) in css/inline styles
+      // Build replacements based on matches and rebuild string.
+      const urlRe = /url\(\s*(['"]?)([^\s'\")]+)\1\s*\)/gi;
+      await rewriteMatches(urlRe, async (full, _q, href) => {
         const zipPath = resolveHrefToZipPath(htmlPath, href);
         const dataUrl = await maybeReplaceUrl(zipPath);
-        return dataUrl ? `${p1}${dataUrl}${p3}` : full;
+        return dataUrl ? `url(${dataUrl})` : full;
       });
 
       return out;
+    };
+
+    const extractCssFromHtml = (htmlString) => {
+      if (!htmlString) return '';
+      const styleBlocks = [];
+      const styleRe = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
+      let m;
+      while ((m = styleRe.exec(htmlString)) !== null) {
+        const css = (m[1] || '').trim();
+        if (css) styleBlocks.push(css);
+      }
+      return styleBlocks.join('\n');
+    };
+
+    const extractBodyHtml = (htmlString) => {
+      if (!htmlString) return '';
+      const bodyMatch = htmlString.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i);
+      if (bodyMatch && bodyMatch[1] != null) return bodyMatch[1];
+      return htmlString;
     };
 
     for (const { path, html } of validHtml) {
@@ -398,35 +409,24 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
       const isHome = base.toLowerCase() === 'index';
 
       const pageName = isHome ? 'Home' : normalizeName(base);
-
-      // Normalize slug format to match the normal page-creation flow.
-      // Normal flow uses: home/about/contact (no leading slash).
-      // ZIP import should do the same.
       const pageSlug = isHome ? 'home' : slugifyPath(base);
 
-      // FIX: Inline CSS from ZIP files so the stored HTML renders correctly
-      // without needing the original asset files.
-      console.log('[upload-template] inlining CSS for page:', pageName, 'path:', path);
+      console.log('[upload-template] creating page:', {
+        pageName,
+        pageSlug,
+        zipHtmlPath: path,
+      });
+
       const htmlWithInlinedCss = await inlineCssIntoHtml(html, path);
 
-      // Extract any inlined <style> blocks into a standalone CSS string so
-      // we persist it separately as `content.css` (page builder expects it).
-      // This prevents losing CSS during the import -> edit flow.
-      const extractCssFromHtml = (htmlString) => {
-        try {
-          const doc = new DOMParser().parseFromString(htmlString, 'text/html');
-          const styleEls = Array.from(doc.querySelectorAll('style'));
-          return styleEls.map((el) => (el.textContent || '').trim()).filter(Boolean).join('\n');
-        } catch {
-          return '';
-        }
-      };
-
       const extractedCss = extractCssFromHtml(htmlWithInlinedCss);
+      console.log('[upload-template] extractedCss length:', extractedCss.length, 'pageSlug:', pageSlug);
 
-      // Convert all supported assets to Data URLs and rewrite relative references.
       const finalHtml = await convertAssetsInHtml(htmlWithInlinedCss, path);
+      const bodyHtml = extractBodyHtml(finalHtml);
 
+      console.log('[upload-template] bodyHtml length:', bodyHtml.length, 'pageSlug:', pageSlug);
+      console.log('[upload-template] finalHtml length:', finalHtml.length, 'pageSlug:', pageSlug);
 
       const page = await WebsitePage.create({
         websiteId: website._id,
@@ -435,13 +435,13 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
         isHome,
         status: 'Draft',
         content: {
-          html: finalHtml,
+          html: bodyHtml,
           css: extractedCss,
           sourcePath: path,
         },
       });
 
-      console.log('[upload-template] created pageId:', page._id, 'slug:', page.slug, 'htmlLength:', finalHtml.length);
+      console.log('[upload-template] created pageId:', page._id, 'pageSlug:', page.slug);
       pages.push(page);
     }
 

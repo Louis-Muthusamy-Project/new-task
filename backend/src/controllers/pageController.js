@@ -3,11 +3,7 @@ const Website = require('../models/Website');
 const WebsitePage = require('../models/WebsitePage');
 const { slugify, generateUniqueSlug } = require('../utils/slugUtils');
 
-/**
- * WebsitePage has no ownerId/teamId of its own — ownership is always
- * resolved through its parent Website. This helper returns the parent
- * website (scoped to the authenticated user/team) or null.
- */
+
 async function findOwnedWebsite(req, websiteId) {
   const ownerId = req?.user?.id || req?.user?._id;
 

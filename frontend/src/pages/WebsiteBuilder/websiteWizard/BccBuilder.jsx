@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { Button, message, Select, Spin, Tag, Tooltip } from "antd";
 import {
@@ -30,26 +30,51 @@ const isMongoId = (s) => typeof s === "string" && /^[a-f\d]{24}$/i.test(s);
 const STORAGE_KEY = (pageId) => `jeema_page_${pageId}`;
 
 function cachePage(pageId, data) {
+  console.log('[CACHE WRITE]', {
+    pageId,
+    htmlLen: data?.content?.html?.length || 0,
+    cssLen: data?.content?.css?.length || 0,
+  });
   try {
     sessionStorage.setItem(STORAGE_KEY(pageId), JSON.stringify(data));
-  } catch (_) {}
+  } catch (_) { }
 }
 
 function getCachedPage(pageId) {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY(pageId));
-    return raw ? JSON.parse(raw) : null;
+    const parsed = raw ? JSON.parse(raw) : null;
+    console.log('[CACHE READ]', {
+      pageId,
+      htmlLen: parsed?.content?.html?.length || 0,
+      cssLen: parsed?.content?.css?.length || 0,
+    });
+    return parsed;
   } catch (_) {
+    console.log('[CACHE READ]', { pageId, htmlLen: 0, cssLen: 0 });
     return null;
   }
 }
 
+
 function safeGetInitialContent(page) {
+
   const rawContent = page?.content || null;
 
-  // Required contract (from task): page.content.html + page.content.css
-  const html = typeof rawContent?.html === "string" ? rawContent.html : "";
-  const css = typeof rawContent?.css === "string" ? rawContent.css : "";
+  const html =
+    typeof rawContent?.html === "string"
+      ? rawContent.html
+      : "";
+
+  const css =
+    typeof rawContent?.css === "string"
+      ? rawContent.css
+      : "";
+
+  console.log("[safeGetInitialContent RESULT]", {
+    htmlLen: html.length,
+    cssLen: css.length,
+  });
 
   return { html, css };
 }
@@ -107,12 +132,7 @@ const BccBuilder = () => {
   const displayName = page?.name || routeState.pageName || "Page";
   const displaySlug = page?.slug || routeState.pageSlug || pageId;
 
-  // Derived once
-  const initialContent = useMemo(() => safeGetInitialContent(page), [page]);
 
-  // -------------------------------------------------------------------------
-  // Load page on mount
-  // -------------------------------------------------------------------------
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -123,8 +143,11 @@ const BccBuilder = () => {
         setPage(cached);
         setPageStatus(cached?.status || "Draft");
         const initial = safeGetInitialContent(cached);
+        console.log('[HTML SET]', { source: 'getCachedPage', length: initial.html?.length || 0 });
         setHtml(initial.html);
+        console.log('[CSS SET]', { source: 'getCachedPage', length: initial.css?.length || 0 });
         setCss(initial.css);
+
         setIsDirty(false);
         setLoading(false);
         return;
@@ -145,23 +168,31 @@ const BccBuilder = () => {
 
         setPage(synthetic);
         setPageStatus("Draft");
+        console.log('[HTML SET]', { source: 'nonMongo_synthetic', length: 0 });
         setHtml("");
+        console.log('[CSS SET]', { source: 'nonMongo_synthetic', length: 0 });
         setCss("");
         setIsDirty(false);
         setLoading(false);
         return;
+
       }
 
       try {
         const data = await websiteWizardApi.getPage(pageId);
+
+
         setPage(data);
         setPageStatus(data?.status || "Draft");
 
         const initial = safeGetInitialContent(data);
+        console.log('[HTML SET]', { source: 'websiteWizardApi.getPage', length: initial.html?.length || 0 });
         setHtml(initial.html);
+        console.log('[CSS SET]', { source: 'websiteWizardApi.getPage', length: initial.css?.length || 0 });
         setCss(initial.css);
 
         cachePage(data._id || pageId, data);
+
       } catch (err) {
         console.error("[BccBuilder] failed to load page:", err);
         setLoadError(err?.message || "Failed to load page.");
@@ -173,14 +204,6 @@ const BccBuilder = () => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [websiteId, pageId]);
-
-  // When page changes (e.g. from cache), ensure editor props match
-  useEffect(() => {
-    if (!page) return;
-    const initial = safeGetInitialContent(page);
-    setHtml(initial.html);
-    setCss(initial.css);
-  }, [page, initialContent.html, initialContent.css]);
 
   // -------------------------------------------------------------------------
   // Save
@@ -194,25 +217,35 @@ const BccBuilder = () => {
     setSaving(true);
     try {
       const payload = {
-        content: {
-          html,
-          css,
-        },
+        content: { html, css },
         status: pageStatus,
         ...(page?.name && { name: page.name }),
         ...(page?.slug && { slug: page.slug }),
         ...(page?.seo && { seo: page.seo }),
       };
 
+      console.log('[HTML SET]', { source: 'handleSave:payload', length: html?.length || 0 });
+      console.log('[CSS SET]', { source: 'handleSave:payload', length: css?.length || 0 });
+
       const updated = await websiteWizardApi.updatePage(pageId, payload);
 
+
+      // FIX: after a save we update metadata (page record, status, cache) but
+      // do NOT call setHtml/setCss from the server response. The editor already
+      // has the canonical content — the user just edited it. Overwriting html/css
+      // state with server-normalised HTML would trigger a new prop delivery into
+      // GrapesPageEditor, which (before the GPE fix) could blank the canvas.
+      // The editor's onChange keeps html/css state current; no re-sync needed here.
       setPage(updated);
       setPageStatus(updated?.status || "Draft");
-      const initial = safeGetInitialContent(updated);
-      setHtml(initial.html);
-      setCss(initial.css);
 
-      cachePage(updated._id || pageId, updated);
+      cachePage(updated._id || pageId, {
+        ...updated,
+        // Keep the content the editor has, not whatever the server returned,
+        // so a subsequent refresh rehydrates exactly what is on the canvas.
+        content: { html, css },
+      });
+
       setSavedAt(new Date());
       setIsDirty(false);
       message.success("Page saved.");
@@ -580,4 +613,3 @@ const BccBuilder = () => {
 };
 
 export default BccBuilder;
-

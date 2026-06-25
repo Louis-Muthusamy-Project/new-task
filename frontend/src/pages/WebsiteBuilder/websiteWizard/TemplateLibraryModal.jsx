@@ -143,7 +143,6 @@ async function parseWebsiteZip(file) {
     // backend's normalisation. Non-home pages use just the slugified base name
     // (without the site prefix) so backend slug deduplication works cleanly.
     const slug = isHome ? "home" : slugify(baseName);
-    console.log('[parseWebsiteZip] page slug:', slug, 'isHome:', isHome, 'path:', path);
     return {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       name: isHome ? "Home" : toTitleCase(baseName),
@@ -165,10 +164,6 @@ async function parseWebsiteZip(file) {
 
   // ── [VERIFY LOG 1] ZIP parse complete ─────────────────────────────────────
   console.group('%c[VERIFY 1] parseWebsiteZip — result', 'color:#10b981;font-weight:bold');
-  console.log('siteName     :', siteName);
-  console.log('baseSlug     :', baseSlug);
-  console.log('HTML files   :', htmlFiles);
-  console.log('page count   :', pages.length);
   console.table(pages.map(({ name, slug, isHome, status, sourcePath }) => ({ name, slug, isHome, status, sourcePath })));
   console.groupEnd();
 
@@ -276,9 +271,6 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
 
       // ── [VERIFY LOG 2] Template stored in library ────────────────────────
       console.group('%c[VERIFY 2] handleUploadToLibrary — template entry stored', 'color:#3b82f6;font-weight:bold');
-      console.log('entry.id             :', entry.id);
-      console.log('entry.name           :', entry.name);
-      console.log('entry.parsed.pages   :', entry.parsed.pages.length, 'pages');
       console.table(entry.parsed.pages.map(({ name, slug, isHome, status }) => ({ name, slug, isHome, status })));
       console.groupEnd();
 
@@ -316,12 +308,6 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
           websiteName: finalName,
         });
 
-        console.log('[handleCreateFromZip] backend response:', {
-          success: response?.success,
-          websiteId: response?.website?._id,
-          pagesCount: response?.pages?.length,
-        });
-
         if (!response?.success) {
           throw new Error(response?.error || 'Backend upload returned failure.');
         }
@@ -339,7 +325,6 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
         response?.website?.templateZipCloudinaryUrl ||
         '';
 
-      console.log('[handleCreateFromZip] calling onCreate with websiteId:', response.website?._id, 'pages:', response.pages?.length);
 
       onCreate({
         // Pass the real backend-created website + pages so the editor can
@@ -423,20 +408,12 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
 
       // ── [VERIFY LOG 3] Pages ready for website creation ──────────────────
       console.group('%c[VERIFY 3] handleCreateFromTemplate — pages before website creation', 'color:#f59e0b;font-weight:bold');
-      console.log('template.id          :', template.id);
-      console.log('template.name        :', template.name);
-      console.log('page count           :', parsedPages.length, '(sorted home-first)');
       console.table(parsedPages.map(({ name, slug, isHome, status }) => ({ name, slug, isHome, status })));
       console.groupEnd();
 
       const createdPages = await Promise.all(
         parsedPages.map(async (page) => {
-          // ── [VERIFY LOG 4] createPage request ──────────────────────────
-          console.log(
-            '%c[VERIFY 4] createPage REQUEST',
-            'color:#8b5cf6;font-weight:bold',
-            { websiteId, name: page.name, slug: page.slug, isHome: page.isHome, status: page.status || 'Draft' }
-          );
+
 
           const created = await websiteWizardApi.createPage({
             websiteId,
@@ -447,12 +424,7 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
             content: page.content || {},
           });
 
-          // ── [VERIFY LOG 5] createPage response ─────────────────────────
-          console.log(
-            '%c[VERIFY 5] createPage RESPONSE',
-            'color:#06b6d4;font-weight:bold',
-            { _id: created._id || created.id, name: created.name, slug: created.slug, isHome: created.isHome, status: created.status }
-          );
+
 
           return created;
         })
@@ -460,9 +432,6 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
 
       // ── [VERIFY LOG 6] Final summary ─────────────────────────────────────
       console.group('%c[VERIFY 6] handleCreateFromTemplate — final result', 'color:#10b981;font-weight:bold');
-      console.log('website._id          :', savedWebsite._id || savedWebsite.id);
-      console.log('website.name         :', savedWebsite.websiteName || savedWebsite.name);
-      console.log('createdPages.length  :', createdPages.length);
       console.table(createdPages.map((p) => ({ _id: p._id || p.id, name: p.name, slug: p.slug, isHome: p.isHome, status: p.status })));
       console.groupEnd();
 
@@ -653,75 +622,75 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
 
             {/* Upload ZIP panel */}
             {showUploadPanel && (
-            <div
-              style={{
-                background: "rgba(16, 185, 129, 0.08)",
-                border: "1px solid rgba(16, 185, 129, 0.25)",
-                borderRadius: 12,
-                padding: 20,
-              }}
-            >
-              <Text style={{ fontSize: 13, color: "var(--text-primary)", fontWeight: 600, display: "block", marginBottom: 14 }}>
-                ZIP with <code style={{ background: "var(--bg-tertiary)", padding: "2px 6px", borderRadius: 4 }}>index.html</code> and assets folders.
-              </Text>
+              <div
+                style={{
+                  background: "rgba(16, 185, 129, 0.08)",
+                  border: "1px solid rgba(16, 185, 129, 0.25)",
+                  borderRadius: 12,
+                  padding: 20,
+                }}
+              >
+                <Text style={{ fontSize: 13, color: "var(--text-primary)", fontWeight: 600, display: "block", marginBottom: 14 }}>
+                  ZIP with <code style={{ background: "var(--bg-tertiary)", padding: "2px 6px", borderRadius: 4 }}>index.html</code> and assets folders.
+                </Text>
 
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Input
-                    placeholder="Template name (optional)"
-                    value={zipTemplateName}
-                    onChange={(e) => setZipTemplateName(e.target.value)}
-                    style={{ borderRadius: 8, height: 40 }}
-                  />
-                </Col>
-                <Col span={12}>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".zip"
-                    onChange={handleFileChange}
-                    style={{
-                      width: "100%",
-                      height: 40,
-                      padding: "6px 12px",
-                      borderRadius: 8,
-                      border: "1px solid var(--border-color)",
-                      background: "var(--bg-primary)",
-                      color: "var(--text-primary)",
-                    }}
-                  />
-                </Col>
-              </Row>
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Input
+                      placeholder="Template name (optional)"
+                      value={zipTemplateName}
+                      onChange={(e) => setZipTemplateName(e.target.value)}
+                      style={{ borderRadius: 8, height: 40 }}
+                    />
+                  </Col>
+                  <Col span={12}>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".zip"
+                      onChange={handleFileChange}
+                      style={{
+                        width: "100%",
+                        height: 40,
+                        padding: "6px 12px",
+                        borderRadius: 8,
+                        border: "1px solid var(--border-color)",
+                        background: "var(--bg-primary)",
+                        color: "var(--text-primary)",
+                      }}
+                    />
+                  </Col>
+                </Row>
 
-              <Space style={{ marginTop: 14 }}>
-                <Button
-                  type="primary"
-                  loading={parsing}
-                  onClick={handleUploadToLibrary}
-                  style={{ backgroundColor: "var(--accent-success)", border: "none", borderRadius: 8, height: 40, fontWeight: 700, padding: "0 20px" }}
-                >
-                  Upload
-                </Button>
-                <Button
-                  loading={parsing}
-                  onClick={handleCreateFromZip}
-                  style={{ borderRadius: 8, height: 40, fontWeight: 700, padding: "0 20px", borderColor: "var(--accent-success)", color: "var(--accent-success)" }}
-                >
-                  Create from ZIP
-                </Button>
-              </Space>
+                <Space style={{ marginTop: 14 }}>
+                  <Button
+                    type="primary"
+                    loading={parsing}
+                    onClick={handleUploadToLibrary}
+                    style={{ backgroundColor: "var(--accent-success)", border: "none", borderRadius: 8, height: 40, fontWeight: 700, padding: "0 20px" }}
+                  >
+                    Upload
+                  </Button>
+                  <Button
+                    loading={parsing}
+                    onClick={handleCreateFromZip}
+                    style={{ borderRadius: 8, height: 40, fontWeight: 700, padding: "0 20px", borderColor: "var(--accent-success)", color: "var(--accent-success)" }}
+                  >
+                    Create from ZIP
+                  </Button>
+                </Space>
 
-              {error && (
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, color: "var(--accent-danger)", fontSize: 13, fontWeight: 600 }}>
-                  <AlertCircle size={15} /> {error}
-                </div>
-              )}
-              {uploadedNotice && !error && (
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, color: "var(--accent-success)", fontSize: 13, fontWeight: 600 }}>
-                  <CheckCircle2 size={15} /> {uploadedNotice}
-                </div>
-              )}
-            </div>
+                {error && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, color: "var(--accent-danger)", fontSize: 13, fontWeight: 600 }}>
+                    <AlertCircle size={15} /> {error}
+                  </div>
+                )}
+                {uploadedNotice && !error && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, color: "var(--accent-success)", fontSize: 13, fontWeight: 600 }}>
+                    <CheckCircle2 size={15} /> {uploadedNotice}
+                  </div>
+                )}
+              </div>
             )}
           </div>
 

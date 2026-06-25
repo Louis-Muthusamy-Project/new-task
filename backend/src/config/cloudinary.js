@@ -8,9 +8,6 @@ cloudinary.config({
 });
 
 /**
- * Uploads a file buffer to Cloudinary using an upload_stream, so the file
- * never has to be written to local disk first (works directly with
- * multer's memoryStorage).
  *
  * @param {Buffer} fileBuffer - Raw file contents.
  * @param {Object} [options]

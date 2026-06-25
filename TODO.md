@@ -1,6 +1,9 @@
-- [ ] Add temporary logs in WebsiteEditPage and GrapesPageEditor (requested by task).
-- [ ] Identify exact overwrite trigger by correlating logs (page/html length drop, GrapesPageEditor sync calls).
-- [ ] Fix root cause: prevent GrapesPageEditor from calling setComponents/setStyle after initial load unless pageId/websiteId/user switch.
-- [ ] Add empty-content protection to block suspicious overwrites.
-- [ ] Ensure no new loops: verify GrapesPageEditor onChange does not re-trigger props sync.
-- [ ] Run frontend tests/build (at least `npm test`/`npm run build`) and manually verify: open Page A, wait 1-3s, canvas stays stable; switch pages A/B and back.
+# ZIP import pipeline fix (websiteTemplateController)
+
+- [ ] Update plan-based edits: remove DOMParser usage and implement server-safe CSS extraction.
+- [ ] Refactor convertAssetsInHtml to avoid async replace callback bug; use await + string reconstruction so replacements actually happen.
+- [ ] Ensure page content stored as { html: bodyOnly, css: extractedCss, sourcePath }.
+- [ ] Verify inline CSS from ZIP files is preserved during inlining + extraction; fix any missing steps.
+- [ ] Add detailed logs for extractedCss length, bodyHtml length, finalHtml length, page slug, page id.
+- [ ] Run backend lint/tests (or start server) to confirm no syntax/runtime errors.
+

@@ -6,11 +6,6 @@ const jwtMiddleware = require('../middlewares/jwtMiddleware');
 
 const router = express.Router();
 
-// Mounted under /api/website-builder
-// Expected endpoints from controller:
-//   POST /websites/:websiteId/domains
-//   GET  /websites/:websiteId/domains
-//   DELETE /domains/:id
 
 router.use(jwtMiddleware);
 

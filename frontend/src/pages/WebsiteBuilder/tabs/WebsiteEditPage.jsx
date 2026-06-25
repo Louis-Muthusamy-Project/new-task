@@ -34,7 +34,6 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
       return;
     }
 
-    console.log("[EDIT NAVIGATION]", websiteId, resolvedPageId);
     navigate(
       `/websites/${websiteId}/pages/${resolvedPageId}`,
       {
@@ -67,8 +66,7 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
       return;
     }
 
-    console.log("[WebsiteEditPage] fetchPages START for websiteId:", websiteDbId);
-
+   
     try {
       // unwrapSuccess returns json.data directly, so resp is the pages array
       const resp = await websiteWizardApi.listPagesByWebsite(websiteDbId);
@@ -77,21 +75,18 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
       // Defensively handle both shapes.
       const apiPages = Array.isArray(resp) ? resp : resp?.data;
 
-      console.log("[WebsiteEditPage] fetchPages raw resp type:", typeof resp, "isArray:", Array.isArray(resp), "count:", apiPages?.length);
-
+     
       if (!Array.isArray(apiPages)) {
         console.warn("[WebsiteEditPage] Unexpected pages payload shape:", resp);
         return;
       }
 
-      console.log("[WebsiteEditPage] fetchPages received", apiPages.length, "pages from backend");
-
+      
       const normalizedPages = apiPages.map((p) => {
         const slug = normalizeSlug(p.slug);
         // FIX: isHome should also check the database field — "home" slug is the
         // primary indicator after our slug fix, but keep p.isHome as authoritative.
         const isHome = !!p.isHome || slug === "home" || slug === "index";
-        console.log("[WebsiteEditPage] normalizing page:", p.name, "slug:", slug, "isHome:", isHome, "_id:", p._id);
         return {
           // Preserve both _id and id so handleEditInBuilder can resolve either
           _id: p._id,
@@ -105,8 +100,7 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
         };
       });
 
-      console.log("[WebsiteEditPage] fetchPages normalized", normalizedPages.length, "pages — setting state");
-
+      
       setWebsite((prev) => {
         const next = { ...prev, pages: normalizedPages };
         onChange && onChange(next);
