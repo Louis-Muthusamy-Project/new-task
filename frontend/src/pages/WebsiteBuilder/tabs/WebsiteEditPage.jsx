@@ -66,7 +66,7 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
       return;
     }
 
-   
+
     try {
       // unwrapSuccess returns json.data directly, so resp is the pages array
       const resp = await websiteWizardApi.listPagesByWebsite(websiteDbId);
@@ -75,13 +75,13 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
       // Defensively handle both shapes.
       const apiPages = Array.isArray(resp) ? resp : resp?.data;
 
-     
+
       if (!Array.isArray(apiPages)) {
         console.warn("[WebsiteEditPage] Unexpected pages payload shape:", resp);
         return;
       }
 
-      
+
       const normalizedPages = apiPages.map((p) => {
         const slug = normalizeSlug(p.slug);
         // FIX: isHome should also check the database field — "home" slug is the
@@ -99,8 +99,29 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
           seo: p.seo,
         };
       });
+      console.log("========== API PAGES ==========");
+      console.log(apiPages);
 
-      
+      apiPages.forEach((p, index) => {
+        console.log(`PAGE ${index + 1}`, {
+          id: p._id,
+          name: p.name,
+          slug: p.slug,
+          content: p.content,
+          htmlLength: p?.content?.html?.length || 0,
+          cssLength: p?.content?.css?.length || 0,
+          hasImgTag: p?.content?.html?.includes("<img"),
+          hasDataImage: p?.content?.html?.includes("data:image"),
+          hasCloudinary: p?.content?.html?.includes("cloudinary"),
+        });
+        console.log(
+  "IMG SOURCES",
+  p?.content?.html?.match(/<img[^>]+src=["']([^"']+)["']/gi)
+);
+      });
+
+      console.log("==============================");
+
       setWebsite((prev) => {
         const next = { ...prev, pages: normalizedPages };
         onChange && onChange(next);
