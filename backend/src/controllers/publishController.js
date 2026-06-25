@@ -51,7 +51,7 @@ exports.publishWebsite = async (req, res) => {
     throw notFoundError('Website not found.');
   }
 
-  const { publishUrl } = await publishService.publishWebsite(websiteId, triggeredBy);
+  const { publishUrl } = await publishService.publishWebsite(websiteId, triggeredBy, req);
 
   res.status(200).json({
     success: true,

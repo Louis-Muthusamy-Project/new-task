@@ -31,155 +31,180 @@ function toTitleCase(str) {
 }
 
 function slugify(str) {
-  return str
-    .toLowerCase()
-    .replace(/[_\s]+/g, "-")
-    .replace(/[^a-z0-9-]/g, "")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
+   return str
+     .toLowerCase()
+     .replace(/[_\s]+/g, "-")
+     .replace(/[^a-z0-9-]/g, "")
+     .replace(/-+/g, "-")
+     .replace(/^-|-$/g, "");
+ }
 
-/**
- * Reads a .zip File and turns every .html/.htm file it finds into a "page".
- * - The root folder name (if the zip contains one) seeds the site name + slug.
- * - index.html (or index.htm) becomes the Home page.
- * - Every other html file becomes an additional page, named from its filename.
- */
-async function parseWebsiteZip(file) {
-  const zip = await JSZip.loadAsync(file);
+ // Extract body HTML from full document
+ const extractBodyHtml = (htmlString) => {
+   if (!htmlString) return '';
+   const bodyMatch = htmlString.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i);
+   if (bodyMatch && bodyMatch[1] != null) return bodyMatch[1];
+   return htmlString;
+ };
 
-  const htmlFiles = [];
-  const cssFiles = [];
-  const jsFiles = [];
-  const imageFiles = [];
-  const docFiles = [];
+ // Extract CSS from inline <style> tags
+ const extractCssFromHtml = (htmlString) => {
+   if (!htmlString) return '';
+   const styleBlocks = [];
+   const styleRe = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
+   let m;
+   while ((m = styleRe.exec(htmlString)) !== null) {
+     const css = (m[1] || '').trim();
+     if (css) styleBlocks.push(css);
+   }
+   return styleBlocks.join('\n');
+ };
 
-  // Collect file paths (and sizes when available)
-  const fileEntries = [];
-  zip.forEach((relativePath, entry) => {
-    if (entry.dir) return;
-    const lower = relativePath.toLowerCase();
-    fileEntries.push({ relativePath, entry });
+ /**
+  * Reads a .zip File and turns every .html/.htm file it finds into a "page".
+  * - The root folder name (if the zip contains one) seeds the site name + slug.
+  * - index.html (or index.htm) becomes the Home page.
+  * - Every other html file becomes an additional page, named from its filename.
+  * - HTML content is extracted and stored in page.content for GrapesJS.
+  */
+ async function parseWebsiteZip(file) {
+   const zip = await JSZip.loadAsync(file);
 
-    if (/\.html?$/i.test(relativePath)) htmlFiles.push(relativePath);
-    else if (/\.css$/i.test(relativePath)) cssFiles.push(relativePath);
-    else if (/\.js$/i.test(relativePath)) jsFiles.push(relativePath);
-    else if (/\.(png|jpe?g|gif|webp|svg|ico|bmp)$/i.test(lower)) imageFiles.push(relativePath);
-    else if (/\.(pdf|docx?|xlsx?|pptx?|txt|rtf|zip|rar|7z)$/i.test(lower)) docFiles.push(relativePath);
-  });
+   const htmlFiles = [];
+   const cssFiles = [];
+   const jsFiles = [];
+   const imageFiles = [];
+   const docFiles = [];
 
-  if (htmlFiles.length === 0) {
-    throw new Error("ZIP must contain at least one HTML page.");
-  }
+   // Collect file paths (and sizes when available)
+   const fileEntries = [];
+   zip.forEach((relativePath, entry) => {
+     if (entry.dir) return;
+     const lower = relativePath.toLowerCase();
+     fileEntries.push({ relativePath, entry });
 
-  // Require at least index.html or index.htm
-  const hasIndex = htmlFiles.some((filePath) => /(^|\/)index\.html?$/i.test(filePath));
-  if (!hasIndex) {
-    throw new Error("ZIP must contain an index.html file.");
-  }
+     if (/\.html?$/i.test(relativePath)) htmlFiles.push(relativePath);
+     else if (/\.css$/i.test(relativePath)) cssFiles.push(relativePath);
+     else if (/\.js$/i.test(relativePath)) jsFiles.push(relativePath);
+     else if (/\.(png|jpe?g|gif|webp|svg|ico|bmp)$/i.test(lower)) imageFiles.push(relativePath);
+     else if (/\.(pdf|docx?|xlsx?|pptx?|txt|rtf|zip|rar|7z)$/i.test(lower)) docFiles.push(relativePath);
+   });
 
-  // HTML content validation (size/emptiness/basic corruption guard)
-  const htmlValidation = await Promise.all(
-    htmlFiles.map(async (path) => {
-      const entry = zip.file(path);
-      if (!entry) return { path, valid: false };
-      const size = entry._data?.uncompressedSize ?? entry._data?.size ?? 0;
-      if (!size) return { path, valid: false, reason: 'EMPTY' };
+// Read HTML content, extract body, and validate in one pass
+   const htmlFileData = await Promise.all(
+     htmlFiles.map(async (path) => {
+       const entry = zip.file(path);
+       if (!entry) return null;
+       
+       const size = entry._data?.uncompressedSize ?? entry._data?.size ?? 0;
+       if (!size) return { path, valid: false, reason: 'EMPTY' };
+       
+       try {
+         const html = await entry.async('string');
+         const trimmed = (html || '').trim();
+         if (!trimmed) return { path, valid: false, reason: 'EMPTY' };
+         
+         const looksLikeHtml = /<\s*html\b/i.test(trimmed) || /<\s*body\b/i.test(trimmed) || /<\s*head\b/i.test(trimmed);
+         if (!looksLikeHtml) {
+           return { path, valid: false, reason: 'CORRUPTED' };
+         }
+         
+         const bodyHtml = extractBodyHtml(html);
+         const extractedCss = extractCssFromHtml(html);
+         return { path, valid: true, bodyHtml, extractedCss };
+       } catch (e) {
+         return { path, valid: false, reason: 'CORRUPTED' };
+       }
+     })
+   );
 
-      try {
-        const text = await entry.async('string');
-        const trimmed = (text || '').trim();
-        if (!trimmed) return { path, valid: false, reason: 'EMPTY' };
+   const validHtml = htmlFileData.filter(Boolean).filter((x) => x.valid);
+   if (validHtml.length === 0) {
+     throw new Error("ZIP must contain at least one valid HTML page.");
+   }
 
-        // quick sanity checks (not a full HTML parser)
-        const looksLikeHtml = /<\s*html\b/i.test(trimmed) || /<\s*body\b/i.test(trimmed) || /<\s*head\b/i.test(trimmed);
-        if (!looksLikeHtml) {
-          // Treat as corrupted/invalid HTML
-          return { path, valid: false, reason: 'CORRUPTED' };
-        }
+   // Require at least index.html or index.htm
+   const hasIndex = htmlFiles.some((filePath) => /(^|\/)index\.html?$/i.test(filePath));
+   if (!hasIndex) {
+     throw new Error("ZIP must contain an index.html file.");
+   }
 
-        return { path, valid: true };
-      } catch (e) {
-        return { path, valid: false, reason: 'CORRUPTED' };
-      }
-    })
-  );
+   // Asset-only rejection rules
+   const hasOnly = (arr) => arr.length > 0;
+   const hasCss = cssFiles.length > 0;
+   const hasJs = jsFiles.length > 0;
+   const hasImages = imageFiles.length > 0;
+   const hasDocs = docFiles.length > 0;
 
-  const firstInvalid = htmlValidation.find((v) => !v.valid);
-  if (firstInvalid) {
-    throw new Error("Uploaded ZIP is not a valid website template.");
-  }
+   // if zip contains html+index but nothing else that's not required; only reject
+   // for the explicit cases requested.
+   // Requested reject cases that can still happen with HTML present:
+   // - "ZIP contains only assets" (meaning no index.html/index.htm; already handled)
+   // - "ZIP contains only images/CSS/JS/documents only" (no HTML; already handled)
 
-  // Asset-only rejection rules
-  const hasOnly = (arr) => arr.length > 0;
-  const hasCss = cssFiles.length > 0;
-  const hasJs = jsFiles.length > 0;
-  const hasImages = imageFiles.length > 0;
-  const hasDocs = docFiles.length > 0;
+   // Derive base slug/site name
+   htmlFiles.sort((a, b) => a.split("/").length - b.split("/").length);
+   const firstSegments = htmlFiles[0].split("/");
+   const rootFolder = firstSegments.length > 1 ? firstSegments[0] : null;
 
-  // if zip contains html+index but nothing else that's not required; only reject
-  // for the explicit cases requested.
-  // Requested reject cases that can still happen with HTML present:
-  // - “ZIP contains only assets” (meaning no index.html/index.htm; already handled)
-  // - “ZIP contains only images/CSS/JS/documents only” (no HTML; already handled)
+   const rawBase = rootFolder
+     ? rootFolder.replace(TEMPLATEMO_PREFIX_RE, "")
+     : file.name.replace(/\.zip$/i, "");
 
-  // Derive base slug/site name
-  htmlFiles.sort((a, b) => a.split("/").length - b.split("/").length);
-  const firstSegments = htmlFiles[0].split("/");
-  const rootFolder = firstSegments.length > 1 ? firstSegments[0] : null;
+   const baseSlug = slugify(rawBase) || slugify(file.name.replace(/\.zip$/i, "")) || "site";
+   const siteName = toTitleCase(rawBase) || "Untitled Site";
 
-  const rawBase = rootFolder
-    ? rootFolder.replace(TEMPLATEMO_PREFIX_RE, "")
-    : file.name.replace(/\.zip$/i, "");
+   // Build pages with extracted content from valid HTML files
+   let pages = validHtml.map(({ path, bodyHtml, extractedCss }) => {
+     const fileName = path.split("/").pop();
+     const baseName = fileName.replace(/\.html?$/i, "");
+     const isHome = baseName.toLowerCase() === "index";
+     const slug = isHome ? "home" : slugify(baseName);
+     return {
+       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+       name: isHome ? "Home" : toTitleCase(baseName),
+       slug,
+       isHome,
+       status: "Draft",
+       sourcePath: path,
+       content: {
+         html: bodyHtml,
+         css: extractedCss,
+       },
+     };
+   });
 
-  const baseSlug = slugify(rawBase) || slugify(file.name.replace(/\.zip$/i, "")) || "site";
-  const siteName = toTitleCase(rawBase) || "Untitled Site";
+   // Guarantee exactly one Home page.
+   if (!pages.some((p) => p.isHome)) {
+     pages = pages.map((p, i) => (i === 0 ? { ...p, isHome: true } : p));
+   }
 
-  let pages = htmlFiles.map((path) => {
-    const fileName = path.split("/").pop();
-    const baseName = fileName.replace(/\.html?$/i, "");
-    const isHome = baseName.toLowerCase() === "index";
-    // FIX: Use "home" (no leading slash) for the home page so it matches the
-    // backend's normalisation. Non-home pages use just the slugified base name
-    // (without the site prefix) so backend slug deduplication works cleanly.
-    const slug = isHome ? "home" : slugify(baseName);
-    return {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name: isHome ? "Home" : toTitleCase(baseName),
-      slug,
-      isHome,
-      status: "Draft",
-      sourcePath: path,
-    };
-  });
+   pages.sort((a, b) =>
+     a.isHome === b.isHome ? a.name.localeCompare(b.name) : a.isHome ? -1 : 1
+   );
 
-  // Guarantee exactly one Home page.
-  if (!pages.some((p) => p.isHome)) {
-    pages = pages.map((p, i) => (i === 0 ? { ...p, isHome: true } : p));
-  }
+   // ── [VERIFY LOG 1] ZIP parse complete ─────────────────────────────────────
+   console.group('%c[VERIFY 1] parseWebsiteZip — result', 'color:#10b981;font-weight:bold');
+   console.table(pages.map(({ name, slug, isHome, status, sourcePath, content }) => ({ 
+     name, slug, isHome, status, sourcePath,
+     htmlLen: content?.html?.length || 0,
+     cssLen: content?.css?.length || 0
+   })));
+   console.groupEnd();
 
-  pages.sort((a, b) =>
-    a.isHome === b.isHome ? a.name.localeCompare(b.name) : a.isHome ? -1 : 1
-  );
-
-  // ── [VERIFY LOG 1] ZIP parse complete ─────────────────────────────────────
-  console.group('%c[VERIFY 1] parseWebsiteZip — result', 'color:#10b981;font-weight:bold');
-  console.table(pages.map(({ name, slug, isHome, status, sourcePath }) => ({ name, slug, isHome, status, sourcePath })));
-  console.groupEnd();
-
-  return {
-    siteName,
-    baseSlug,
-    pages,
-    fileCount: htmlFiles.length,
-    warnings: {
-      cssMissing: !hasCss,
-      jsMissing: !hasJs,
-      imagesMissing: !hasImages,
-      documentsOnly: hasDocs && !hasImages && !hasCss && !hasJs,
-    },
-  };
-}
+   return {
+     siteName,
+     baseSlug,
+     pages,
+     fileCount: htmlFiles.length,
+     warnings: {
+       cssMissing: !hasCss,
+       jsMissing: !hasJs,
+       imagesMissing: !hasImages,
+       documentsOnly: hasDocs && !hasImages && !hasCss && !hasJs,
+     },
+   };
+ }
 
 /* ---------------------------------------------------------------------- */
 /* Demo template catalog (prebuilt templates shown in the grid)            */
@@ -271,7 +296,11 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
 
       // ── [VERIFY LOG 2] Template stored in library ────────────────────────
       console.group('%c[VERIFY 2] handleUploadToLibrary — template entry stored', 'color:#3b82f6;font-weight:bold');
-      console.table(entry.parsed.pages.map(({ name, slug, isHome, status }) => ({ name, slug, isHome, status })));
+      console.table(entry.parsed.pages.map(({ name, slug, isHome, status, content }) => ({ 
+        name, slug, isHome, status, 
+        htmlLen: content?.html?.length || 0,
+        cssLen: content?.css?.length || 0
+      })));
       console.groupEnd();
 
       setCustomTemplates((prev) => [entry, ...prev]);
@@ -371,9 +400,9 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
         source: "template",
         templateName: template.name,
         pages: [
-          { id: `${Date.now()}-home`, name: "Home", slug: "/", isHome: true, status: "Draft" },
-          { id: `${Date.now()}-about`, name: "About", slug: "/about", isHome: false, status: "Draft" },
-          { id: `${Date.now()}-contact`, name: "Contact", slug: "/contact", isHome: false, status: "Draft" },
+          { id: `${Date.now()}-home`, name: "Home", slug: "home", isHome: true, status: "Draft" },
+          { id: `${Date.now()}-about`, name: "About", slug: "about", isHome: false, status: "Draft" },
+          { id: `${Date.now()}-contact`, name: "Contact", slug: "contact", isHome: false, status: "Draft" },
         ],
       });
       return;
@@ -406,15 +435,17 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
         (a, b) => (a.isHome === b.isHome ? 0 : a.isHome ? -1 : 1)
       );
 
-      // ── [VERIFY LOG 3] Pages ready for website creation ──────────────────
+// ── [VERIFY LOG 3] Pages ready for website creation ──────────────────
       console.group('%c[VERIFY 3] handleCreateFromTemplate — pages before website creation', 'color:#f59e0b;font-weight:bold');
-      console.table(parsedPages.map(({ name, slug, isHome, status }) => ({ name, slug, isHome, status })));
+      console.table(parsedPages.map(({ name, slug, isHome, status, content }) => ({ 
+        name, slug, isHome, status, 
+        htmlLen: content?.html?.length || 0,
+        cssLen: content?.css?.length || 0 
+      })));
       console.groupEnd();
 
       const createdPages = await Promise.all(
         parsedPages.map(async (page) => {
-
-
           const created = await websiteWizardApi.createPage({
             websiteId,
             name: page.name,
@@ -423,8 +454,6 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
             status: page.status || "Draft",
             content: page.content || {},
           });
-
-
 
           return created;
         })

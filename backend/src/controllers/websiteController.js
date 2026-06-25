@@ -53,7 +53,9 @@ exports.createWebsite = async (req, res) => {
   const ownerId = req?.user?.id || req?.user?._id || null;
 
   const website = await Website.create({
+    ownerId: ownerId || new (require('mongoose').Types.ObjectId)(),
     name: resolvedWebsiteName,
+    websiteName: resolvedWebsiteName,
     description: description || '',
     domain: customDomain || domain || '',
     category: category || undefined,
@@ -140,7 +142,6 @@ exports.getWebsiteById = async (req, res) => {
  */
 exports.updateWebsite = async (req, res) => {
   const { id } = req.params;
-  
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
     throw invalidIdError();
@@ -164,9 +165,11 @@ exports.updateWebsite = async (req, res) => {
       updates[field] = req.body[field];
     }
   }
-  const website = await Website.findByIdAndUpdate(
-
-    id,
+  const website = await Website.findOneAndUpdate(
+    {
+      _id: id,
+      ...buildOwnershipFilter(req),
+    },
     { $set: updates },
     {
       returnDocument: "after",
@@ -260,21 +263,22 @@ exports.previewWebsite = async (req, res) => {
     throw invalidIdError();
   }
 
-  // Enforce ownership the same way every other controller action does.
- const website = await Website.findById(id);
+  const website = await Website.findOne({
+    _id: id,
+    ...buildOwnershipFilter(req),
+    isDeleted: false,
+  });
 
   if (!website) {
     throw notFoundError();
   }
 
-  // Lazy-require to avoid circular dependency risk (WebsitePage is only
-  // needed here and in the duplicate flow).
   const WebsitePage = require('../models/WebsitePage');
 
- const pages = await WebsitePage.find({
-  websiteId: website._id,
-  isDeleted: false
-})
+  const pages = await WebsitePage.find({
+    websiteId: website._id,
+    isDeleted: false
+  })
     .sort({ isHome: -1, createdAt: 1 })
     .lean();
 

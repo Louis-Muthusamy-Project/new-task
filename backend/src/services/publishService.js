@@ -3,6 +3,13 @@ const WebsitePage = require('../models/WebsitePage');
 const WebsiteDomain = require('../models/WebsiteDomain');
 const PublishHistory = require('../models/PublishHistory');
 
+const buildOwnershipFilter = (req) => {
+  const ownerId = req?.user?.id || req?.user?._id || null;
+  const teamId = req?.user?.teamId || null;
+  if (!ownerId && !teamId) return {};
+  return teamId ? { $or: [{ ownerId }, { teamId }] } : { ownerId };
+};
+
 
 const notFoundError = (message) => {
   const error = new Error(message);
@@ -68,9 +75,12 @@ const buildWebsiteSnapshot = (website, pages) => ({
  * @param {string} triggeredBy - id of the user triggering the publish
  * @returns {Promise<{ publishUrl: string, website: object, publishHistory: object }>}
  */
-const publishWebsite = async (websiteId, triggeredBy) => {
-  // 1. Fetch Website
-  const website = await Website.findOne({ _id: websiteId, isDeleted: false });
+const publishWebsite = async (websiteId, triggeredBy, req) => {
+  const website = await Website.findOne({
+    _id: websiteId,
+    isDeleted: false,
+    ...(req ? buildOwnershipFilter(req) : {}),
+  });
   if (!website) {
     throw notFoundError('Website not found.');
   }

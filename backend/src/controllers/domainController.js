@@ -68,10 +68,6 @@ exports.createDomain = async (req, res) => {
   const { domain, isPrimary, dnsRecords } = req.body;
   const normalizedDomain = String(domain).trim().toLowerCase();
 
-  if (!ownerId) {
-    throw Object.assign(new Error('Authentication required.'), { statusCode: 401 });
-  }
-
 
   const existing = await WebsiteDomain.findOne({ domain: normalizedDomain });
   if (existing) {

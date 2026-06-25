@@ -18,6 +18,16 @@ const CATEGORIES = [
 
 import { websiteWizardApi } from '../../../api/websiteWizardApi';
 
+// Used only if the /api/templates request fails (e.g. backend not wired up yet)
+const FALLBACK_TEMPLATES = [
+  { id: "t1", name: "Prestige Realty", category: "Real Estate", description: "Luxury listings + agent bios", pages: ["Home", "Listings", "About", "Contact"] },
+  { id: "t2", name: "Daily Grind Cafe", category: "Restaurant", description: "Menu, hours, and location", pages: ["Home", "Menu", "Contact"] },
+  { id: "t3", name: "Bright Minds Academy", category: "Education", description: "Courses + enrollment", pages: ["Home", "Courses", "About", "Contact"] },
+  { id: "t4", name: "Pulse Fitness", category: "Health & Wellness", description: "Classes and trainer profiles", pages: ["Home", "Classes", "Trainers", "Contact"] },
+  { id: "t5", name: "Nimbus SaaS", category: "SaaS / Tech", description: "Product landing + pricing", pages: ["Home", "Pricing", "Features", "Contact"] },
+  { id: "t6", name: "Studio Folio", category: "Portfolio", description: "Minimal creative portfolio", pages: ["Home", "Work", "About"] },
+];
+
 const WebsiteTemplatePage = ({
   websiteName: initialWebsiteName = "",
   onBack,
@@ -262,15 +272,5 @@ const WebsiteTemplatePage = ({
     </div>
   );
 };
-
-// Used only if the /api/templates request fails (e.g. backend not wired up yet)
-const FALLBACK_TEMPLATES = [
-  { id: "t1", name: "Prestige Realty", category: "Real Estate", description: "Luxury listings + agent bios", pages: ["Home", "Listings", "About", "Contact"] },
-  { id: "t2", name: "Daily Grind Cafe", category: "Restaurant", description: "Menu, hours, and location", pages: ["Home", "Menu", "Contact"] },
-  { id: "t3", name: "Bright Minds Academy", category: "Education", description: "Courses + enrollment", pages: ["Home", "Courses", "About", "Contact"] },
-  { id: "t4", name: "Pulse Fitness", category: "Health & Wellness", description: "Classes and trainer profiles", pages: ["Home", "Classes", "Trainers", "Contact"] },
-  { id: "t5", name: "Nimbus SaaS", category: "SaaS / Tech", description: "Product landing + pricing", pages: ["Home", "Pricing", "Features", "Contact"] },
-  { id: "t6", name: "Studio Folio", category: "Portfolio", description: "Minimal creative portfolio", pages: ["Home", "Work", "About"] },
-];
 
 export default WebsiteTemplatePage;
