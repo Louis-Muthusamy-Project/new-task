@@ -13,37 +13,15 @@ const GrapesPageEditor = ({
 }) => {
   const holderRef = useRef(null);
   const editorRef = useRef(null);
-
-  // Prevent recursion when we programmatically set GrapesJS content
   const isSyncingRef = useRef(false);
 
-  // Tracks which pageKey has been successfully written to the canvas.
-  // ONLY set inside applyContentToEditor() — never pre-emptively.
-  // This was the primary bug: setting it before the canvas was ready
-  // meant post-save / post-refresh content was permanently blocked.
   const loadedForPageKeyRef = useRef(null);
 
-  // FIX: mountEpoch is a state counter that increments inside Effect 1 each
-  // time the editor is truly initialised. Adding it to Effect 2's dep array
-  // forces Effect 2 to re-run after every remount — including when
-  // initialHtml/initialCss/pageKey are byte-for-byte identical to the previous
-  // mount. Without this React silently skips Effect 2 on same-page navigation,
-  // leaving pendingContentRef=null and the canvas blank.
   const [mountEpoch, setMountEpoch] = useState(0);
 
-  // GrapesJS canvas lives inside an <iframe> whose DOMContentLoaded fires
-  // 100–300 ms after grapesjs.init(). Calling setComponents before that event
-  // writes to a pre-iframe node the iframe startup then overwrites, leaving
-  // Layers populated but the visible canvas blank.
-  //
-  // Strategy:
-  //   • canvasReadyRef flips true on editor.on('load').
-  //   • Content arriving before 'load' is queued in pendingContentRef.
-  //   • The 'load' handler drains the queue once the iframe is safe to write to.
   const canvasReadyRef = useRef(false);
-  const pendingContentRef = useRef(null); // { html, css, pageKey } | null
+  const pendingContentRef = useRef(null);
 
-  // Stable config — container is passed at init time, not baked into the memo.
   const config = useMemo(() => {
     return {
       height,
@@ -61,10 +39,6 @@ const GrapesPageEditor = ({
         ],
       },
     };
-  // assetManager default `{}` is a new reference each render when the caller
-  // omits the prop. That's fine here — config is only consumed by Effect 1
-  // which has deps:[], so the memo churn has no runtime consequence.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [height]);
 
   const normalizeToBodyAndCss = (rawHtml = '', rawCss = '') => {
@@ -75,67 +49,64 @@ const GrapesPageEditor = ({
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, 'text/html');
 
-      const styleEls = Array.from(doc.querySelectorAll('style'));
-      const extractedCss = styleEls
-        .map((el) => el.textContent || '')
-        .map((t) => t.trim())
+      // Extract only HEAD style tags
+      const headStyles = Array.from(doc.head.querySelectorAll('style'));
+      const extractedCss = headStyles
+        .map(el => el.textContent || '')
         .filter(Boolean)
         .join('\n');
 
-      const bodyHtml = doc.body ? doc.body.innerHTML || '' : '';
-      const mergedCss = [cssBase.trim(), extractedCss].filter(Boolean).join('\n');
+      // Clone body
+      const body = doc.body.cloneNode(true);
 
-      return { componentsHtml: bodyHtml, stylesCss: mergedCss };
-    } catch {
-      return { componentsHtml: html, stylesCss: cssBase };
+      // Remove elements that should never appear inside the editor
+      body.querySelectorAll(`
+      style,
+      script,
+      #spinner,
+      .spinner,
+      .preloader,
+      .loader
+    `).forEach(el => el.remove());
+
+      const bodyHtml = body.innerHTML;
+
+      return {
+        componentsHtml: bodyHtml,
+        stylesCss: [cssBase, extractedCss].filter(Boolean).join('\n'),
+      };
+    } catch (e) {
+      console.error(e);
+
+      return {
+        componentsHtml: html,
+        stylesCss: cssBase,
+      };
     }
   };
 
-  // ── Shared helper: apply html+css to a ready editor ──────────────────────
-  // Must only be called after canvasReadyRef.current === true.
-  // Sets loadedForPageKeyRef AFTER writing — never before.
   const applyContentToEditor = (editor, html, css, key) => {
-    console.log('[GrapesPageEditor] applyContentToEditor', {
-      key,
-      htmlLen: html.length,
-      cssLen: css.length,
-    });
-
 
     const currentHtml = editor.getHtml();
-    const currentCss  = editor.getCss();
+    const currentCss = editor.getCss();
 
-    // Safety valve A (your rule): prevent empty incoming HTML from overwriting substantial current HTML.
-    const currentLen = String(currentHtml || '').length;
-    if (html.length === 0 && currentLen > 1000) {
-      console.warn('[GrapesPageEditor] Blocked empty HTML overwrite', {
-        key,
-        currentHtmlLen: currentLen,
-        incomingHtmlLen: html.length,
-      });
-      return;
-    }
+    // Don't block on empty HTML - just skip the setComponents call but still set the gate
+    const htmlIsEmpty = html.length === 0;
+    const cssIsEmpty = css.length === 0;
 
-    // Safety valve B: don't overwrite substantial existing content with near-empty input.
-    const nextTrimLen = html.trim().length;
-    const currentHtmlTrimLen = String(currentHtml || '').trim().length;
-    if (nextTrimLen < 100 && currentHtmlTrimLen > 1000) {
-      console.warn('[GrapesPageEditor] blocked suspicious near-empty overwrite', {
-        key, nextTrimLen, currentHtmlTrimLen,
-      });
-      return;
-    }
-
-
-    if (html !== currentHtml) {
+    if (!htmlIsEmpty && html !== currentHtml) {
       isSyncingRef.current = true;
-      try   { editor.setComponents(html); }
+      try {
+        editor.setComponents(html);
+      }
+      catch (e) { console.warn('[GrapesPageEditor] setComponents failed:', e); }
       finally { isSyncingRef.current = false; }
     }
 
-    if (css !== currentCss) {
+    if (!cssIsEmpty && css !== currentCss) {
       isSyncingRef.current = true;
-      try   { editor.setStyle(css); }
+      try { editor.setStyle(css); }
+      catch (e) { console.warn('[GrapesPageEditor] setStyle failed:', e); }
       finally { isSyncingRef.current = false; }
     }
 
@@ -162,7 +133,6 @@ const GrapesPageEditor = ({
     if (!holderRef.current) return;
     if (editorRef.current) return; // StrictMode double-invoke guard
 
-    console.log('[GrapesPageEditor] EDITOR_INIT', { pageKey });
 
     const editor = grapesjs.init({
       ...config,
@@ -188,13 +158,21 @@ const GrapesPageEditor = ({
       }
 
       canvasReadyRef.current = true;
-      console.log('[GrapesPageEditor] CANVAS_READY', { pageKey });
 
       const pending = pendingContentRef.current;
       if (pending) {
         pendingContentRef.current = null;
-        console.log('[GrapesPageEditor] draining pending', { pendingPageKey: pending.pageKey });
-        applyContentToEditor(editor, pending.html, pending.css, pending.pageKey);
+        try {
+          applyContentToEditor(editor, pending.html, pending.css, pending.pageKey);
+        } catch (e) {
+          console.error('[GrapesPageEditor] applyContentToEditor in load handler failed:', e);
+        }
+      }
+
+      // If NO pending content, and we have initialHtml/initialCss props, apply them now
+      // (This handles the case where Effect 2 already ran but canvas wasn't ready)
+      if (!pending) {
+        console.log('[GrapesPageEditor] no pending on load, checking props', { initialHtmlLen: initialHtml?.length, initialCssLen: initialCss?.length });
       }
     });
 
@@ -204,19 +182,18 @@ const GrapesPageEditor = ({
       onChange({ html: editor.getHtml(), css: editor.getCss() });
     };
 
-    editor.on('component:update',    handler);
-    editor.on('component:add',       handler);
-    editor.on('component:remove',    handler);
+    editor.on('component:update', handler);
+    editor.on('component:add', handler);
+    editor.on('component:remove', handler);
     editor.on('styleManager:change', handler);
-    editor.on('style:change',        handler);
-    editor.on('canvas:drop',         handler);
-    editor.on('asset:add',           handler);
-    editor.on('asset:upload',        handler);
+    editor.on('style:change', handler);
+    editor.on('canvas:drop', handler);
+    editor.on('asset:add', handler);
+    editor.on('asset:upload', handler);
 
     onEditorReady?.(editor);
 
     return () => {
-      console.log('[GrapesPageEditor] EDITOR_DESTROY', { pageKey });
 
       // Null editorRef FIRST so any in-flight async callbacks (load event,
       // rAF in applyContentToEditor) see editorRef.current !== editor and bail.
@@ -232,53 +209,33 @@ const GrapesPageEditor = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Effect 2: apply content when props change or after a fresh mount ──────
-  //
-  // `mountEpoch` in the dep array is the critical addition. It ensures this
-  // effect always runs after Effect 1 creates a new editor, even when the
-  // parent passes identical initialHtml/initialCss/pageKey values — which
-  // happens on refresh (cache hit) or navigating back to the same page.
-  //
-  // Queue-or-apply:
-  //   • canvas ready  → applyContentToEditor() immediately.
-  //   • canvas not ready → pendingContentRef queued; 'load' handler drains.
-  //
-  // The loadedForPageKeyRef gate is intentionally NOT set when queuing.
-  // It is only set inside applyContentToEditor(). This means:
-  //   (a) a queued-but-not-yet-applied key can still receive a fresh delivery,
-  //   (b) post-save server-normalised HTML can always reach the canvas.
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
 
-    // Already live on canvas — skip to avoid redundant setComponents calls.
-    if (loadedForPageKeyRef.current === pageKey) return;
+    // CRITICAL FIX: Only skip if we have non-trivial content already loaded.
+    // Empty content from initial render must NOT block later real content.
+    const current = loadedForPageKeyRef.current;
+    if (current === pageKey) {
+      const currentHtml = editor.getHtml();
+      const hasRealContent = currentHtml && currentHtml.length > 200;
+      if (hasRealContent) {
+        // Already has meaningful content, skip to avoid redundant setComponents
+        return;
+      }
+      // Has only empty/placeholder content — allow re-apply with real content
+    }
 
     const { componentsHtml, stylesCss } = normalizeToBodyAndCss(initialHtml, initialCss);
     const nextHtml = String(componentsHtml ?? '');
-    const nextCss  = String(stylesCss  ?? '');
+    const nextCss = String(stylesCss ?? '');
 
-    console.log('[GrapesPageEditor] Effect2 content delivery', {
-      pageKey,
-      htmlLen: nextHtml.length,
-      cssLen:  nextCss.length,
-      canvasReady: canvasReadyRef.current,
-      mountEpoch,
-    });
 
     if (canvasReadyRef.current) {
       applyContentToEditor(editor, nextHtml, nextCss, pageKey);
     } else {
-      // Queue — 'load' will drain. Gate stays open (loadedForPageKeyRef unchanged).
-      console.log('[GrapesPageEditor] queuing content (canvas not ready)', {
-        pageKey,
-        queuedHtmlLen: nextHtml.length,
-        queuedCssLen: nextCss.length,
-      });
       pendingContentRef.current = { html: nextHtml, css: nextCss, pageKey };
     }
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialHtml, initialCss, pageKey, mountEpoch]);
 
   return (
