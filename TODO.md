@@ -1,9 +1,7 @@
-# ZIP import pipeline fix (websiteTemplateController)
+# TODO
 
-- [ ] Update plan-based edits: remove DOMParser usage and implement server-safe CSS extraction.
-- [ ] Refactor convertAssetsInHtml to avoid async replace callback bug; use await + string reconstruction so replacements actually happen.
-- [ ] Ensure page content stored as { html: bodyOnly, css: extractedCss, sourcePath }.
-- [ ] Verify inline CSS from ZIP files is preserved during inlining + extraction; fix any missing steps.
-- [ ] Add detailed logs for extractedCss length, bodyHtml length, finalHtml length, page slug, page id.
-- [ ] Run backend lint/tests (or start server) to confirm no syntax/runtime errors.
+## Fix backend/ frontend response correctness (304 + stale editor)
+- [x] Update `backend/src/controllers/pageController.js` to disable caching for `getPagesByWebsite`.
+- [ ] Re-test: `GET /api/website-builder/websites/:id/pages` should return 200 (no 304) and Grapes editor should load correct page content.
+
 

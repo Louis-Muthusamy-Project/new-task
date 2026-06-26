@@ -17,10 +17,6 @@ const upload = multer({
   limits: { fileSize: 25 * 1024 * 1024 },
 });
 
-// All media routes require an authenticated user.
-const jwtMiddleware = require('../middlewares/jwtMiddleware');
-router.use(jwtMiddleware);
-
 router.post(
   '/media/upload',
   upload.single('file'),

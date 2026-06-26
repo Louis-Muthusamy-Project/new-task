@@ -28,7 +28,14 @@ const GrapesPageEditor = ({
       notice: false,
       storageManager: false,
       panels: { defaults: [] },
-      assetManager: { ...assetManager },
+      assetManager: {
+        ...assetManager,
+        upload: '/api/website-builder/media/upload',
+        uploadName: 'file',
+        embedAsBase64: false,
+        autoAdd: true,
+        showUrlInput: true,
+      },
       plugins: [presetWebpage],
       pluginsOpts: {
         [presetWebpage.name || 'grapesjs-preset-webpage']: {},
@@ -39,7 +46,8 @@ const GrapesPageEditor = ({
         ],
       },
     };
-  }, [height]);
+  }, [height, assetManager]);
+
 
   const normalizeToBodyAndCss = (rawHtml = '', rawCss = '') => {
     const html = String(rawHtml || '');
@@ -60,14 +68,8 @@ const GrapesPageEditor = ({
       const body = doc.body.cloneNode(true);
 
       // Remove elements that should never appear inside the editor
-      body.querySelectorAll(`
-      style,
-      script,
-      #spinner,
-      .spinner,
-      .preloader,
-      .loader
-    `).forEach(el => el.remove());
+      body.querySelectorAll('style, script, #spinner, .spinner, .preloader, .loader').forEach(el => el.remove());
+
 
       const bodyHtml = body.innerHTML;
 
@@ -85,14 +87,82 @@ const GrapesPageEditor = ({
     }
   };
 
-  const applyContentToEditor = (editor, html, css, key) => {
+  const IMAGE_SRC_RE = /<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi;
 
+  const extractImageSrcsFromHtml = (htmlString) => {
+    const srcs = [];
+    if (!htmlString) return srcs;
+
+    let m;
+    const re = new RegExp(IMAGE_SRC_RE.source, IMAGE_SRC_RE.flags);
+    while ((m = re.exec(htmlString)) !== null) {
+      const src = m?.[1];
+      if (typeof src === 'string' && src.trim()) srcs.push(src.trim());
+    }
+    return srcs;
+  };
+
+  const dedupeBy = (arr, keyFn) => {
+    const seen = new Set();
+    const out = [];
+    for (const item of arr || []) {
+      const k = keyFn(item);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(item);
+    }
+    return out;
+  };
+
+  const replaceCloudinaryUrl = (html, oldUrl, newUrl) => {
+    if (!html || !oldUrl || !newUrl) return html;
+    const escaped = oldUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return html.replace(new RegExp(`src=["']${escaped}`, 'gi'), `src="${newUrl}`);
+  };
+
+  const replaceAllCloudinaryUrls = (html, newBaseUrl) => {
+    if (!html || !newBaseUrl) return html;
+    return html.replace(/(src=["'])(https?:\/\/res\.cloudinary\.com\/[^"']+)(["'])/gi, (match, prefix, _old, suffix) => {
+      return `${prefix}${newBaseUrl}${suffix}`;
+    });
+  };
+
+  const populateAssetManagerFromHtml = (editor, htmlString) => {
+    if (!editor?.AssetManager || typeof editor.AssetManager.add !== 'function') return;
+
+    const srcs = dedupeBy(extractImageSrcsFromHtml(htmlString), (s) => String(s));
+
+    const existing = new Set();
+    try {
+      const assets = editor.AssetManager.getAll?.() || [];
+      for (const a of assets) {
+        const url = a?.get?.('src') || a?.attributes?.src || a?.get?.('data')?.src || a?.src;
+        if (url) existing.add(String(url));
+      }
+    } catch (e) { }
+
+    for (const src of srcs) {
+      if (existing.has(String(src))) continue;
+      editor.AssetManager.add({ src, type: 'image' });
+    }
+  };
+
+  const applyContentToEditor = (editor, html, css, key) => {
     const currentHtml = editor.getHtml();
     const currentCss = editor.getCss();
 
-    // Don't block on empty HTML - just skip the setComponents call but still set the gate
     const htmlIsEmpty = html.length === 0;
     const cssIsEmpty = css.length === 0;
+
+    // Restore asset manager BEFORE setting components so img rendering can
+    // resolve against the asset library immediately.
+    if (!htmlIsEmpty) {
+      try {
+        populateAssetManagerFromHtml(editor, html);
+      } catch (e) {
+        console.warn('[GrapesPageEditor] populateAssetManagerFromHtml failed:', e);
+      }
+    }
 
     if (!htmlIsEmpty && html !== currentHtml) {
       isSyncingRef.current = true;
@@ -110,8 +180,6 @@ const GrapesPageEditor = ({
       finally { isSyncingRef.current = false; }
     }
 
-    // Force canvas repaint after programmatic update.
-    // rAF ensures this runs after the browser's current paint cycle.
     requestAnimationFrame(() => {
       try {
         if (editorRef.current === editor && !editor.destroyed) {
@@ -124,7 +192,6 @@ const GrapesPageEditor = ({
       }
     });
 
-    // Gate closes HERE — only after a successful write to the canvas.
     loadedForPageKeyRef.current = key;
   };
 

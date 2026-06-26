@@ -6,6 +6,9 @@ const asyncHandler = require('../utils/asyncHandler');
 const Website = require('../models/Website');
 const WebsitePage = require('../models/WebsitePage');
 
+const { uploadBufferToCloudinary } = require('../config/cloudinary');
+
+
 // multer middleware (in-memory) for this controller
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -258,13 +261,18 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
       return baseCandidate;
     };
 
-    const toDataUrlFromZipEntry = async (entry, ext) => {
+
+
+    const uploadZipEntryToCloudinary = async ({ entry, ext, folder, resourceType }) => {
       const buffer = await entry.async('nodebuffer');
-      const mime = guessAssetMime(ext);
-      return `data:${mime};base64,${buffer.toString('base64')}`;
+      return uploadBufferToCloudinary(buffer, {
+        folder,
+        resourceType,
+      });
     };
 
     const assetIndex = {};
+
     zip.forEach((relativePath, entry) => {
       if (!entry || entry.dir) return;
       const p = normalizeZipPath(relativePath);
@@ -297,13 +305,28 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
         const hit = assetIndex[zipPath];
         if (!hit) return null;
 
-        if (hit.dataUrl) return hit.dataUrl;
-        hit.dataUrl = await toDataUrlFromZipEntry(hit.entry, hit.ext);
-        return hit.dataUrl;
+        if (hit.secureUrl) return hit.secureUrl;
+
+        const folder = `website-templates/${website._id}/assets`;
+        const resourceType = guessAssetMime(hit.ext).startsWith('image/') ? 'image' : 'raw';
+
+        // Upload to Cloudinary
+        const uploadResult = await uploadZipEntryToCloudinary({
+          entry: hit.entry,
+          ext: hit.ext,
+          folder,
+          resourceType,
+        });
+
+        hit.secureUrl = uploadResult.secure_url;
+        hit.publicId = uploadResult.public_id;
+
+        return hit.secureUrl;
       };
 
       const rewriteMatches = async (re, replacer) => {
         const matches = [];
+
         let m;
         re.lastIndex = 0;
         while ((m = re.exec(html)) !== null) {
@@ -382,10 +405,24 @@ const uploadTemplateZipToCloudinary = asyncHandler(async (req, res) => {
         if (!zipPath) return null;
         const hit = assetIndex[zipPath];
         if (!hit) return null;
-        if (hit.dataUrl) return hit.dataUrl;
-        hit.dataUrl = await toDataUrlFromZipEntry(hit.entry, hit.ext);
-        return hit.dataUrl;
+        if (hit.secureUrl) return hit.secureUrl;
+
+        const folder = `website-templates/${website._id}/assets`;
+        const resourceType = guessAssetMime(hit.ext).startsWith('image/') ? 'image' : 'raw';
+
+        const uploadResult = await uploadZipEntryToCloudinary({
+          entry: hit.entry,
+          ext: hit.ext,
+          folder,
+          resourceType,
+        });
+
+        hit.secureUrl = uploadResult.secure_url;
+        hit.publicId = uploadResult.public_id;
+
+        return hit.secureUrl;
       };
+
 
       // Handles:
       //   background-image: url(images/bg.jpg)

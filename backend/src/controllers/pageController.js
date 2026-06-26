@@ -122,11 +122,18 @@ exports.createPage = async (req, res) => {
  * Lists all non-deleted pages belonging to the given website.
  */
 exports.getPagesByWebsite = async (req, res) => {
+  // Prevent browser/express conditional caching (ETag -> 304) for editor list reads.
+  // This keeps GrapesJS always working with the latest pages payload.
+  res.set('Cache-Control', 'no-store');
+  res.removeHeader('ETag');
+  res.removeHeader('Last-Modified');
+
   const { websiteId } = req.params;
 
   if (!mongoose.Types.ObjectId.isValid(websiteId)) {
     throw invalidIdError('Invalid website id.');
   }
+
 
   const website = await findOwnedWebsite(req, websiteId);
   if (!website) {
@@ -157,6 +164,12 @@ exports.getPagesByWebsite = async (req, res) => {
  * content. Ownership is enforced via the page's parent website.
  */
 exports.getPageById = async (req, res) => {
+  // Prevent browser/express conditional caching (ETag -> 304) for editor reads.
+  // This keeps GrapesJS always working with the latest payload.
+  res.set('Cache-Control', 'no-store');
+  res.removeHeader('ETag');
+  res.removeHeader('Last-Modified');
+
   const { id } = req.params;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
