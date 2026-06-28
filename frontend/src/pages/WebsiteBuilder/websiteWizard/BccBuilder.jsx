@@ -566,6 +566,7 @@ const BccBuilder = () => {
             <GrapesPageEditor
               height="100%"
               pageKey={pageId}
+              websiteId={websiteId}
               initialHtml={html}
               initialCss={css}
               onChange={({ html: nextHtml, css: nextCss }) => {

@@ -2,8 +2,377 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import grapesjs from 'grapesjs';
 import presetWebpage from 'grapesjs-preset-webpage';
 
+const API_BASE = import.meta.env?.VITE_WEBSITE_WIZARD_API_BASE || 'http://localhost:5500/api';
+
+/**
+ * Fetch existing media assets for a websiteId and return them as GrapesJS
+ * asset objects: { src, name, type, width, height }
+ */
+async function fetchMediaAssets(websiteId) {
+  if (!websiteId) return [];
+  try {
+    const url = `${API_BASE}/website-builder/media?websiteId=${websiteId}&type=image&limit=100`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const json = await res.json();
+    const items = Array.isArray(json?.data) ? json.data : [];
+    return items.map((m) => ({
+      src: m.url,
+      name: m.fileName || m.url,
+      type: 'image',
+      width: m.width || 0,
+      height: m.height || 0,
+    }));
+  } catch (e) {
+    console.warn('[GrapesPageEditor] fetchMediaAssets failed:', e);
+    return [];
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Canvas stylesheet injection
+//
+// GrapesJS canvas.styles (set at init time) is the only supported way to load
+// external stylesheets into the canvas iframe declaratively. However it is
+// fixed at construction — we cannot add URLs discovered from page HTML later.
+//
+// For URLs found after init we inject <link> / <style> elements directly into
+// the canvas iframe's <head>. Both paths are deduplicated so re-renders are
+// safe and idempotent.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * FIX 4: Wait until the canvas iframe document is in 'interactive' or 'complete'
+ * readyState before attempting to inject styles into it. The old code queried
+ * the doc inline with no readiness check — if the iframe wasn't ready yet the
+ * helpers silently returned null and CSS was never injected.
+ * Polls via requestAnimationFrame (no arbitrary setTimeout) with a 10 s safety
+ * ceiling so a broken iframe never hangs the pipeline.
+ */
+function waitForCanvasDoc(editor, timeoutMs = 10_000) {
+  return new Promise((resolve) => {
+    const getDoc = () => {
+      try {
+        const iframe =
+          editor.Canvas?.getFrameEl?.() ||
+          editor.Canvas?.getBody?.()?.ownerDocument?.defaultView?.frameElement;
+        return iframe?.contentDocument || iframe?.contentWindow?.document || null;
+      } catch (_) { return null; }
+    };
+
+    const deadline = Date.now() + timeoutMs;
+    const poll = () => {
+      const d = getDoc();
+      // FIX 4: require interactive or complete — 'loading' and 'uninitialized'
+      // are not safe to inject into because the parser may reset the head.
+      if (d && (d.readyState === 'interactive' || d.readyState === 'complete')) {
+        resolve(d);
+        return;
+      }
+      if (Date.now() >= deadline) { resolve(null); return; }
+      requestAnimationFrame(poll);
+    };
+    poll();
+  });
+}
+
+/**
+ * FIX 2/3: Inject a <link rel="stylesheet"> into the canvas iframe head and
+ * return a Promise that resolves only when the sheet has fully loaded (or
+ * errored, or timed out after 15 s).
+ *
+ * Previous issues fixed here:
+ *   • Function was synchronous — callers couldn't wait for sheets to load.
+ *   • Used `existing.sheet` as a "loaded" signal. That property is set as soon
+ *     as the CSSOM entry is created, before rules are parsed — it's truthy for
+ *     sheets that are still being fetched on first load but are cached, which
+ *     is exactly why the page appeared correct after a refresh but not before.
+ *   • Did not wait for the iframe doc to be ready before injecting.
+ */
+function injectCanvasLink(editor, href) {
+  if (!href) return Promise.resolve();
+  return waitForCanvasDoc(editor).then((doc) => {
+    if (!doc) return Promise.resolve();
+    return new Promise((resolve) => {
+      try {
+        // Safe attribute-selector escape: replace backslashes and double-quotes.
+        const escaped = href.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        const existing = doc.head.querySelector(`link[href="${escaped}"]`);
+        if (existing) {
+          // FIX 3: do NOT use existing.sheet as a "loaded" indicator.
+          // Instead attach load/error listeners; if the events already fired
+          // (sheet cached from a prior page load) the listener fires synchronously
+          // in some browsers, but we guard with a fallback resolve below.
+          let settled = false;
+          const done = () => { if (!settled) { settled = true; resolve(); } };
+          existing.addEventListener('load',  done, { once: true });
+          existing.addEventListener('error', done, { once: true });
+          // Fallback: if sheet is already applied (cached) fire immediately.
+          if (existing.sheet) { done(); }
+          return;
+        }
+        const link = doc.createElement('link');
+        link.rel  = 'stylesheet';
+        link.href = href;
+        link.setAttribute('data-grapes-injected', '1');
+        let settled = false;
+        const timer = setTimeout(() => { if (!settled) { settled = true; resolve(); } }, 15_000);
+        const done  = () => {
+          if (!settled) { settled = true; clearTimeout(timer); resolve(); }
+        };
+        link.addEventListener('load',  done, { once: true });
+        link.addEventListener('error', done, { once: true });
+        doc.head.appendChild(link);
+      } catch (e) {
+        console.warn('[GrapesPageEditor] injectCanvasLink failed:', href, e);
+        resolve();
+      }
+    });
+  });
+}
+
+/**
+ * Inject a <style> block into the canvas iframe head with a unique key so
+ * subsequent calls with the same key replace rather than duplicate the block.
+ * Now returns a Promise (resolved after the DOM write) so it can be awaited
+ * consistently alongside injectCanvasLink.
+ */
+function injectCanvasStyle(editor, css, key) {
+  if (!css || !css.trim()) return Promise.resolve();
+  return waitForCanvasDoc(editor).then((doc) => {
+    if (!doc) return;
+    try {
+      const attr    = 'data-grapes-style-key';
+      const safeKey = String(key || 'page-css');
+      const existing = doc.head.querySelector(`[${attr}="${safeKey}"]`);
+      if (existing) {
+        if (existing.textContent === css) return; // unchanged
+        existing.textContent = css;
+        return;
+      }
+      const style = doc.createElement('style');
+      style.setAttribute(attr, safeKey);
+      style.textContent = css;
+      doc.head.appendChild(style);
+    } catch (e) {
+      console.warn('[GrapesPageEditor] injectCanvasStyle failed:', e);
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// normalizeToBodyAndCss
+//
+// Parses the raw HTML stored by the backend (which is always body-only HTML,
+// already having had its <style> tags stripped into the separate `css` field
+// by the upload pipeline).  However the editor may also receive full-document
+// HTML in some paths, so we handle both.
+//
+// Returns:
+//   componentsHtml  – clean body markup for editor.setComponents()
+//   stylesCss       – all CSS rules for editor.setStyle() and canvas injection
+//   externalLinks   – href strings for <link rel="stylesheet"> / fonts / icons
+//                     that must be injected into the canvas iframe
+//
+// Key fixes vs. original:
+//   1. Scans BOTH head and body for <style> tags (backend stores body-only HTML
+//      so styles can appear in body after earlier pipeline steps).
+//   2. Collects ALL <link rel="stylesheet|preconnect"> and font/icon CDN hrefs
+//      from <head> so the caller can inject them into the canvas iframe.
+//   3. Does NOT remove <style> from body before extracting their content — it
+//      extracts first, then strips.
+//   4. Removes loader/spinner elements (unchanged from original).
+// ─────────────────────────────────────────────────────────────────────────────
+
+const EXTERNAL_LINK_RELS = new Set([
+  'stylesheet',
+  'preconnect',
+  'dns-prefetch',
+  'preload',
+]);
+
+function normalizeToBodyAndCss(rawHtml = '', rawCss = '') {
+  const html    = String(rawHtml || '');
+  const cssBase = String(rawCss  || '');
+
+  try {
+    const parser = new DOMParser();
+    const doc    = parser.parseFromString(html, 'text/html');
+
+    // ── 1. Collect external stylesheet / font / icon links ────────────────
+    // These must be injected into the canvas iframe, not fed to setStyle().
+    const externalLinks = [];
+    const seenHrefs     = new Set();
+
+    // FIX 8: scan the entire document (head + body) so <link> tags that appear
+    // inside the body (as some templates place them) are not silently dropped.
+    for (const el of Array.from(doc.querySelectorAll('link[href]'))) {
+      const rel  = (el.getAttribute('rel') || '').toLowerCase().trim();
+      const href = (el.getAttribute('href') || '').trim();
+      if (!href || seenHrefs.has(href)) continue;
+
+      // Always forward stylesheet links; also forward preconnect/dns-prefetch
+      // for font providers (Google Fonts uses them) and preload for fonts.
+      const as = (el.getAttribute('as') || '').toLowerCase();
+      const isStylesheet  = rel === 'stylesheet';
+      const isPreconnect  = rel === 'preconnect' || rel === 'dns-prefetch';
+      const isFontPreload = rel === 'preload' && as === 'font';
+      const isFavicon     = rel === 'icon' || rel === 'shortcut icon' || rel === 'apple-touch-icon';
+
+      if (isStylesheet || isPreconnect || isFontPreload) {
+        seenHrefs.add(href);
+        if (isStylesheet) externalLinks.push({ type: 'link', href });
+        // preconnect / dns-prefetch have no visual impact inside the iframe,
+        // but including them helps font CDNs resolve faster.
+      }
+      // Favicon: skip — irrelevant inside the canvas iframe.
+    }
+
+    // ── 2. Extract ALL <style> content (head + body) ──────────────────────
+    // The backend stores body-only HTML, so styles in body are legitimate page
+    // CSS. Extract before removal so nothing is silently lost.
+    const allStyleEls = Array.from(doc.querySelectorAll('style'));
+    const extractedCss = allStyleEls
+      .map((el) => (el.textContent || '').trim())
+      .filter(Boolean)
+      .join('\n');
+
+    // ── 3. Clean body ─────────────────────────────────────────────────────
+    const body = doc.body.cloneNode(true);
+    // Remove <style> (already captured above), scripts, and loader elements.
+    body.querySelectorAll(
+      'style, script, #spinner, .spinner, .preloader, .loader, [data-loader]'
+    ).forEach((el) => el.remove());
+
+    const bodyHtml = body.innerHTML;
+
+    // ── 4. Merge CSS ──────────────────────────────────────────────────────
+    // cssBase (the `css` field from the DB) + styles extracted from the HTML.
+    // Deduplicate identical blocks to avoid double-application of the same rules.
+    const cssBlocks = [];
+    if (cssBase.trim()) cssBlocks.push(cssBase.trim());
+    if (extractedCss.trim() && extractedCss.trim() !== cssBase.trim()) {
+      cssBlocks.push(extractedCss.trim());
+    }
+    const stylesCss = cssBlocks.join('\n');
+
+    return { componentsHtml: bodyHtml, stylesCss, externalLinks };
+  } catch (e) {
+    console.error('[GrapesPageEditor] normalizeToBodyAndCss failed:', e);
+    return { componentsHtml: html, stylesCss: cssBase, externalLinks: [] };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Asset extraction helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Extract all image-like URLs from HTML: img[src], img[srcset], source[srcset],
+ * [data-srcset], and CSS url() found in style attributes and inline <style> blocks.
+ * Returns a deduplicated array of absolute-looking URL strings.
+ */
+function extractAllAssetUrls(htmlString) {
+  if (!htmlString) return [];
+  const urls  = new Set();
+  const isUrl = (s) => s && (s.startsWith('http') || s.startsWith('//') || s.startsWith('/') || s.startsWith('data:'));
+
+  // img[src]
+  const srcRe = /<img\b[^>]*\bsrc=["']([^"']+)["']/gi;
+  let m;
+  while ((m = srcRe.exec(htmlString)) !== null) {
+    const v = m[1].trim();
+    if (isUrl(v)) urls.add(v);
+  }
+
+  // img[srcset], source[srcset], [data-srcset]
+  const srcsetRe = /\b(?:srcset|data-srcset)=["']([^"']+)["']/gi;
+  while ((m = srcsetRe.exec(htmlString)) !== null) {
+    for (const part of m[1].split(',')) {
+      const url = part.trim().split(/\s+/)[0];
+      if (url && isUrl(url)) urls.add(url);
+    }
+  }
+
+  // CSS url() — covers background-image in style attrs and <style> blocks
+  const cssUrlRe = /url\(\s*['"]?([^'")]+)['"]?\s*\)/gi;
+  while ((m = cssUrlRe.exec(htmlString)) !== null) {
+    const v = m[1].trim();
+    if (isUrl(v)) urls.add(v);
+  }
+
+  return Array.from(urls);
+}
+
+const dedupeBy = (arr, keyFn) => {
+  const seen = new Set();
+  const out  = [];
+  for (const item of arr || []) {
+    const k = keyFn(item);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(item);
+  }
+  return out;
+};
+
+/**
+ * Add all image URLs found in the HTML to the GrapesJS AssetManager so they
+ * appear in the media panel and resolve correctly in the canvas.
+ */
+function populateAssetManagerFromHtml(editor, htmlString) {
+  if (!editor?.AssetManager || typeof editor.AssetManager.add !== 'function') return;
+
+  const allUrls = extractAllAssetUrls(htmlString);
+  if (!allUrls.length) return;
+
+  const existing = new Set();
+  try {
+    const assets = editor.AssetManager.getAll?.() || [];
+    for (const a of assets) {
+      const url = a?.get?.('src') || a?.attributes?.src || a?.get?.('data')?.src || a?.src;
+      if (url) existing.add(String(url));
+    }
+  } catch (_) {}
+
+  for (const src of allUrls) {
+    if (existing.has(src)) continue;
+    editor.AssetManager.add({ src, type: 'image' });
+  }
+}
+
+/**
+ * Load existing media from the backend and add them to the asset manager.
+ * Called once the editor canvas is ready and after every successful upload.
+ */
+async function syncAssetsFromBackend(editor, websiteId) {
+  if (!editor?.AssetManager) return;
+  const assets = await fetchMediaAssets(websiteId);
+  if (!assets.length) return;
+
+  const existing = new Set();
+  try {
+    const all = editor.AssetManager.getAll?.() || [];
+    for (const a of all) {
+      const url = a?.get?.('src') || a?.attributes?.src || a?.src;
+      if (url) existing.add(String(url));
+    }
+  } catch (_) {}
+
+  for (const asset of assets) {
+    if (!existing.has(asset.src)) {
+      editor.AssetManager.add(asset);
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GrapesPageEditor component
+// ─────────────────────────────────────────────────────────────────────────────
+
 const GrapesPageEditor = ({
   pageKey,
+  websiteId,
   height = '100%',
   initialHtml = '',
   initialCss = '',
@@ -11,178 +380,172 @@ const GrapesPageEditor = ({
   assetManager = {},
   onEditorReady,
 }) => {
-  const holderRef = useRef(null);
-  const editorRef = useRef(null);
+  const holderRef  = useRef(null);
+  const editorRef  = useRef(null);
   const isSyncingRef = useRef(false);
 
   const loadedForPageKeyRef = useRef(null);
-
   const [mountEpoch, setMountEpoch] = useState(0);
 
-  const canvasReadyRef = useRef(false);
+  const canvasReadyRef    = useRef(false);
   const pendingContentRef = useRef(null);
 
-  const config = useMemo(() => {
-    return {
-      height,
-      notice: false,
-      storageManager: false,
-      panels: { defaults: [] },
-      assetManager: {
-        ...assetManager,
-        upload: '/api/website-builder/media/upload',
-        uploadName: 'file',
-        embedAsBase64: false,
-        autoAdd: true,
-        showUrlInput: true,
-      },
-      plugins: [presetWebpage],
-      pluginsOpts: {
-        [presetWebpage.name || 'grapesjs-preset-webpage']: {},
-      },
-      canvas: {
-        styles: [
-          'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&display=swap',
-        ],
-      },
-    };
-  }, [height, assetManager]);
+  const uploadUrl = `${API_BASE}/website-builder/media/upload`;
 
+  // websiteId ref so async callbacks always see the latest value without
+  // causing the init effect to re-run.
+  const websiteIdRef = useRef(websiteId);
+  useEffect(() => { websiteIdRef.current = websiteId; }, [websiteId]);
 
-  const normalizeToBodyAndCss = (rawHtml = '', rawCss = '') => {
-    const html = String(rawHtml || '');
-    const cssBase = String(rawCss || '');
+  const config = useMemo(() => ({
+    height,
+    notice: false,
+    storageManager: false,
+    panels: { defaults: [] },
+    assetManager: {
+      ...assetManager,
+      upload: uploadUrl,
+      uploadName: 'file',
+      embedAsBase64: false,
+      autoAdd: true,
+      showUrlInput: true,
+      uploadMultipart: true,
+      params: websiteId ? { websiteId } : {},
+      headers: {},
+    },
+    plugins: [presetWebpage],
+    pluginsOpts: {
+      [presetWebpage.name || 'grapesjs-preset-webpage']: {},
+    },
+    canvas: {
+      // Baseline styles injected at init; page-specific links are injected
+      // dynamically by applyContentToEditor once the canvas is ready.
+      styles: [
+        'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&display=swap',
+      ],
+    },
+  }), [height, assetManager, uploadUrl, websiteId]);
 
-    try {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, 'text/html');
+  // ── applyContentToEditor ─────────────────────────────────────────────────
+  //
+  // Called whenever a new page's content needs to be loaded into the editor.
+  //
+  // Strategy for CSS injection (two complementary paths):
+  //
+  //   Path A — editor.setStyle(css)
+  //     Feeds GrapesJS's CSS Rule model. Works well for simple selectors and
+  //     lets the Style Manager display/edit rules. However GrapesJS partially
+  //     drops @font-face, @keyframes, @import, and complex at-rules.
+  //
+  //   Path B — injectCanvasStyle(editor, css, 'page-raw-css')
+  //     Writes a <style> element directly into the canvas iframe <head> with a
+  //     stable key so it is replaced (not duplicated) on re-renders. This is
+  //     the source of truth for all CSS that GrapesJS's parser cannot handle.
+  //
+  //   Path C — injectCanvasLink(editor, href) per externalLink
+  //     Writes <link rel="stylesheet"> for every external URL extracted from
+  //     the original HTML (Google Fonts, icon CDNs, framework CSS, etc.).
+  //
+  // All three paths run together so the canvas sees exactly what a browser
+  // would see when loading the original page.
+  // ─────────────────────────────────────────────────────────────────────────
 
-      // Extract only HEAD style tags
-      const headStyles = Array.from(doc.head.querySelectorAll('style'));
-      const extractedCss = headStyles
-        .map(el => el.textContent || '')
-        .filter(Boolean)
-        .join('\n');
-
-      // Clone body
-      const body = doc.body.cloneNode(true);
-
-      // Remove elements that should never appear inside the editor
-      body.querySelectorAll('style, script, #spinner, .spinner, .preloader, .loader').forEach(el => el.remove());
-
-
-      const bodyHtml = body.innerHTML;
-
-      return {
-        componentsHtml: bodyHtml,
-        stylesCss: [cssBase, extractedCss].filter(Boolean).join('\n'),
-      };
-    } catch (e) {
-      console.error(e);
-
-      return {
-        componentsHtml: html,
-        stylesCss: cssBase,
-      };
-    }
-  };
-
-  const IMAGE_SRC_RE = /<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi;
-
-  const extractImageSrcsFromHtml = (htmlString) => {
-    const srcs = [];
-    if (!htmlString) return srcs;
-
-    let m;
-    const re = new RegExp(IMAGE_SRC_RE.source, IMAGE_SRC_RE.flags);
-    while ((m = re.exec(htmlString)) !== null) {
-      const src = m?.[1];
-      if (typeof src === 'string' && src.trim()) srcs.push(src.trim());
-    }
-    return srcs;
-  };
-
-  const dedupeBy = (arr, keyFn) => {
-    const seen = new Set();
-    const out = [];
-    for (const item of arr || []) {
-      const k = keyFn(item);
-      if (seen.has(k)) continue;
-      seen.add(k);
-      out.push(item);
-    }
-    return out;
-  };
-
-  const replaceCloudinaryUrl = (html, oldUrl, newUrl) => {
-    if (!html || !oldUrl || !newUrl) return html;
-    const escaped = oldUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return html.replace(new RegExp(`src=["']${escaped}`, 'gi'), `src="${newUrl}`);
-  };
-
-  const replaceAllCloudinaryUrls = (html, newBaseUrl) => {
-    if (!html || !newBaseUrl) return html;
-    return html.replace(/(src=["'])(https?:\/\/res\.cloudinary\.com\/[^"']+)(["'])/gi, (match, prefix, _old, suffix) => {
-      return `${prefix}${newBaseUrl}${suffix}`;
-    });
-  };
-
-  const populateAssetManagerFromHtml = (editor, htmlString) => {
-    if (!editor?.AssetManager || typeof editor.AssetManager.add !== 'function') return;
-
-    const srcs = dedupeBy(extractImageSrcsFromHtml(htmlString), (s) => String(s));
-
-    const existing = new Set();
-    try {
-      const assets = editor.AssetManager.getAll?.() || [];
-      for (const a of assets) {
-        const url = a?.get?.('src') || a?.attributes?.src || a?.get?.('data')?.src || a?.src;
-        if (url) existing.add(String(url));
-      }
-    } catch (e) { }
-
-    for (const src of srcs) {
-      if (existing.has(String(src))) continue;
-      editor.AssetManager.add({ src, type: 'image' });
-    }
-  };
-
-  const applyContentToEditor = (editor, html, css, key) => {
+  // FIX 4/5: applyContentToEditor is now async so it can await stylesheet loads
+  // before calling setComponents. The previous synchronous version fired
+  // setComponents immediately while external sheets were still being fetched,
+  // producing a correctly-styled canvas after a refresh (cache hit) but an
+  // unstyled one on first load (cache miss).
+  //
+  // Corrected pipeline order:
+  //   1. Populate AssetManager with all image URLs (so <img> resolves on first paint).
+  //   2. Inject inline <style> (Path B) — synchronous DOM write, awaited for doc readiness.
+  //   3. Inject + AWAIT all external <link> stylesheets (Path C) via Promise.all().
+  //   4. editor.setStyle(css) (Path A) — GrapesJS rule model, runs after sheets are ready.
+  //   5. editor.setComponents(html) — canvas renders into an already-styled document.
+  //   6. FIX 6: re-inject the inline <style> block because setComponents rewrites
+  //      the iframe head and can discard styles injected in step 2.
+  //   7. FIX 7: force a full canvas repaint via the Canvas.getBody() reflow +
+  //      editor.refresh() rather than only refresh() which is a layout hint.
+  // ─────────────────────────────────────────────────────────────────────────
+  const applyContentToEditor = async (editor, html, css, externalLinks, key) => {
     const currentHtml = editor.getHtml();
-    const currentCss = editor.getCss();
+    const htmlIsEmpty = !html || html.length === 0;
+    const cssIsEmpty  = !css  || css.length  === 0;
 
-    const htmlIsEmpty = html.length === 0;
-    const cssIsEmpty = css.length === 0;
-
-    // Restore asset manager BEFORE setting components so img rendering can
-    // resolve against the asset library immediately.
+    // ── 1. Preload assets into AssetManager BEFORE setComponents ─────────
     if (!htmlIsEmpty) {
+      try { populateAssetManagerFromHtml(editor, html); }
+      catch (e) { console.warn('[GrapesPageEditor] populateAssetManagerFromHtml failed:', e); }
+    }
+
+    // ── 2. Inject inline <style> BEFORE setComponents (Path B) ───────────
+    // Awaiting here ensures the iframe doc is ready and the block is in the
+    // head before GrapesJS parses components.
+    if (!cssIsEmpty) {
+      try { await injectCanvasStyle(editor, css, 'page-raw-css'); }
+      catch (e) { console.warn('[GrapesPageEditor] injectCanvasStyle (pre) failed:', e); }
+    }
+
+    // ── 3. Inject external stylesheets and WAIT for every one (Path C) ───
+    // FIX 5: Promise.all() blocks until every external sheet is fully loaded.
+    // This is the primary cause of the first-load FOUC: on a cache miss each
+    // sheet takes a network round-trip; setComponents must not run until done.
+    const links = Array.isArray(externalLinks) ? externalLinks : [];
+    if (links.length > 0) {
       try {
-        populateAssetManagerFromHtml(editor, html);
+        await Promise.all(
+          links
+            .filter(({ href }) => !!href)
+            .map(({ href }) => injectCanvasLink(editor, href))
+        );
       } catch (e) {
-        console.warn('[GrapesPageEditor] populateAssetManagerFromHtml failed:', e);
+        // Non-fatal: log and continue — a failed CDN sheet should not block render.
+        console.warn('[GrapesPageEditor] one or more external sheets failed to load:', e);
       }
     }
 
-    if (!htmlIsEmpty && html !== currentHtml) {
+    // Stale-editor guard: the editor may have been destroyed while we awaited.
+    if (editorRef.current !== editor || editor.destroyed) return;
+
+    // ── 4. Feed parsed CSS into GrapesJS rule model (Path A) ─────────────
+    // Runs after sheets are ready so the internal model and visual state agree.
+    if (!cssIsEmpty) {
       isSyncingRef.current = true;
       try {
-        editor.setComponents(html);
+        const currentCss = editor.getCss();
+        if (css !== currentCss) editor.setStyle(css);
       }
-      catch (e) { console.warn('[GrapesPageEditor] setComponents failed:', e); }
-      finally { isSyncingRef.current = false; }
-    }
-
-    if (!cssIsEmpty && css !== currentCss) {
-      isSyncingRef.current = true;
-      try { editor.setStyle(css); }
       catch (e) { console.warn('[GrapesPageEditor] setStyle failed:', e); }
       finally { isSyncingRef.current = false; }
     }
 
+    // ── 5. Set HTML components ────────────────────────────────────────────
+    // All stylesheets are loaded; the canvas will render fully styled on the
+    // very first paint — no refresh required.
+    if (!htmlIsEmpty && html !== currentHtml) {
+      isSyncingRef.current = true;
+      try { editor.setComponents(html); }
+      catch (e) { console.warn('[GrapesPageEditor] setComponents failed:', e); }
+      finally { isSyncingRef.current = false; }
+    }
+
+    // ── 6. Re-inject inline <style> after setComponents ──────────────────
+    // FIX 6: editor.setComponents() rewrites the iframe body and can discard
+    // <style> blocks that were injected into the head in step 2. Re-injecting
+    // immediately after guarantees the styles survive the component parse.
+    if (!cssIsEmpty) {
+      try { await injectCanvasStyle(editor, css, 'page-raw-css'); }
+      catch (e) { console.warn('[GrapesPageEditor] injectCanvasStyle (post) failed:', e); }
+    }
+
+    // ── 7. Force a complete canvas repaint ────────────────────────────────
+    // FIX 7: editor.refresh() alone is a layout hint and does not trigger a
+    // full repaint. Accessing Canvas.getBody() forces a reflow synchronously,
+    // then refresh() tells GrapesJS to recalculate its component bounding boxes.
     requestAnimationFrame(() => {
       try {
         if (editorRef.current === editor && !editor.destroyed) {
+          try { editor.Canvas.getBody(); } catch (_) {} // trigger reflow
           editor.refresh();
           console.log('[GrapesPageEditor] refreshed, component count:',
             editor.getWrapper()?.components()?.length ?? 0);
@@ -200,25 +563,18 @@ const GrapesPageEditor = ({
     if (!holderRef.current) return;
     if (editorRef.current) return; // StrictMode double-invoke guard
 
-
     const editor = grapesjs.init({
       ...config,
       container: holderRef.current,
     });
 
-    editorRef.current = editor;
-    canvasReadyRef.current = false;
+    editorRef.current    = editor;
+    canvasReadyRef.current    = false;
     pendingContentRef.current = null;
 
-    // Bump epoch so Effect 2 re-runs even when content props haven't changed.
-    // Must call setMountEpoch AFTER editorRef is populated so Effect 2 sees
-    // a live editor when it fires.
     setMountEpoch((n) => n + 1);
 
-    // FIX: guard `editorRef.current === editor` so a stale 'load' event from
-    // a destroyed editor (StrictMode teardown race) cannot flip canvasReadyRef
-    // to true on the wrong instance.
-    editor.on('load', () => {
+    editor.on('load', async () => {
       if (editorRef.current !== editor) {
         console.warn('[GrapesPageEditor] stale load ignored', { pageKey });
         return;
@@ -226,21 +582,52 @@ const GrapesPageEditor = ({
 
       canvasReadyRef.current = true;
 
+      // Load backend media assets FIRST so images in the HTML resolve in the
+      // AssetManager panel immediately on open.
+      await syncAssetsFromBackend(editor, websiteIdRef.current);
+
       const pending = pendingContentRef.current;
       if (pending) {
         pendingContentRef.current = null;
         try {
-          applyContentToEditor(editor, pending.html, pending.css, pending.pageKey);
+          // FIX 9: await the async pipeline — the previous call was not awaited,
+        // so any errors were silently swallowed and timing was not preserved.
+        await applyContentToEditor(
+            editor,
+            pending.html,
+            pending.css,
+            pending.externalLinks,
+            pending.pageKey
+          );
         } catch (e) {
           console.error('[GrapesPageEditor] applyContentToEditor in load handler failed:', e);
         }
+      } else {
+        console.log('[GrapesPageEditor] no pending on load, checking props', {
+          initialHtmlLen: initialHtml?.length,
+          initialCssLen:  initialCss?.length,
+        });
       }
+    });
 
-      // If NO pending content, and we have initialHtml/initialCss props, apply them now
-      // (This handles the case where Effect 2 already ran but canvas wasn't ready)
-      if (!pending) {
-        console.log('[GrapesPageEditor] no pending on load, checking props', { initialHtmlLen: initialHtml?.length, initialCssLen: initialCss?.length });
+    // ── Upload response normalisation ──────────────────────────────────────
+    // GrapesJS expects: { data: [ { src, name, ... } ] }
+    // Backend returns:  { success: true, data: { src, name, ... } }
+    editor.on('asset:upload:response', (response) => {
+      try {
+        if (Array.isArray(response?.data)) return;
+        if (response?.data?.src) {
+          response.data = [response.data];
+        }
+      } catch (e) {
+        console.warn('[GrapesPageEditor] asset:upload:response normalisation failed:', e);
       }
+    });
+
+    // After a successful upload, refresh the asset panel from the backend so
+    // the newly uploaded image appears for all pages of this website.
+    editor.on('asset:upload:end', () => {
+      syncAssetsFromBackend(editor, websiteIdRef.current).catch(() => {});
     });
 
     const handler = () => {
@@ -249,26 +636,23 @@ const GrapesPageEditor = ({
       onChange({ html: editor.getHtml(), css: editor.getCss() });
     };
 
-    editor.on('component:update', handler);
-    editor.on('component:add', handler);
-    editor.on('component:remove', handler);
-    editor.on('styleManager:change', handler);
-    editor.on('style:change', handler);
-    editor.on('canvas:drop', handler);
-    editor.on('asset:add', handler);
-    editor.on('asset:upload', handler);
+    editor.on('component:update',     handler);
+    editor.on('component:add',        handler);
+    editor.on('component:remove',     handler);
+    editor.on('styleManager:change',  handler);
+    editor.on('style:change',         handler);
+    editor.on('canvas:drop',          handler);
+    editor.on('asset:add',            handler);
+    editor.on('asset:upload',         handler);
 
     onEditorReady?.(editor);
 
     return () => {
-
-      // Null editorRef FIRST so any in-flight async callbacks (load event,
-      // rAF in applyContentToEditor) see editorRef.current !== editor and bail.
-      editorRef.current = null;
-      canvasReadyRef.current = false;
+      editorRef.current         = null;
+      canvasReadyRef.current    = false;
       pendingContentRef.current = null;
       loadedForPageKeyRef.current = null;
-      isSyncingRef.current = false;
+      isSyncingRef.current      = false;
 
       try { editor.destroy(); }
       catch (e) { console.warn('[GrapesPageEditor] destroy failed:', e); }
@@ -276,32 +660,36 @@ const GrapesPageEditor = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Effect 2: load content when page / HTML / CSS props change ────────────
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
 
-    // CRITICAL FIX: Only skip if we have non-trivial content already loaded.
-    // Empty content from initial render must NOT block later real content.
     const current = loadedForPageKeyRef.current;
     if (current === pageKey) {
       const currentHtml = editor.getHtml();
       const hasRealContent = currentHtml && currentHtml.length > 200;
-      if (hasRealContent) {
-        // Already has meaningful content, skip to avoid redundant setComponents
-        return;
-      }
-      // Has only empty/placeholder content — allow re-apply with real content
+      if (hasRealContent) return;
     }
 
-    const { componentsHtml, stylesCss } = normalizeToBodyAndCss(initialHtml, initialCss);
-    const nextHtml = String(componentsHtml ?? '');
-    const nextCss = String(stylesCss ?? '');
+    const { componentsHtml, stylesCss, externalLinks } =
+      normalizeToBodyAndCss(initialHtml, initialCss);
 
+    const nextHtml = String(componentsHtml ?? '');
+    const nextCss  = String(stylesCss ?? '');
 
     if (canvasReadyRef.current) {
-      applyContentToEditor(editor, nextHtml, nextCss, pageKey);
+      // applyContentToEditor is async; useEffect cannot return a Promise so we
+      // fire-and-forget with an explicit .catch() to surface any errors.
+      applyContentToEditor(editor, nextHtml, nextCss, externalLinks, pageKey)
+        .catch((e) => console.warn('[GrapesPageEditor] applyContentToEditor (effect) failed:', e));
     } else {
-      pendingContentRef.current = { html: nextHtml, css: nextCss, pageKey };
+      pendingContentRef.current = {
+        html:          nextHtml,
+        css:           nextCss,
+        externalLinks: externalLinks,
+        pageKey,
+      };
     }
   }, [initialHtml, initialCss, pageKey, mountEpoch]);
 

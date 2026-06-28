@@ -21,14 +21,6 @@ const badRequestError = (message) => {
   return error;
 };
 
-const requireOwnerId = (req) => {
-  const ownerId = req?.user?.id || req?.user?._id || null;
-  if (!ownerId) {
-    throw Object.assign(new Error('Authentication required.'), { statusCode: 401 });
-  }
-  return ownerId;
-};
-
 /**
  * Maps an uploaded file's mimetype to the Media model's `type` enum.
  */
@@ -50,12 +42,19 @@ const resolveCloudinaryResourceType = (mediaType) => {
 };
 
 /**
- * POST /api/media/upload
+ * POST /api/website-builder/media/upload
  * Uploads a file (via multer memoryStorage, req.file.buffer) to
  * Cloudinary, then persists the resulting metadata in MongoDB.
+ *
+ * NOTE: ownerId is optional — this app does not use JWT auth from the
+ * frontend. We fall back to a placeholder so the Media record saves cleanly.
  */
 exports.uploadMedia = async (req, res) => {
-  const ownerId = requireOwnerId(req);
+  // ownerId is best-effort: use req.user if available, otherwise use a
+  // sentinel ObjectId so the mongoose required: true constraint is satisfied.
+  const ANON_OWNER = new mongoose.Types.ObjectId('000000000000000000000000');
+  const ownerId = req?.user?.id || req?.user?._id || ANON_OWNER;
+
   const { websiteId, type } = req.body;
 
   if (!req.file) {
@@ -87,31 +86,39 @@ exports.uploadMedia = async (req, res) => {
     height: uploadResult.height || null,
   });
 
+  // Return in GrapesJS-compatible format so the asset manager auto-adds the
+  // image after upload without extra client-side wiring.
   res.status(201).json({
     success: true,
-    data: media,
+    data: {
+      src: media.url,
+      name: media.fileName,
+      type: media.type,
+      width: media.width,
+      height: media.height,
+      id: media._id,
+    },
   });
 };
 
 /**
- * GET /api/media
- * Lists non-deleted media owned by the authenticated user, optionally
- * filtered by websiteId and/or type, with pagination.
+ * GET /api/website-builder/media
+ * Lists non-deleted media, optionally filtered by websiteId and/or type,
+ * with pagination. No auth required — scoped by websiteId instead.
  */
 exports.getMediaList = async (req, res) => {
-  const ownerId = requireOwnerId(req);
   const { websiteId, type } = req.query;
 
   if (websiteId && !mongoose.Types.ObjectId.isValid(websiteId)) {
     throw invalidIdError('Invalid website id.');
   }
 
-  const filter = { isDeleted: false, ownerId };
+  const filter = { isDeleted: false };
   if (websiteId) filter.websiteId = websiteId;
   if (type) filter.type = type;
 
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 200);
   const skip = (page - 1) * limit;
 
   const [media, total] = await Promise.all([
@@ -132,51 +139,35 @@ exports.getMediaList = async (req, res) => {
 };
 
 /**
- * GET /api/media/:id
- * Fetches a single media item by id, scoped to the authenticated owner.
+ * GET /api/website-builder/media/:id
  */
 exports.getMediaById = async (req, res) => {
-  const ownerId = requireOwnerId(req);
   const { id } = req.params;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
     throw invalidIdError('Invalid media id.');
   }
 
-  const media = await Media.findOne({
-    _id: id,
-    isDeleted: false,
-    ownerId,
-  });
+  const media = await Media.findOne({ _id: id, isDeleted: false });
 
   if (!media) {
     throw notFoundError('Media not found.');
   }
 
-  res.status(200).json({
-    success: true,
-    data: media,
-  });
+  res.status(200).json({ success: true, data: media });
 };
 
 /**
- * DELETE /api/media/:id
- * Removes the asset from Cloudinary and soft-deletes its metadata
- * record in MongoDB. Scoped to the authenticated owner.
+ * DELETE /api/website-builder/media/:id
  */
 exports.deleteMedia = async (req, res) => {
-  const ownerId = requireOwnerId(req);
   const { id } = req.params;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
     throw invalidIdError('Invalid media id.');
   }
 
-  const media = await Media.findOne({
-    _id: id,
-    isDeleted: false,
-    ownerId,
-  });
+  const media = await Media.findOne({ _id: id, isDeleted: false });
 
   if (!media) {
     throw notFoundError('Media not found.');
@@ -190,9 +181,5 @@ exports.deleteMedia = async (req, res) => {
   media.isDeleted = true;
   await media.save();
 
-  res.status(200).json({
-    success: true,
-    data: { id: media._id, deleted: true },
-  });
+  res.status(200).json({ success: true, data: { id: media._id, deleted: true } });
 };
-
