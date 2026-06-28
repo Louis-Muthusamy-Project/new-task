@@ -235,8 +235,16 @@ console.log("CSS Entries =", [...cssEntries.keys()]);
     }
 
     if (SKIP_EXTS.has(ext)) return;
-});
 
+    // Populate index for every uploadable asset (images, fonts, JS, media, etc.)
+    // Without this block, index and lcIndex remain empty and getUrl() always
+    // returns null — nothing is ever uploaded to Cloudinary.
+    if (UPLOADABLE_EXTS.has(ext)) {
+      const mime = getMime(ext);
+      index[zipPath]                 = { entry, ext, mime, secureUrl: null };
+      lcIndex[zipPath.toLowerCase()] = zipPath;
+    }
+  });
 
   return { index, lcIndex };
 };

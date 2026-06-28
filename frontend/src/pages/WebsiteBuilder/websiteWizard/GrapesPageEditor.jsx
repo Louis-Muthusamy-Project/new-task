@@ -632,6 +632,9 @@ const GrapesPageEditor = ({
 
     const handler = () => {
       if (isSyncingRef.current) return;
+      // FIX: Prevent async initialization events (asset:add, deferred component:add)
+      // from firing onChange before the initial content pipeline has completely finished.
+      if (loadedForPageKeyRef.current !== pageKey) return;
       if (!onChange) return;
       onChange({ html: editor.getHtml(), css: editor.getCss() });
     };
