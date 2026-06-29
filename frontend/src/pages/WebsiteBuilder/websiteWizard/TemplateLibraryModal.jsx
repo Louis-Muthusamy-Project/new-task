@@ -207,6 +207,74 @@ async function parseWebsiteZip(file) {
 }
 
 /* ---------------------------------------------------------------------- */
+/* Shared backend helpers for template/website creation                     */
+/* ---------------------------------------------------------------------- */
+
+async function uploadTemplateZipAndCreateWebsite({ zipFile, templateName, websiteName, onCreate }) {
+  const parsed = await parseWebsiteZip(zipFile);
+  const finalName = websiteName || templateName || parsed.siteName;
+  const { websiteWizardCloudinaryApi } = await import('../../../api/websiteWizardCloudinaryApi');
+  const response = await websiteWizardCloudinaryApi.uploadTemplateZipToCloudinary({
+    file: zipFile,
+    name: templateName || parsed.siteName,
+    websiteName: finalName,
+  });
+  if (!response?.success) {
+    throw new Error(response?.error || 'Backend upload returned failure.');
+  }
+  const cloudinaryUrl = response?.website?.settings?.cloudinary?.url || response?.website?.templateZipCloudinaryUrl || '';
+  onCreate({
+    website: response.website,
+    websiteName: finalName,
+    description: "Website Template",
+    source: "zip",
+    templateName: templateName || parsed.siteName,
+    templateZipCloudinaryUrl: cloudinaryUrl,
+    pages: response.pages || [],
+  });
+}
+
+async function createWebsiteWithPages({ pages, templateName, websiteName, templateZipCloudinaryUrl, onCreate }) {
+  const finalName = websiteName || templateName || "Untitled Website";
+  const { websiteWizardApi } = await import('../../../api/websiteWizardApi');
+  const savedWebsite = await websiteWizardApi.createWebsite({
+    name: finalName,
+    websiteName: finalName,
+    description: "Website Template",
+    status: "Draft",
+  });
+  const websiteId = savedWebsite._id || savedWebsite.id;
+  if (!websiteId) {
+    throw new Error("Website creation did not return an id.");
+  }
+  const sourcePages = pages || [];
+  const sortedPages = [...sourcePages].sort(
+    (a, b) => (a.isHome === b.isHome ? 0 : a.isHome ? -1 : 1)
+  );
+  const createdPages = await Promise.all(
+    sortedPages.map(async (page) => {
+      return await websiteWizardApi.createPage({
+        websiteId,
+        name: page.name,
+        slug: page.slug,
+        isHome: !!page.isHome,
+        status: page.status || "Draft",
+        content: page.content || {},
+      });
+    })
+  );
+  onCreate({
+    website: savedWebsite,
+    websiteName: finalName,
+    description: "Website Template",
+    source: "template",
+    templateName: templateName || finalName,
+    templateZipCloudinaryUrl: templateZipCloudinaryUrl || '',
+    pages: createdPages,
+  });
+}
+
+/* ---------------------------------------------------------------------- */
 /* Demo template catalog (prebuilt templates shown in the grid)            */
 /* ---------------------------------------------------------------------- */
 
@@ -395,69 +463,24 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
     setParsing(true);
     setError(null);
     try {
-      const parsed = await parseWebsiteZip(zipFile);
-      const finalName = websiteName.trim() || zipTemplateName.trim() || parsed.siteName;
-
-      // Upload ZIP to backend (which also saves to Cloudinary AND creates website+pages in DB).
-      // The backend POST /api/website/upload-template returns { success, website, pages }.
-      let response = null;
-
-      try {
-        const { websiteWizardCloudinaryApi } = await import('../../../api/websiteWizardCloudinaryApi');
-        response = await websiteWizardCloudinaryApi.uploadTemplateZipToCloudinary({
-          file: zipFile,
-          name: zipTemplateName.trim() || parsed.siteName,
-          websiteName: finalName,
-        });
-
-        if (!response?.success) {
-          throw new Error(response?.error || 'Backend upload returned failure.');
-        }
-      } catch (uploadErr) {
-        console.error('[handleCreateFromZip] Backend upload error:', uploadErr);
-        setError(uploadErr?.message || 'Upload failed. Check backend logs.');
-        return; // FIX: stop here — do not call onCreate with broken data
-      }
-
-      const cloudinaryUrl =
-        response?.website?.settings?.cloudinary?.url ||
-        response?.website?.templateZipCloudinaryUrl ||
-        '';
-
-
-      onCreate({
-        // Pass the real backend-created website + pages so the editor can
-        // fetch/render immediately using the correct MongoDB _id.
-        website: response.website,
-        websiteName: finalName,
-        description: "Website Template",
-        source: "zip",
-        templateName: zipTemplateName.trim() || parsed.siteName,
-        templateZipCloudinaryUrl: cloudinaryUrl,
-        pages: response.pages || [],
+      await uploadTemplateZipAndCreateWebsite({
+        zipFile,
+        templateName: zipTemplateName.trim(),
+        websiteName,
+        onCreate,
       });
     } catch (err) {
-      setError(err.message || "Couldn't read that ZIP.");
+      console.error('[handleCreateFromZip]', err);
+      setError(err?.message || "Couldn't read that ZIP.");
     } finally {
       setParsing(false);
     }
   };
 
-  // Bottom bar "Create Website" — uses the selected prebuilt/custom template card.
-  //
-  // For custom (uploaded) templates the ZIP pages must be persisted to the
-  // backend before handing off to the parent, otherwise the website is created
-  // with no pages in the database.
-  //
-  // Flow for a custom template:
-  //   1. POST /website-builder/websites  → get websiteId
-  //   2. For every page from parsed.pages: POST /website-builder/websites/:id/pages
-  //   3. Call onCreate with the real website + persisted pages, same shape as
-  //      the "Create from ZIP" path so handleTemplateCreated takes the fast if-branch.
-  //
-  // For prebuilt templates (no ZIP content) the old behaviour is preserved —
-  // stub pages are passed and the parent creates the website normally.
-  const handleCreateFromTemplate = async () => {
+  // ── Create Website from Library Template (independent flow) ────────────────
+  // This handler uses ONLY the selected template's stored source, never the current
+  // uploaded zip state. It is completely independent from handleCreateFromZip.
+  const handleCreateWebsiteFromLibrary = async () => {
     const mappedFetchedTemplates = fetchedTemplates.map(t => ({
       id: t._id || t.id,
       name: t.name,
@@ -472,151 +495,66 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
     const template = all.find((t) => t.id === selectedTemplate);
     if (!template || !websiteName.trim()) return;
 
-    // ── Prebuilt template (no ZIP) — unchanged behaviour ──────────────────
-    if (!template.custom && !template.dbTemplate) {
-      onCreate({
-        websiteName: websiteName.trim(),
-        description: "Website Template",
-        source: "template",
-        templateName: template.name,
-        pages: [
-          { id: `${Date.now()}-home`, name: "Home", slug: "home", isHome: true, status: "Draft" },
-          { id: `${Date.now()}-about`, name: "About", slug: "about", isHome: false, status: "Draft" },
-          { id: `${Date.now()}-contact`, name: "Contact", slug: "contact", isHome: false, status: "Draft" },
-        ],
-      });
-      return;
-    }
-
-    // ── Custom (uploaded) template with zipFile OR dbTemplate with Cloudinary URL ───────────────
-    if (template.zipFile || template.templateZipCloudinaryUrl) {
-      setParsing(true);
-      setError(null);
-      try {
-        const { websiteWizardCloudinaryApi } = await import('../../../api/websiteWizardCloudinaryApi');
-        const finalName = websiteName.trim() || template.name;
-        
-        let fileToUpload = template.zipFile;
-        if (!fileToUpload && template.templateZipCloudinaryUrl) {
-          const res = await fetch(template.templateZipCloudinaryUrl);
-          if (!res.ok) throw new Error("Failed to fetch template zip from Cloudinary");
-          const blob = await res.blob();
-          fileToUpload = new File([blob], template.name + ".zip", { type: "application/zip" });
-        }
-
-        let response = null;
-        try {
-          response = await websiteWizardCloudinaryApi.uploadTemplateZipToCloudinary({
-            file: fileToUpload,
-            name: template.name,
-            websiteName: finalName,
-          });
-
-          if (!response?.success) {
-            throw new Error(response?.error || 'Backend upload returned failure.');
-          }
-        } catch (uploadErr) {
-          console.error('[handleCreateFromTemplate] Backend upload error:', uploadErr);
-          setError(uploadErr?.message || 'Upload failed. Check backend logs.');
-          setParsing(false);
-          return;
-        }
-
-        const cloudinaryUrl =
-          response?.website?.settings?.cloudinary?.url ||
-          response?.website?.templateZipCloudinaryUrl ||
-          '';
-
-        onCreate({
-          website: response.website,
-          websiteName: finalName,
-          description: "Website Template",
-          source: "zip",
-          templateName: template.name,
-          templateZipCloudinaryUrl: cloudinaryUrl,
-          pages: response.pages || [],
-        });
-      } catch (err) {
-        console.error("[TemplateLibraryModal] handleCreateFromTemplate failed:", err);
-        setError(err?.message || "Failed to create website from template.");
-      } finally {
-        setParsing(false);
-      }
-      return;
-    }
-
-    // ── dbTemplate OR custom template without zipFile (e.g. from localStorage) ──
     setParsing(true);
     setError(null);
+
     try {
-      const { websiteWizardApi } = await import('../../../api/websiteWizardApi');
+      const finalName = websiteName.trim() || template.name;
 
-      // 1. Create the website record.
-      const savedWebsite = await websiteWizardApi.createWebsite({
-        name: websiteName.trim(),
-        websiteName: websiteName.trim(),
-        description: template.description || "Website Template",
-        status: "Draft",
-      });
-
-      const websiteId = savedWebsite._id || savedWebsite.id;
-      if (!websiteId) {
-        throw new Error("Website creation did not return an id.");
+      // ── Prebuilt template (no ZIP, no Cloudinary URL) — stub pages ────────
+      if (!template.custom && !template.dbTemplate) {
+        onCreate({
+          websiteName: finalName,
+          description: "Website Template",
+          source: "template",
+          templateName: template.name,
+          pages: [
+            { id: `${Date.now()}-home`, name: "Home", slug: "home", isHome: true, status: "Draft" },
+            { id: `${Date.now()}-about`, name: "About", slug: "about", isHome: false, status: "Draft" },
+            { id: `${Date.now()}-contact`, name: "Contact", slug: "contact", isHome: false, status: "Draft" },
+          ],
+        });
+        return;
       }
 
-      // 2. Create every page that was parsed.
+      // ── Template with Cloudinary URL (downloaded templates or saved custom) ─
+      // Download ONLY from the selected template's stored Cloudinary URL, never
+      // from the current uploaded zip.
+      if (template.templateZipCloudinaryUrl) {
+        const res = await fetch(template.templateZipCloudinaryUrl);
+        if (!res.ok) throw new Error("Failed to fetch template zip from Cloudinary");
+        const blob = await res.blob();
+        const fileToUpload = new File([blob], template.name + ".zip", { type: "application/zip" });
+
+        await uploadTemplateZipAndCreateWebsite({
+          zipFile: fileToUpload,
+          templateName: template.name,
+          websiteName: finalName,
+          onCreate,
+        });
+        return;
+      }
+
+      // ── Custom template with parsed pages (from localStorage, no Cloudinary) ─
+      // Create website and pages directly without any zip upload.
       const sourcePages = template.pages || (template.parsed && template.parsed.pages) || [];
-      const parsedPages = [...sourcePages].sort(
-        (a, b) => (a.isHome === b.isHome ? 0 : a.isHome ? -1 : 1)
-      );
 
-      // ── [VERIFY LOG 3] Pages ready for website creation ──────────────────
-      console.group('%c[VERIFY 3] handleCreateFromTemplate — pages before website creation', 'color:#f59e0b;font-weight:bold');
-      console.table(parsedPages.map(({ name, slug, isHome, status, content }) => ({
-        name, slug, isHome, status,
-        htmlLen: content?.html?.length || 0,
-        cssLen: content?.css?.length || 0
-      })));
-      console.groupEnd();
-
-      const createdPages = await Promise.all(
-        parsedPages.map(async (page) => {
-          const created = await websiteWizardApi.createPage({
-            websiteId,
-            name: page.name,
-            slug: page.slug,
-            isHome: !!page.isHome,
-            status: page.status || "Draft",
-            content: page.content || {},
-          });
-
-          return created;
-        })
-      );
-
-      // ── [VERIFY LOG 6] Final summary ─────────────────────────────────────
-      console.group('%c[VERIFY 6] handleCreateFromTemplate — final result', 'color:#10b981;font-weight:bold');
-      console.table(createdPages.map((p) => ({ _id: p._id || p.id, name: p.name, slug: p.slug, isHome: p.isHome, status: p.status })));
-      console.groupEnd();
-
-      // 3. Hand off to parent with the real backend objects
-      onCreate({
-        website: savedWebsite,
-        websiteName: websiteName.trim(),
-        description: template.description || "Website Template",
-        source: "template",
+      await createWebsiteWithPages({
+        pages: sourcePages,
         templateName: template.name,
-        templateZipCloudinaryUrl: template.templateZipCloudinaryUrl,
-        pages: createdPages,
+        websiteName: finalName,
+        templateZipCloudinaryUrl: template.templateZipCloudinaryUrl || '',
+        onCreate,
       });
     } catch (err) {
-      console.error("[TemplateLibraryModal] handleCreateFromTemplate failed:", err);
+      console.error("[TemplateLibraryModal] handleCreateWebsiteFromLibrary failed:", err);
       setError(err?.message || "Failed to create website from template.");
     } finally {
       setParsing(false);
     }
   };
 
+  // Mapped templates for visibility filtering (used in JSX)
   const mappedFetchedTemplates = fetchedTemplates.map(t => ({
     id: t._id || t.id,
     name: t.name,
@@ -982,7 +920,7 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
               <Button
                 type="primary"
                 loading={parsing}
-                onClick={handleCreateFromTemplate}
+                onClick={handleCreateWebsiteFromLibrary}
                 disabled={!websiteName.trim() || !selectedTemplate}
                 style={{
                   backgroundColor: "var(--accent-info)",
