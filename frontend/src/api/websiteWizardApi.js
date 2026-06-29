@@ -16,6 +16,20 @@ async function request(path, { method = 'GET', body } = {}) {
   return res.json();
 }
 
+async function requestMultipart(path, formData) {
+  console.log('[websiteWizardApi] POST multipart', API_BASE + path);
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`API POST ${path} failed: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
 function unwrapSuccess(json) {
   if (!json || json.success === false) {
     throw new Error(json?.error || 'Unknown API error');
@@ -109,4 +123,16 @@ export const websiteWizardApi = {
   // ─── Templates ───────────────────────────────────────────────────────────
 
   listTemplates: async () => unwrapSuccess(await request('/templates', { method: 'GET' })),
+
+  createTemplate: async (payload) => {
+    const form = new FormData();
+    if (payload.file) form.append('file', payload.file);
+    if (payload.name) form.append('name', payload.name);
+    if (payload.category) form.append('category', payload.category);
+    if (payload.description) form.append('description', payload.description);
+    if (payload.thumbnailUrl) form.append('thumbnailUrl', payload.thumbnailUrl);
+    if (payload.pages) form.append('pages', JSON.stringify(payload.pages));
+    
+    return unwrapSuccess(await requestMultipart('/templates', form));
+  },
 };

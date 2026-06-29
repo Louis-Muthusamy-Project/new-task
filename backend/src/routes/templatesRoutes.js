@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 
-// Minimal templates endpoint to satisfy frontend websiteWizardApi.listTemplates.
-// If templates are stored elsewhere, wire it here.
 const WebsiteTemplate = require('../models/WebsiteTemplate');
 const asyncHandler = require('../utils/asyncHandler');
+const { upload } = require('../controllers/websiteTemplateController');
+const { uploadBufferToCloudinary } = require('../config/cloudinary');
 
 router.get(
   '/',
@@ -17,5 +17,41 @@ router.get(
   })
 );
 
-module.exports = router;
+router.post(
+  '/',
+  upload.single('file'),
+  asyncHandler(async (req, res) => {
+    let templateZipCloudinaryUrl = '';
+    if (req.file) {
+      const uploadResult = await uploadBufferToCloudinary(req.file.buffer, {
+        folder: 'website-templates',
+        resourceType: 'raw',
+      });
+      templateZipCloudinaryUrl = uploadResult.secure_url;
+    }
 
+    const { name, category, description, thumbnailUrl, pages } = req.body;
+    let parsedPages = [];
+    try {
+      if (pages) parsedPages = JSON.parse(pages);
+    } catch (e) {
+      console.error('Failed to parse pages array:', e);
+    }
+
+    const template = await WebsiteTemplate.create({
+      name,
+      category,
+      description,
+      thumbnailUrl,
+      templateZipCloudinaryUrl,
+      pages: parsedPages,
+    });
+
+    res.status(201).json({
+      success: true,
+      data: template,
+    });
+  })
+);
+
+module.exports = router;

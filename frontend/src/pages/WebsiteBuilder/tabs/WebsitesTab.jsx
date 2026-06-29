@@ -124,8 +124,8 @@ function normalizeWebsite(doc) {
     typeof doc.pageCount === "number"
       ? doc.pageCount
       : Array.isArray(doc.pages)
-      ? doc.pages.length
-      : doc.pages || 0;
+        ? doc.pages.length
+        : doc.pages || 0;
 
   return {
     // Keep both _id (MongoDB) and key (Ant Design Table rowKey)
@@ -136,25 +136,25 @@ function normalizeWebsite(doc) {
     status: doc.status || "Draft",
     createdAt: doc.createdAt
       ? new Date(doc.createdAt).toLocaleDateString("en-GB", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        })
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })
       : "—",
     updatedAt: doc.updatedAt
       ? new Date(doc.updatedAt).toLocaleDateString("en-GB", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        })
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })
       : "Just now",
     pages: pageCount,
     // Preserve raw page objects so WebsiteEditPage can use them immediately
     rawPages: Array.isArray(doc.rawPages)
       ? doc.rawPages
       : Array.isArray(doc.pages)
-      ? doc.pages
-      : [],
+        ? doc.pages
+        : [],
     isNew: doc.isNew || false,
   };
 }
@@ -460,7 +460,7 @@ const WebsitesTab = ({ itemVariants }) => {
     if (backendWebsite?._id) {
       // ── [VERIFY 7] Pages landing in Websites tab ────────────────────────
       console.group('%c[VERIFY 7] handleTemplateCreated — fast path (backendWebsite._id exists)', 'color:#10b981;font-weight:bold');
-    
+
       console.table((payload.pages || []).map((p) => ({ _id: p._id || p.id, name: p.name, slug: p.slug, isHome: p.isHome })));
       console.groupEnd();
 

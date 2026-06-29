@@ -31,180 +31,180 @@ function toTitleCase(str) {
 }
 
 function slugify(str) {
-   return str
-     .toLowerCase()
-     .replace(/[_\s]+/g, "-")
-     .replace(/[^a-z0-9-]/g, "")
-     .replace(/-+/g, "-")
-     .replace(/^-|-$/g, "");
- }
+  return str
+    .toLowerCase()
+    .replace(/[_\s]+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
 
- // Extract body HTML from full document
- const extractBodyHtml = (htmlString) => {
-   if (!htmlString) return '';
-   const bodyMatch = htmlString.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i);
-   if (bodyMatch && bodyMatch[1] != null) return bodyMatch[1];
-   return htmlString;
- };
+// Extract body HTML from full document
+const extractBodyHtml = (htmlString) => {
+  if (!htmlString) return '';
+  const bodyMatch = htmlString.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i);
+  if (bodyMatch && bodyMatch[1] != null) return bodyMatch[1];
+  return htmlString;
+};
 
- // Extract CSS from inline <style> tags
- const extractCssFromHtml = (htmlString) => {
-   if (!htmlString) return '';
-   const styleBlocks = [];
-   const styleRe = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
-   let m;
-   while ((m = styleRe.exec(htmlString)) !== null) {
-     const css = (m[1] || '').trim();
-     if (css) styleBlocks.push(css);
-   }
-   return styleBlocks.join('\n');
- };
+// Extract CSS from inline <style> tags
+const extractCssFromHtml = (htmlString) => {
+  if (!htmlString) return '';
+  const styleBlocks = [];
+  const styleRe = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
+  let m;
+  while ((m = styleRe.exec(htmlString)) !== null) {
+    const css = (m[1] || '').trim();
+    if (css) styleBlocks.push(css);
+  }
+  return styleBlocks.join('\n');
+};
 
- /**
-  * Reads a .zip File and turns every .html/.htm file it finds into a "page".
-  * - The root folder name (if the zip contains one) seeds the site name + slug.
-  * - index.html (or index.htm) becomes the Home page.
-  * - Every other html file becomes an additional page, named from its filename.
-  * - HTML content is extracted and stored in page.content for GrapesJS.
-  */
- async function parseWebsiteZip(file) {
-   const zip = await JSZip.loadAsync(file);
+/**
+ * Reads a .zip File and turns every .html/.htm file it finds into a "page".
+ * - The root folder name (if the zip contains one) seeds the site name + slug.
+ * - index.html (or index.htm) becomes the Home page.
+ * - Every other html file becomes an additional page, named from its filename.
+ * - HTML content is extracted and stored in page.content for GrapesJS.
+ */
+async function parseWebsiteZip(file) {
+  const zip = await JSZip.loadAsync(file);
 
-   const htmlFiles = [];
-   const cssFiles = [];
-   const jsFiles = [];
-   const imageFiles = [];
-   const docFiles = [];
+  const htmlFiles = [];
+  const cssFiles = [];
+  const jsFiles = [];
+  const imageFiles = [];
+  const docFiles = [];
 
-   // Collect file paths (and sizes when available)
-   const fileEntries = [];
-   zip.forEach((relativePath, entry) => {
-     if (entry.dir) return;
-     const lower = relativePath.toLowerCase();
-     fileEntries.push({ relativePath, entry });
+  // Collect file paths (and sizes when available)
+  const fileEntries = [];
+  zip.forEach((relativePath, entry) => {
+    if (entry.dir) return;
+    const lower = relativePath.toLowerCase();
+    fileEntries.push({ relativePath, entry });
 
-     if (/\.html?$/i.test(relativePath)) htmlFiles.push(relativePath);
-     else if (/\.css$/i.test(relativePath)) cssFiles.push(relativePath);
-     else if (/\.js$/i.test(relativePath)) jsFiles.push(relativePath);
-     else if (/\.(png|jpe?g|gif|webp|svg|ico|bmp)$/i.test(lower)) imageFiles.push(relativePath);
-     else if (/\.(pdf|docx?|xlsx?|pptx?|txt|rtf|zip|rar|7z)$/i.test(lower)) docFiles.push(relativePath);
-   });
+    if (/\.html?$/i.test(relativePath)) htmlFiles.push(relativePath);
+    else if (/\.css$/i.test(relativePath)) cssFiles.push(relativePath);
+    else if (/\.js$/i.test(relativePath)) jsFiles.push(relativePath);
+    else if (/\.(png|jpe?g|gif|webp|svg|ico|bmp)$/i.test(lower)) imageFiles.push(relativePath);
+    else if (/\.(pdf|docx?|xlsx?|pptx?|txt|rtf|zip|rar|7z)$/i.test(lower)) docFiles.push(relativePath);
+  });
 
-// Read HTML content, extract body, and validate in one pass
-   const htmlFileData = await Promise.all(
-     htmlFiles.map(async (path) => {
-       const entry = zip.file(path);
-       if (!entry) return null;
-       
-       const size = entry._data?.uncompressedSize ?? entry._data?.size ?? 0;
-       if (!size) return { path, valid: false, reason: 'EMPTY' };
-       
-       try {
-         const html = await entry.async('string');
-         const trimmed = (html || '').trim();
-         if (!trimmed) return { path, valid: false, reason: 'EMPTY' };
-         
-         const looksLikeHtml = /<\s*html\b/i.test(trimmed) || /<\s*body\b/i.test(trimmed) || /<\s*head\b/i.test(trimmed);
-         if (!looksLikeHtml) {
-           return { path, valid: false, reason: 'CORRUPTED' };
-         }
-         
-         const bodyHtml = extractBodyHtml(html);
-         const extractedCss = extractCssFromHtml(html);
-         return { path, valid: true, bodyHtml, extractedCss };
-       } catch (e) {
-         return { path, valid: false, reason: 'CORRUPTED' };
-       }
-     })
-   );
+  // Read HTML content, extract body, and validate in one pass
+  const htmlFileData = await Promise.all(
+    htmlFiles.map(async (path) => {
+      const entry = zip.file(path);
+      if (!entry) return null;
 
-   const validHtml = htmlFileData.filter(Boolean).filter((x) => x.valid);
-   if (validHtml.length === 0) {
-     throw new Error("ZIP must contain at least one valid HTML page.");
-   }
+      const size = entry._data?.uncompressedSize ?? entry._data?.size ?? 0;
+      if (!size) return { path, valid: false, reason: 'EMPTY' };
 
-   // Require at least index.html or index.htm
-   const hasIndex = htmlFiles.some((filePath) => /(^|\/)index\.html?$/i.test(filePath));
-   if (!hasIndex) {
-     throw new Error("ZIP must contain an index.html file.");
-   }
+      try {
+        const html = await entry.async('string');
+        const trimmed = (html || '').trim();
+        if (!trimmed) return { path, valid: false, reason: 'EMPTY' };
 
-   // Asset-only rejection rules
-   const hasOnly = (arr) => arr.length > 0;
-   const hasCss = cssFiles.length > 0;
-   const hasJs = jsFiles.length > 0;
-   const hasImages = imageFiles.length > 0;
-   const hasDocs = docFiles.length > 0;
+        const looksLikeHtml = /<\s*html\b/i.test(trimmed) || /<\s*body\b/i.test(trimmed) || /<\s*head\b/i.test(trimmed);
+        if (!looksLikeHtml) {
+          return { path, valid: false, reason: 'CORRUPTED' };
+        }
 
-   // if zip contains html+index but nothing else that's not required; only reject
-   // for the explicit cases requested.
-   // Requested reject cases that can still happen with HTML present:
-   // - "ZIP contains only assets" (meaning no index.html/index.htm; already handled)
-   // - "ZIP contains only images/CSS/JS/documents only" (no HTML; already handled)
+        const bodyHtml = extractBodyHtml(html);
+        const extractedCss = extractCssFromHtml(html);
+        return { path, valid: true, bodyHtml, extractedCss };
+      } catch (e) {
+        return { path, valid: false, reason: 'CORRUPTED' };
+      }
+    })
+  );
 
-   // Derive base slug/site name
-   htmlFiles.sort((a, b) => a.split("/").length - b.split("/").length);
-   const firstSegments = htmlFiles[0].split("/");
-   const rootFolder = firstSegments.length > 1 ? firstSegments[0] : null;
+  const validHtml = htmlFileData.filter(Boolean).filter((x) => x.valid);
+  if (validHtml.length === 0) {
+    throw new Error("ZIP must contain at least one valid HTML page.");
+  }
 
-   const rawBase = rootFolder
-     ? rootFolder.replace(TEMPLATEMO_PREFIX_RE, "")
-     : file.name.replace(/\.zip$/i, "");
+  // Require at least index.html or index.htm
+  const hasIndex = htmlFiles.some((filePath) => /(^|\/)index\.html?$/i.test(filePath));
+  if (!hasIndex) {
+    throw new Error("ZIP must contain an index.html file.");
+  }
 
-   const baseSlug = slugify(rawBase) || slugify(file.name.replace(/\.zip$/i, "")) || "site";
-   const siteName = toTitleCase(rawBase) || "Untitled Site";
+  // Asset-only rejection rules
+  const hasOnly = (arr) => arr.length > 0;
+  const hasCss = cssFiles.length > 0;
+  const hasJs = jsFiles.length > 0;
+  const hasImages = imageFiles.length > 0;
+  const hasDocs = docFiles.length > 0;
 
-   // Build pages with extracted content from valid HTML files
-   let pages = validHtml.map(({ path, bodyHtml, extractedCss }) => {
-     const fileName = path.split("/").pop();
-     const baseName = fileName.replace(/\.html?$/i, "");
-     const isHome = baseName.toLowerCase() === "index";
-     const slug = isHome ? "home" : slugify(baseName);
-     return {
-       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-       name: isHome ? "Home" : toTitleCase(baseName),
-       slug,
-       isHome,
-       status: "Draft",
-       sourcePath: path,
-       content: {
-         html: bodyHtml,
-         css: extractedCss,
-       },
-     };
-   });
+  // if zip contains html+index but nothing else that's not required; only reject
+  // for the explicit cases requested.
+  // Requested reject cases that can still happen with HTML present:
+  // - "ZIP contains only assets" (meaning no index.html/index.htm; already handled)
+  // - "ZIP contains only images/CSS/JS/documents only" (no HTML; already handled)
 
-   // Guarantee exactly one Home page.
-   if (!pages.some((p) => p.isHome)) {
-     pages = pages.map((p, i) => (i === 0 ? { ...p, isHome: true } : p));
-   }
+  // Derive base slug/site name
+  htmlFiles.sort((a, b) => a.split("/").length - b.split("/").length);
+  const firstSegments = htmlFiles[0].split("/");
+  const rootFolder = firstSegments.length > 1 ? firstSegments[0] : null;
 
-   pages.sort((a, b) =>
-     a.isHome === b.isHome ? a.name.localeCompare(b.name) : a.isHome ? -1 : 1
-   );
+  const rawBase = rootFolder
+    ? rootFolder.replace(TEMPLATEMO_PREFIX_RE, "")
+    : file.name.replace(/\.zip$/i, "");
 
-   // ── [VERIFY LOG 1] ZIP parse complete ─────────────────────────────────────
-   console.group('%c[VERIFY 1] parseWebsiteZip — result', 'color:#10b981;font-weight:bold');
-   console.table(pages.map(({ name, slug, isHome, status, sourcePath, content }) => ({ 
-     name, slug, isHome, status, sourcePath,
-     htmlLen: content?.html?.length || 0,
-     cssLen: content?.css?.length || 0
-   })));
-   console.groupEnd();
+  const baseSlug = slugify(rawBase) || slugify(file.name.replace(/\.zip$/i, "")) || "site";
+  const siteName = toTitleCase(rawBase) || "Untitled Site";
 
-   return {
-     siteName,
-     baseSlug,
-     pages,
-     fileCount: htmlFiles.length,
-     warnings: {
-       cssMissing: !hasCss,
-       jsMissing: !hasJs,
-       imagesMissing: !hasImages,
-       documentsOnly: hasDocs && !hasImages && !hasCss && !hasJs,
-     },
-   };
- }
+  // Build pages with extracted content from valid HTML files
+  let pages = validHtml.map(({ path, bodyHtml, extractedCss }) => {
+    const fileName = path.split("/").pop();
+    const baseName = fileName.replace(/\.html?$/i, "");
+    const isHome = baseName.toLowerCase() === "index";
+    const slug = isHome ? "home" : slugify(baseName);
+    return {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name: isHome ? "Home" : toTitleCase(baseName),
+      slug,
+      isHome,
+      status: "Draft",
+      sourcePath: path,
+      content: {
+        html: bodyHtml,
+        css: extractedCss,
+      },
+    };
+  });
+
+  // Guarantee exactly one Home page.
+  if (!pages.some((p) => p.isHome)) {
+    pages = pages.map((p, i) => (i === 0 ? { ...p, isHome: true } : p));
+  }
+
+  pages.sort((a, b) =>
+    a.isHome === b.isHome ? a.name.localeCompare(b.name) : a.isHome ? -1 : 1
+  );
+
+  // ── [VERIFY LOG 1] ZIP parse complete ─────────────────────────────────────
+  console.group('%c[VERIFY 1] parseWebsiteZip — result', 'color:#10b981;font-weight:bold');
+  console.table(pages.map(({ name, slug, isHome, status, sourcePath, content }) => ({
+    name, slug, isHome, status, sourcePath,
+    htmlLen: content?.html?.length || 0,
+    cssLen: content?.css?.length || 0
+  })));
+  console.groupEnd();
+
+  return {
+    siteName,
+    baseSlug,
+    pages,
+    fileCount: htmlFiles.length,
+    warnings: {
+      cssMissing: !hasCss,
+      jsMissing: !hasJs,
+      imagesMissing: !hasImages,
+      documentsOnly: hasDocs && !hasImages && !hasCss && !hasJs,
+    },
+  };
+}
 
 /* ---------------------------------------------------------------------- */
 /* Demo template catalog (prebuilt templates shown in the grid)            */
@@ -341,8 +341,8 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
 
       // ── [VERIFY LOG 2] Template stored in library ────────────────────────
       console.group('%c[VERIFY 2] handleUploadToLibrary — template entry stored', 'color:#3b82f6;font-weight:bold');
-      console.table(entry.parsed.pages.map(({ name, slug, isHome, status, content }) => ({ 
-        name, slug, isHome, status, 
+      console.table(entry.parsed.pages.map(({ name, slug, isHome, status, content }) => ({
+        name, slug, isHome, status,
         htmlLen: content?.html?.length || 0,
         cssLen: content?.css?.length || 0
       })));
@@ -351,28 +351,32 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
       // Persist to backend DB
       const { websiteWizardApi } = await import('../../../api/websiteWizardApi');
       try {
-        await websiteWizardApi.createTemplate({
+        const savedTemplate = await websiteWizardApi.createTemplate({
           name: entry.name,
           category: entry.category,
           description: entry.description,
           thumbnailUrl: entry.thumbnailUrl,
-          templateZipCloudinaryUrl: entry.templateZipCloudinaryUrl,
+          file: zipFile,
           pages: entry.pages,
         });
+        
+        if (savedTemplate && savedTemplate.templateZipCloudinaryUrl) {
+          entry.templateZipCloudinaryUrl = savedTemplate.templateZipCloudinaryUrl;
+        }
       } catch (apiErr) {
         console.error('Failed to persist template to backend', apiErr);
       }
 
-        setCustomTemplates((prev) => {
-          const updated = [entry, ...prev];
-          // Persist to localStorage
-          try {
-            localStorage.setItem('customTemplates', JSON.stringify(updated));
-          } catch (e) {
-            console.error('Failed to persist customTemplates', e);
-          }
-          return updated;
-        });
+      setCustomTemplates((prev) => {
+        const updated = [entry, ...prev];
+        // Persist to localStorage (note: zipFile won't be stringified)
+        try {
+          localStorage.setItem('customTemplates', JSON.stringify(updated));
+        } catch (e) {
+          console.error('Failed to persist customTemplates', e);
+        }
+        return updated;
+      });
       setUploadedNotice(`"${entry.name}" was added to Created by you.`);
       resetZipPanel();
     } catch (err) {
@@ -410,9 +414,6 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
           throw new Error(response?.error || 'Backend upload returned failure.');
         }
       } catch (uploadErr) {
-        // Cloudinary/backend failing: log clearly so developer can diagnose,
-        // but do NOT call onCreate with a null website — that causes a second
-        // createWebsite call with stub pages that have no content.
         console.error('[handleCreateFromZip] Backend upload error:', uploadErr);
         setError(uploadErr?.message || 'Upload failed. Check backend logs.');
         return; // FIX: stop here — do not call onCreate with broken data
@@ -471,25 +472,8 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
     const template = all.find((t) => t.id === selectedTemplate);
     if (!template || !websiteName.trim()) return;
 
-    // ── DB template ──────────────────
-    if (template.dbTemplate) {
-      onCreate({
-        websiteName: websiteName.trim(),
-        description: template.description || "Website Template",
-        source: "template",
-        templateName: template.name,
-        templateZipCloudinaryUrl: template.templateZipCloudinaryUrl,
-        pages: template.pages?.length ? template.pages : [
-          { id: `${Date.now()}-home`, name: "Home", slug: "home", isHome: true, status: "Draft" },
-          { id: `${Date.now()}-about`, name: "About", slug: "about", isHome: false, status: "Draft" },
-          { id: `${Date.now()}-contact`, name: "Contact", slug: "contact", isHome: false, status: "Draft" },
-        ],
-      });
-      return;
-    }
-
     // ── Prebuilt template (no ZIP) — unchanged behaviour ──────────────────
-    if (!template.custom) {
+    if (!template.custom && !template.dbTemplate) {
       onCreate({
         websiteName: websiteName.trim(),
         description: "Website Template",
@@ -504,18 +488,26 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
       return;
     }
 
-    // ── Custom (uploaded) template — persist website + pages ───────────────
-    if (template.zipFile) {
+    // ── Custom (uploaded) template with zipFile OR dbTemplate with Cloudinary URL ───────────────
+    if (template.zipFile || template.templateZipCloudinaryUrl) {
       setParsing(true);
       setError(null);
       try {
         const { websiteWizardCloudinaryApi } = await import('../../../api/websiteWizardCloudinaryApi');
         const finalName = websiteName.trim() || template.name;
+        
+        let fileToUpload = template.zipFile;
+        if (!fileToUpload && template.templateZipCloudinaryUrl) {
+          const res = await fetch(template.templateZipCloudinaryUrl);
+          if (!res.ok) throw new Error("Failed to fetch template zip from Cloudinary");
+          const blob = await res.blob();
+          fileToUpload = new File([blob], template.name + ".zip", { type: "application/zip" });
+        }
 
         let response = null;
         try {
           response = await websiteWizardCloudinaryApi.uploadTemplateZipToCloudinary({
-            file: template.zipFile,
+            file: fileToUpload,
             name: template.name,
             websiteName: finalName,
           });
@@ -553,6 +545,7 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
       return;
     }
 
+    // ── dbTemplate OR custom template without zipFile (e.g. from localStorage) ──
     setParsing(true);
     setError(null);
     try {
@@ -562,7 +555,7 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
       const savedWebsite = await websiteWizardApi.createWebsite({
         name: websiteName.trim(),
         websiteName: websiteName.trim(),
-        description: "Website Template",
+        description: template.description || "Website Template",
         status: "Draft",
       });
 
@@ -571,20 +564,18 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
         throw new Error("Website creation did not return an id.");
       }
 
-      // 2. Create every page that was parsed from the ZIP.
-      //    The backend deduplicates slugs and enforces a single Home page,
-      //    so we don't need to guard for those cases here.
-      //    Sort home page first so it is the authoritative home.
-      const parsedPages = [...(template.parsed.pages || [])].sort(
+      // 2. Create every page that was parsed.
+      const sourcePages = template.pages || (template.parsed && template.parsed.pages) || [];
+      const parsedPages = [...sourcePages].sort(
         (a, b) => (a.isHome === b.isHome ? 0 : a.isHome ? -1 : 1)
       );
 
-// ── [VERIFY LOG 3] Pages ready for website creation ──────────────────
+      // ── [VERIFY LOG 3] Pages ready for website creation ──────────────────
       console.group('%c[VERIFY 3] handleCreateFromTemplate — pages before website creation', 'color:#f59e0b;font-weight:bold');
-      console.table(parsedPages.map(({ name, slug, isHome, status, content }) => ({ 
-        name, slug, isHome, status, 
+      console.table(parsedPages.map(({ name, slug, isHome, status, content }) => ({
+        name, slug, isHome, status,
         htmlLen: content?.html?.length || 0,
-        cssLen: content?.css?.length || 0 
+        cssLen: content?.css?.length || 0
       })));
       console.groupEnd();
 
@@ -608,15 +599,14 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
       console.table(createdPages.map((p) => ({ _id: p._id || p.id, name: p.name, slug: p.slug, isHome: p.isHome, status: p.status })));
       console.groupEnd();
 
-      // 3. Hand off to parent with the real backend objects — same shape as
-      //    the "Create from ZIP" path so handleTemplateCreated takes the
-      //    if (backendWebsite?._id) fast branch and skips a second createWebsite call.
+      // 3. Hand off to parent with the real backend objects
       onCreate({
         website: savedWebsite,
         websiteName: websiteName.trim(),
-        description: "Website Template",
+        description: template.description || "Website Template",
         source: "template",
         templateName: template.name,
+        templateZipCloudinaryUrl: template.templateZipCloudinaryUrl,
         pages: createdPages,
       });
     } catch (err) {
