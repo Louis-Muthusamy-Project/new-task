@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Modal, Input, Button, Typography, Space, Row, Col, Select } from "antd";
 import {
   LayoutTemplate,
@@ -254,8 +254,48 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
   const [search, setSearch] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState(null);
 
-  const [customTemplates, setCustomTemplates] = useState([]); // uploaded-to-library zips
+  const [fetchedTemplates, setFetchedTemplates] = useState([]); // templates from backend
+  const [customTemplates, setCustomTemplates] = useState(() => {
+    // Load persisted custom templates from localStorage
+    try {
+      const stored = localStorage.getItem('customTemplates');
+      return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      console.error('Failed to parse customTemplates from localStorage', e);
+      return [];
+    }
+  }); // uploaded-to-library zips
   const [showUploadPanel, setShowUploadPanel] = useState(true);
+
+  // Load persisted custom templates on component mount (in case modal opens after refresh)
+  useEffect(() => {
+    // Ensure customTemplates are sync with localStorage
+    try {
+      const stored = localStorage.getItem('customTemplates');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        setCustomTemplates(parsed);
+      }
+    } catch (e) {
+      console.error('Error loading custom templates from localStorage', e);
+    }
+  }, []);
+
+  // Fetch templates from backend when the modal is opened
+  useEffect(() => {
+    if (open) {
+      const fetchTemplates = async () => {
+        try {
+          const { websiteWizardApi } = await import('../../../api/websiteWizardApi');
+          const templates = await websiteWizardApi.listTemplates();
+          setFetchedTemplates(templates || []);
+        } catch (err) {
+          console.error('Failed to fetch templates:', err);
+        }
+      };
+      fetchTemplates();
+    }
+  }, [open]);
   const [zipFile, setZipFile] = useState(null);
   const [zipTemplateName, setZipTemplateName] = useState("");
   const [parsing, setParsing] = useState(false);
@@ -292,6 +332,11 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
         category: "Created by you",
         custom: true,
         parsed,
+        zipFile,
+        thumbnailUrl: '', // optional – can be set later
+        description: '',
+        templateZipCloudinaryUrl: '',
+        pages: parsed.pages || [],
       };
 
       // ── [VERIFY LOG 2] Template stored in library ────────────────────────
@@ -303,7 +348,31 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
       })));
       console.groupEnd();
 
-      setCustomTemplates((prev) => [entry, ...prev]);
+      // Persist to backend DB
+      const { websiteWizardApi } = await import('../../../api/websiteWizardApi');
+      try {
+        await websiteWizardApi.createTemplate({
+          name: entry.name,
+          category: entry.category,
+          description: entry.description,
+          thumbnailUrl: entry.thumbnailUrl,
+          templateZipCloudinaryUrl: entry.templateZipCloudinaryUrl,
+          pages: entry.pages,
+        });
+      } catch (apiErr) {
+        console.error('Failed to persist template to backend', apiErr);
+      }
+
+        setCustomTemplates((prev) => {
+          const updated = [entry, ...prev];
+          // Persist to localStorage
+          try {
+            localStorage.setItem('customTemplates', JSON.stringify(updated));
+          } catch (e) {
+            console.error('Failed to persist customTemplates', e);
+          }
+          return updated;
+        });
       setUploadedNotice(`"${entry.name}" was added to Created by you.`);
       resetZipPanel();
     } catch (err) {
@@ -388,9 +457,36 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
   // For prebuilt templates (no ZIP content) the old behaviour is preserved —
   // stub pages are passed and the parent creates the website normally.
   const handleCreateFromTemplate = async () => {
-    const all = [...customTemplates, ...PREBUILT_TEMPLATES];
+    const mappedFetchedTemplates = fetchedTemplates.map(t => ({
+      id: t._id || t.id,
+      name: t.name,
+      category: t.category,
+      dbTemplate: true,
+      description: t.description,
+      templateZipCloudinaryUrl: t.templateZipCloudinaryUrl,
+      pages: t.pages,
+    }));
+
+    const all = [...customTemplates, ...mappedFetchedTemplates, ...PREBUILT_TEMPLATES];
     const template = all.find((t) => t.id === selectedTemplate);
     if (!template || !websiteName.trim()) return;
+
+    // ── DB template ──────────────────
+    if (template.dbTemplate) {
+      onCreate({
+        websiteName: websiteName.trim(),
+        description: template.description || "Website Template",
+        source: "template",
+        templateName: template.name,
+        templateZipCloudinaryUrl: template.templateZipCloudinaryUrl,
+        pages: template.pages?.length ? template.pages : [
+          { id: `${Date.now()}-home`, name: "Home", slug: "home", isHome: true, status: "Draft" },
+          { id: `${Date.now()}-about`, name: "About", slug: "about", isHome: false, status: "Draft" },
+          { id: `${Date.now()}-contact`, name: "Contact", slug: "contact", isHome: false, status: "Draft" },
+        ],
+      });
+      return;
+    }
 
     // ── Prebuilt template (no ZIP) — unchanged behaviour ──────────────────
     if (!template.custom) {
@@ -409,6 +505,54 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
     }
 
     // ── Custom (uploaded) template — persist website + pages ───────────────
+    if (template.zipFile) {
+      setParsing(true);
+      setError(null);
+      try {
+        const { websiteWizardCloudinaryApi } = await import('../../../api/websiteWizardCloudinaryApi');
+        const finalName = websiteName.trim() || template.name;
+
+        let response = null;
+        try {
+          response = await websiteWizardCloudinaryApi.uploadTemplateZipToCloudinary({
+            file: template.zipFile,
+            name: template.name,
+            websiteName: finalName,
+          });
+
+          if (!response?.success) {
+            throw new Error(response?.error || 'Backend upload returned failure.');
+          }
+        } catch (uploadErr) {
+          console.error('[handleCreateFromTemplate] Backend upload error:', uploadErr);
+          setError(uploadErr?.message || 'Upload failed. Check backend logs.');
+          setParsing(false);
+          return;
+        }
+
+        const cloudinaryUrl =
+          response?.website?.settings?.cloudinary?.url ||
+          response?.website?.templateZipCloudinaryUrl ||
+          '';
+
+        onCreate({
+          website: response.website,
+          websiteName: finalName,
+          description: "Website Template",
+          source: "zip",
+          templateName: template.name,
+          templateZipCloudinaryUrl: cloudinaryUrl,
+          pages: response.pages || [],
+        });
+      } catch (err) {
+        console.error("[TemplateLibraryModal] handleCreateFromTemplate failed:", err);
+        setError(err?.message || "Failed to create website from template.");
+      } finally {
+        setParsing(false);
+      }
+      return;
+    }
+
     setParsing(true);
     setError(null);
     try {
@@ -483,11 +627,27 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
     }
   };
 
-  const visibleTemplates = [...customTemplates, ...PREBUILT_TEMPLATES].filter((t) => {
+  const mappedFetchedTemplates = fetchedTemplates.map(t => ({
+    id: t._id || t.id,
+    name: t.name,
+    category: t.category,
+    dbTemplate: true,
+    description: t.description,
+    templateZipCloudinaryUrl: t.templateZipCloudinaryUrl,
+    pages: t.pages,
+    thumbnailUrl: t.thumbnailUrl
+  }));
+
+  const visibleTemplates = [...customTemplates, ...mappedFetchedTemplates, ...PREBUILT_TEMPLATES].filter((t) => {
     const matchesCategory = activeCategory === "All" || t.category === activeCategory || t.custom;
     const matchesSearch = !search.trim() || t.name.toLowerCase().includes(search.trim().toLowerCase());
     return matchesCategory && matchesSearch;
   });
+
+  const dynamicCategories = Array.from(new Set([
+    ...CATEGORIES,
+    ...fetchedTemplates.map(t => t.category).filter(Boolean)
+  ]));
 
   return (
     <Modal
@@ -577,7 +737,7 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
             >
               <span>Created by you</span>
               <Text type="secondary" style={{ fontSize: 12, color: "inherit" }}>
-                {3 + customTemplates.length}
+                {customTemplates.length}
               </Text>
             </div>
 
@@ -589,7 +749,7 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
             </Text>
 
             <Space orientation="vertical" style={{ width: "100%" }} size={2}>
-              {CATEGORIES.map((cat) => (
+              {dynamicCategories.map((cat) => (
                 <div
                   key={cat}
                   onClick={() => setActiveCategory(cat)}
