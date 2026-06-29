@@ -70,13 +70,18 @@ function safeGetInitialContent(page) {
     typeof rawContent?.css === "string"
       ? rawContent.css
       : "";
+  const headLinks =
+    typeof rawContent?.headLinks === "string"
+      ? rawContent.headLinks
+      : "";
 
   console.log("[safeGetInitialContent RESULT]", {
     htmlLen: html.length,
     cssLen: css.length,
+    headLinksLen: headLinks.length,
   });
 
-  return { html, css };
+  return { html, css, headLinks };
 }
 
 const StatusBadge = ({ status }) => {
@@ -118,6 +123,7 @@ const BccBuilder = () => {
   // GrapesJS content props (state lives here so refresh works)
   const [html, setHtml] = useState("");
   const [css, setCss] = useState("");
+  const [headLinks, setHeadLinks] = useState("");
 
   // Dirty tracking
   const [isDirty, setIsDirty] = useState(false);
@@ -147,6 +153,7 @@ const BccBuilder = () => {
         setHtml(initial.html);
         console.log('[CSS SET]', { source: 'getCachedPage', length: initial.css?.length || 0 });
         setCss(initial.css);
+        setHeadLinks(initial.headLinks);
 
         setIsDirty(false);
         setLoading(false);
@@ -172,6 +179,7 @@ const BccBuilder = () => {
         setHtml("");
         console.log('[CSS SET]', { source: 'nonMongo_synthetic', length: 0 });
         setCss("");
+        setHeadLinks("");
         setIsDirty(false);
         setLoading(false);
         return;
@@ -190,6 +198,7 @@ const BccBuilder = () => {
         setHtml(initial.html);
         console.log('[CSS SET]', { source: 'websiteWizardApi.getPage', length: initial.css?.length || 0 });
         setCss(initial.css);
+        setHeadLinks(initial.headLinks);
 
         cachePage(data._id || pageId, data);
 
@@ -217,7 +226,7 @@ const BccBuilder = () => {
     setSaving(true);
     try {
       const payload = {
-        content: { html, css },
+        content: { html, css, ...(headLinks ? { headLinks } : {}) },
         status: pageStatus,
         ...(page?.name && { name: page.name }),
         ...(page?.slug && { slug: page.slug }),
@@ -243,7 +252,7 @@ const BccBuilder = () => {
         ...updated,
         // Keep the content the editor has, not whatever the server returned,
         // so a subsequent refresh rehydrates exactly what is on the canvas.
-        content: { html, css },
+        content: { html, css, ...(headLinks ? { headLinks } : {}) },
       });
 
       setSavedAt(new Date());
@@ -255,7 +264,7 @@ const BccBuilder = () => {
     } finally {
       setSaving(false);
     }
-  }, [pageId, page, html, css, pageStatus]);
+  }, [pageId, page, html, css, headLinks, pageStatus]);
 
   // Keyboard shortcut: Ctrl/Cmd + S
   useEffect(() => {
@@ -569,6 +578,7 @@ const BccBuilder = () => {
               websiteId={websiteId}
               initialHtml={html}
               initialCss={css}
+              initialHeadLinks={headLinks}
               onChange={({ html: nextHtml, css: nextCss }) => {
                 setHtml(nextHtml);
                 setCss(nextCss);

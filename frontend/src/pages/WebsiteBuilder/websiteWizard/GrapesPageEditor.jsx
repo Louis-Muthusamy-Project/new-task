@@ -191,13 +191,14 @@ const EXTERNAL_LINK_RELS = new Set([
   'preload',
 ]);
 
-function normalizeToBodyAndCss(rawHtml = '', rawCss = '') {
+function normalizeToBodyAndCss(rawHtml = '', rawCss = '', rawHeadLinks = '') {
   const html    = String(rawHtml || '');
   const cssBase = String(rawCss  || '');
+  const headLinks = String(rawHeadLinks || '');
 
   try {
     const parser = new DOMParser();
-    const doc    = parser.parseFromString(html, 'text/html');
+    const doc    = parser.parseFromString(`${headLinks}\n${html}`, 'text/html');
 
     // ── 1. Collect external stylesheet / font / icon links ────────────────
     // These must be injected into the canvas iframe, not fed to setStyle().
@@ -239,9 +240,9 @@ function normalizeToBodyAndCss(rawHtml = '', rawCss = '') {
 
     // ── 3. Clean body ─────────────────────────────────────────────────────
     const body = doc.body.cloneNode(true);
-    // Remove <style> (already captured above), scripts, and loader elements.
+    // Remove <style>/<link> (already captured above), scripts, and loader elements.
     body.querySelectorAll(
-      'style, script, #spinner, .spinner, .preloader, .loader, [data-loader]'
+      'style, link, script, #spinner, .spinner, .preloader, .loader, [data-loader]'
     ).forEach((el) => el.remove());
 
     const bodyHtml = body.innerHTML;
@@ -376,6 +377,7 @@ const GrapesPageEditor = ({
   height = '100%',
   initialHtml = '',
   initialCss = '',
+  initialHeadLinks = '',
   onChange,
   assetManager = {},
   onEditorReady,
@@ -606,6 +608,7 @@ const GrapesPageEditor = ({
         console.log('[GrapesPageEditor] no pending on load, checking props', {
           initialHtmlLen: initialHtml?.length,
           initialCssLen:  initialCss?.length,
+          initialHeadLinksLen: initialHeadLinks?.length,
         });
       }
     });
@@ -676,7 +679,7 @@ const GrapesPageEditor = ({
     }
 
     const { componentsHtml, stylesCss, externalLinks } =
-      normalizeToBodyAndCss(initialHtml, initialCss);
+      normalizeToBodyAndCss(initialHtml, initialCss, initialHeadLinks);
 
     const nextHtml = String(componentsHtml ?? '');
     const nextCss  = String(stylesCss ?? '');
@@ -694,7 +697,7 @@ const GrapesPageEditor = ({
         pageKey,
       };
     }
-  }, [initialHtml, initialCss, pageKey, mountEpoch]);
+  }, [initialHtml, initialCss, initialHeadLinks, pageKey, mountEpoch]);
 
   return (
     <div

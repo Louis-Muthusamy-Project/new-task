@@ -421,7 +421,7 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
       try {
         const savedTemplate = await websiteWizardApi.createTemplate({
           name: entry.name,
-          category: entry.category,
+          category: "Other",
           description: entry.description,
           thumbnailUrl: entry.thumbnailUrl,
           file: zipFile,
@@ -520,6 +520,16 @@ const TemplateLibraryModal = ({ open, onCancel, onCreate, initialWebsiteName }) 
       // ── Template with Cloudinary URL (downloaded templates or saved custom) ─
       // Download ONLY from the selected template's stored Cloudinary URL, never
       // from the current uploaded zip.
+      if (template.custom && template.zipFile instanceof File) {
+        await uploadTemplateZipAndCreateWebsite({
+          zipFile: template.zipFile,
+          templateName: template.name,
+          websiteName: finalName,
+          onCreate,
+        });
+        return;
+      }
+
       if (template.templateZipCloudinaryUrl) {
         const res = await fetch(template.templateZipCloudinaryUrl);
         if (!res.ok) throw new Error("Failed to fetch template zip from Cloudinary");
