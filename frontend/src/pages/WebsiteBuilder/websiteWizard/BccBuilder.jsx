@@ -16,6 +16,7 @@ import { websiteWizardApi } from "../../../api/websiteWizardApi";
 
 import GrapesPageEditor from "./GrapesPageEditor";
 import useUnsavedChangesWarning from "./useUnsavedChangesWarning";
+import { openPagePreview } from "../utils/previewHtml";
 
 const { Option } = Select;
 
@@ -434,7 +435,11 @@ const BccBuilder = () => {
             <Button
               icon={<Eye size={15} />}
               onClick={() => {
-                if (page?.slug) window.open(`/${page.slug}`, "_blank", "noopener,noreferrer");
+                const opened = openPagePreview({
+                  ...page,
+                  content: { html, css, ...(headLinks ? { headLinks } : {}) },
+                });
+                if (!opened) message.error("Popup blocked. Allow popups to preview this page.");
               }}
               style={{
                 borderRadius: 8,

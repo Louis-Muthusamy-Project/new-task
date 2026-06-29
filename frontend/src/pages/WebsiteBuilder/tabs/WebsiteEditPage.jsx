@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { websiteWizardApi } from "../../../api/websiteWizardApi";
 import { useNavigate } from "react-router-dom";
+import { openPagePreview } from "../utils/previewHtml";
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -132,14 +133,16 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
     }
   };
 
-  const handlePreview = async () => {
+  const handlePreview = async (pageSlug) => {
     if (!websiteDbId) return;
 
+    setPreviewLoading(true);
     try {
       const previewData =
         await websiteWizardApi.previewWebsite(websiteDbId);
 
       const homePage =
+        previewData.pages?.find((p) => normalizeSlug(p.slug) === normalizeSlug(pageSlug)) ||
         previewData.pages?.find((p) => p.isHome) ||
         previewData.pages?.[0];
 
@@ -148,14 +151,13 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
         return;
       }
 
-      const previewWindow = window.open("", "_blank");
-
-      previewWindow.document.open();
-      previewWindow.document.write(homePage.content.html);
-      previewWindow.document.close();
+      const opened = openPagePreview(homePage);
+      if (!opened) message.error("Popup blocked. Allow popups to preview this page.");
     } catch (err) {
       console.error(err);
       message.error("Preview failed");
+    } finally {
+      setPreviewLoading(false);
     }
   };
   const [website, setWebsite] = useState(() => ({

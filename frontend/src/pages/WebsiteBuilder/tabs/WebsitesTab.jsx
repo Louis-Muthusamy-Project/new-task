@@ -109,6 +109,7 @@ import TemplateLibraryModal from "../websiteWizard/TemplateLibraryModal";
 import WebsiteTemplatePage from "./WebsiteTemplatePage";
 import WebsiteEditPage from "./WebsiteEditPage";
 import { websiteWizardApi } from "../../../api/websiteWizardApi";
+import { openPagePreview } from "../utils/previewHtml";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -191,11 +192,12 @@ const ManageWebsiteView = ({ activeWebsite, setView, itemVariants }) => {
       const previewData = await websiteWizardApi.previewWebsite(id);
       const pages = previewData?.pages || [];
       const homePage = pages.find((p) => p.isHome) || pages[0];
-      const base = previewData?.website?.domain
-        ? `https://${previewData.website.domain}`
-        : window.location.origin;
-      const url = homePage?.slug ? `${base}/${homePage.slug}` : base;
-      window.open(url, "_blank", "noopener,noreferrer");
+      if (!homePage?.content?.html) {
+        message.info("No HTML content found for this website.");
+        return;
+      }
+      const opened = openPagePreview(homePage);
+      if (!opened) message.error("Popup blocked. Allow popups to preview this website.");
     } catch (err) {
       message.error(err?.message || "Failed to load preview.");
     } finally {
@@ -534,10 +536,8 @@ const WebsitesTab = ({ itemVariants }) => {
         message.info("No published HTML content found for this website.");
         return;
       }
-      const win = window.open("", "_blank");
-      win.document.open();
-      win.document.write(homePage.content.html);
-      win.document.close();
+      const opened = openPagePreview(homePage);
+      if (!opened) message.error("Popup blocked. Allow popups to preview this website.");
     } catch (err) {
       message.error(err?.message || "Preview failed.");
     }
