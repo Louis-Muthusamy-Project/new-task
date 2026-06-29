@@ -7,8 +7,9 @@ const routes = require("./routes");
 const app = express();
 
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Increased limits to handle large GrapesJS page content (HTML + CSS + embedded assets)
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 const cors = require("cors");
 app.use(cors());
@@ -26,4 +27,3 @@ app.use("/api", routes);
 app.use(require('./middlewares/errorMiddleware'));
 
 module.exports = app;
-

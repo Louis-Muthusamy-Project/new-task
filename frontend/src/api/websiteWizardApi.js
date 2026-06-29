@@ -10,6 +10,9 @@ async function request(path, { method = 'GET', body } = {}) {
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
+    if (res.status === 413) {
+      throw new Error(`413 Payload Too Large — page content exceeds server limit. Remove large embedded images and try again.`);
+    }
     throw new Error(`API ${method} ${path} failed: ${res.status} ${text}`);
   }
 

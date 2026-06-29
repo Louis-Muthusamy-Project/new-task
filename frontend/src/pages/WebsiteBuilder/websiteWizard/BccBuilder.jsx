@@ -218,6 +218,21 @@ const BccBuilder = () => {
   // -------------------------------------------------------------------------
   // Save
   // -------------------------------------------------------------------------
+
+  /**
+   * Strip base64-encoded image data URIs from HTML before saving.
+   * A single base64 image can be several MB — the primary cause of
+   * 413 Payload Too Large. Users should upload images via the asset
+   * manager so they are stored on Cloudinary and referenced by URL.
+   */
+  const stripBase64Images = (htmlString) => {
+    if (!htmlString) return htmlString;
+    return htmlString.replace(
+      /src=["']data:image\/[^;]+;base64,[^"']{20,}["']/gi,
+      'src="/placeholder-image.png" data-was-base64="true"'
+    );
+  };
+
   const handleSave = useCallback(async () => {
     if (!isMongoId(pageId)) {
       message.warning("This page hasn't been saved to the database yet — save the website first.");
@@ -226,19 +241,30 @@ const BccBuilder = () => {
 
     setSaving(true);
     try {
+      // Strip base64 images to prevent 413 Payload Too Large
+      const cleanHtml = stripBase64Images(html);
+      if (cleanHtml !== html) {
+        message.warning(
+          "Large embedded images were removed. Please re-add them via the image upload panel.",
+          6
+        );
+      }
+
+      // Calculate approximate payload size and warn if still large
+      const payloadEstimate = (cleanHtml?.length || 0) + (css?.length || 0);
+      if (payloadEstimate > 5 * 1024 * 1024) {
+        message.warning(`Page content is large (~${(payloadEstimate / 1024 / 1024).toFixed(1)} MB). Consider reducing inline assets.`, 5);
+      }
+
       const payload = {
-        content: { html, css, ...(headLinks ? { headLinks } : {}) },
+        content: { html: cleanHtml, css, ...(headLinks ? { headLinks } : {}) },
         status: pageStatus,
         ...(page?.name && { name: page.name }),
         ...(page?.slug && { slug: page.slug }),
         ...(page?.seo && { seo: page.seo }),
       };
 
-      console.log('[HTML SET]', { source: 'handleSave:payload', length: html?.length || 0 });
-      console.log('[CSS SET]', { source: 'handleSave:payload', length: css?.length || 0 });
-
       const updated = await websiteWizardApi.updatePage(pageId, payload);
-
 
       // FIX: after a save we update metadata (page record, status, cache) but
       // do NOT call setHtml/setCss from the server response. The editor already
@@ -253,7 +279,7 @@ const BccBuilder = () => {
         ...updated,
         // Keep the content the editor has, not whatever the server returned,
         // so a subsequent refresh rehydrates exactly what is on the canvas.
-        content: { html, css, ...(headLinks ? { headLinks } : {}) },
+        content: { html: cleanHtml, css, ...(headLinks ? { headLinks } : {}) },
       });
 
       setSavedAt(new Date());
@@ -261,7 +287,16 @@ const BccBuilder = () => {
       message.success("Page saved.");
     } catch (err) {
       console.error("[BccBuilder] save failed:", err);
-      message.error(err?.message || "Save failed.");
+      // Surface the HTTP status code in the error message when available
+      const errMsg = err?.message || "Save failed.";
+      if (errMsg.includes("413")) {
+        message.error(
+          "Page content is too large to save (413). Remove large images and try again.",
+          8
+        );
+      } else {
+        message.error(errMsg);
+      }
     } finally {
       setSaving(false);
     }
