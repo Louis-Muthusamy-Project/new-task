@@ -368,6 +368,73 @@ async function syncAssetsFromBackend(editor, websiteId) {
   }
 }
 
+function escapeHtml(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function buildFormHtml(form, { isTemplate = false } = {}) {
+  const fields = Array.isArray(form?.fields) ? form.fields : [];
+  const formId = escapeHtml(form?._id || form?.id || '');
+  const formName = escapeHtml(form?.name || 'Form');
+
+  return `
+    <form style="padding: 24px; border: 1px solid #e5e7eb; border-radius: 12px; background: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);" data-form-id="${formId}"${isTemplate ? ' data-is-template="true"' : ''}>
+      <h3 style="margin-top: 0; margin-bottom: 20px; font-family: sans-serif; color: #111827;">${formName}</h3>
+      ${fields.map((field) => {
+        const typeLower = String(field.type || '').toLowerCase();
+        const fieldId = escapeHtml(field.id || field.label || 'field');
+        const fieldLabel = escapeHtml(field.label || field.type || 'Field');
+        const placeholder = escapeHtml(field.placeholder || '');
+        const reqAttr = field.required ? 'required' : '';
+        const placeholderAttr = placeholder ? `placeholder="${placeholder}"` : '';
+        const labelHtml = typeLower === 'button' ? '' : `<label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; font-family: sans-serif; color: #374151;">${fieldLabel}${field.required ? ' <span style="color: #ef4444;">*</span>' : ''}</label>`;
+        const inputStyle = 'width: 100%; padding: 10px 12px; margin-bottom: 16px; border: 1px solid #d1d5db; border-radius: 6px; font-family: sans-serif; font-size: 14px; color: #111827; box-sizing: border-box;';
+
+        let inputHtml = '';
+        if (typeLower === 'textarea' || typeLower === 'text area') {
+          inputHtml = `<textarea style="${inputStyle} min-height: 100px;" ${placeholderAttr} ${reqAttr}></textarea>`;
+        } else if (typeLower === 'button') {
+          inputHtml = `<button type="submit" style="background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: 600; font-family: sans-serif; font-size: 16px;">${fieldLabel || 'Submit'}</button>`;
+        } else if (typeLower === 'select') {
+          inputHtml = `<select style="${inputStyle}" ${reqAttr}>
+            <option value="" disabled selected>${placeholder || 'Select an option'}</option>
+            ${(field.options || []).map((option) => {
+              const safeOption = escapeHtml(option);
+              return `<option value="${safeOption}">${safeOption}</option>`;
+            }).join('')}
+          </select>`;
+        } else if (typeLower === 'radio group') {
+          inputHtml = `<div style="margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px;">${(field.options || []).map((option) => {
+            const safeOption = escapeHtml(option);
+            return `<label style="font-family: sans-serif; font-size: 14px; color: #374151; display: flex; align-items: center; gap: 8px;"><input type="radio" name="${fieldId}" value="${safeOption}" ${reqAttr}>${safeOption}</label>`;
+          }).join('')}</div>`;
+        } else if (typeLower === 'checkbox group') {
+          inputHtml = `<div style="margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px;">${(field.options || []).map((option) => {
+            const safeOption = escapeHtml(option);
+            return `<label style="font-family: sans-serif; font-size: 14px; color: #374151; display: flex; align-items: center; gap: 8px;"><input type="checkbox" value="${safeOption}">${safeOption}</label>`;
+          }).join('')}</div>`;
+        } else {
+          let inputType = 'text';
+          if (typeLower.includes('email')) inputType = 'email';
+          else if (typeLower.includes('tel') || typeLower.includes('phone')) inputType = 'tel';
+          else if (typeLower.includes('number')) inputType = 'number';
+          else if (typeLower.includes('date')) inputType = 'date';
+          else if (typeLower.includes('time')) inputType = 'time';
+
+          inputHtml = `<input type="${inputType}" style="${inputStyle}" ${placeholderAttr} ${reqAttr} />`;
+        }
+
+        return `<div>${labelHtml}${inputHtml}</div>`;
+      }).join('')}
+    </form>
+  `;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GrapesPageEditor component
 // ─────────────────────────────────────────────────────────────────────────────
@@ -389,6 +456,10 @@ const GrapesPageEditor = ({
 
   const loadedForPageKeyRef = useRef(null);
   const [mountEpoch, setMountEpoch] = useState(0);
+  const [formTemplates, setFormTemplates] = useState([]);
+  const [formsLoading, setFormsLoading] = useState(false);
+  const [formsError, setFormsError] = useState('');
+  const [activeTool, setActiveTool] = useState('basic');
 
   const canvasReadyRef    = useRef(false);
   const pendingContentRef = useRef(null);
@@ -399,6 +470,108 @@ const GrapesPageEditor = ({
   // causing the init effect to re-run.
   const websiteIdRef = useRef(websiteId);
   useEffect(() => { websiteIdRef.current = websiteId; }, [websiteId]);
+
+  useEffect(() => {
+    if (activeTool !== 'forms') return;
+    if (formsLoading || formTemplates.length > 0) return;
+    fetchFormTools(editorRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTool]);
+
+  const fetchFormTools = async (editor) => {
+    setFormsLoading(true);
+    setFormsError('');
+    try {
+      const templatesRes = await axios.get(`${API_BASE}/website-builder/forms/templates`);
+      let forms = [];
+      try {
+        const formsRes = await axios.get(`${API_BASE}/website-builder/forms`);
+        forms = (formsRes.data?.data || []).filter((form) => !form.isTemplate);
+      } catch (formsErr) {
+        console.warn('[GrapesPageEditor] regular forms could not be loaded:', formsErr);
+      }
+
+      const templates = templatesRes.data?.data || [];
+      setFormTemplates(templates);
+
+      if (editor?.BlockManager) {
+        forms.forEach((form) => {
+          editor.BlockManager.add(`form-${form._id}`, {
+            label: `
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 5px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+              <div style="font-size: 11px; margin-top: 5px; line-height: 1.2;">${escapeHtml(form.name)}</div>
+            `,
+            category: 'Forms',
+            content: buildFormHtml(form),
+          });
+        });
+
+        templates.forEach((form) => {
+          editor.BlockManager.add(`form-template-${form._id}`, {
+            label: `
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 5px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+              <div style="font-size: 11px; margin-top: 5px; line-height: 1.2;">${escapeHtml(form.name)} <span style="color: #10b981; font-weight: 800;">(T)</span></div>
+            `,
+            category: 'Form Templates',
+            content: buildFormHtml(form, { isTemplate: true }),
+          });
+        });
+      }
+    } catch (err) {
+      console.warn('[GrapesPageEditor] Error fetching forms/templates:', err);
+      setFormsError('Forms could not be loaded.');
+    } finally {
+      setFormsLoading(false);
+    }
+  };
+
+  const insertFormTemplate = (form) => {
+    const editor = editorRef.current;
+    if (!editor || !form) return;
+
+    const htmlToInsert = buildFormHtml(form, { isTemplate: true });
+    const selected = editor.getSelected?.();
+
+    isSyncingRef.current = true;
+    try {
+      if (selected && typeof selected.append === 'function') {
+        selected.append(htmlToInsert);
+      } else {
+        editor.addComponents(htmlToInsert);
+      }
+      editor.refresh();
+    } catch (err) {
+      console.warn('[GrapesPageEditor] insertFormTemplate failed:', err);
+    } finally {
+      isSyncingRef.current = false;
+    }
+
+    onChange?.({ html: editor.getHtml(), css: editor.getCss() });
+  };
+
+  const insertBasicBlock = (type) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const blocks = {
+      section: '<section style="padding: 56px 32px; background: #f8fafc;"><div style="max-width: 960px; margin: 0 auto;"><h2 style="margin: 0 0 12px; font-family: sans-serif; color: #111827;">New section</h2><p style="margin: 0; font-family: sans-serif; color: #4b5563; line-height: 1.6;">Add your website content here.</p></div></section>',
+      text: '<div style="padding: 16px 0; font-family: sans-serif; color: #111827;"><h3 style="margin: 0 0 8px;">Heading</h3><p style="margin: 0; color: #4b5563; line-height: 1.6;">Write your content here.</p></div>',
+      image: '<div style="padding: 16px 0;"><img src="/placeholder-image.png" alt="Placeholder" style="display: block; width: 100%; max-width: 640px; min-height: 220px; object-fit: cover; border-radius: 8px; background: #e5e7eb;" /></div>',
+      button: '<a href="#" style="display: inline-block; padding: 12px 22px; border-radius: 8px; background: #2563eb; color: #ffffff; text-decoration: none; font-family: sans-serif; font-weight: 700;">Call to action</a>',
+    };
+
+    isSyncingRef.current = true;
+    try {
+      editor.addComponents(blocks[type] || blocks.section);
+      editor.refresh();
+    } catch (err) {
+      console.warn('[GrapesPageEditor] insertBasicBlock failed:', err);
+    } finally {
+      isSyncingRef.current = false;
+    }
+
+    onChange?.({ html: editor.getHtml(), css: editor.getCss() });
+  };
 
   const config = useMemo(() => ({
     height,
@@ -679,123 +852,7 @@ const GrapesPageEditor = ({
         });
       }
 
-      // Fetch and register forms as blocks
-      try {
-        const [formsRes, templatesRes] = await Promise.all([
-          axios.get(`${API_BASE}/website-builder/forms`, { withCredentials: true }),
-          axios.get(`${API_BASE}/website-builder/forms/templates`, { withCredentials: true }),
-        ]);
-        const forms = (formsRes.data?.data || []).filter((form) => !form.isTemplate);
-        const formTemplates = templatesRes.data?.data || [];
-        
-        // Register regular forms
-        forms.forEach(form => {
-          const formHtml = `
-            <form style="padding: 24px; border: 1px solid #e5e7eb; border-radius: 12px; background: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);" data-form-id="${form._id}">
-              <h3 style="margin-top: 0; margin-bottom: 20px; font-family: sans-serif; color: #111827;">${form.name}</h3>
-              ${(form.fields || []).map(f => {
-                const typeLower = f.type.toLowerCase();
-                const reqAttr = f.required ? 'required' : '';
-                const placeholderAttr = f.placeholder ? `placeholder=" ${f.placeholder}"` : '';
-                
-                let inputHtml = '';
-                const labelHtml = typeLower === 'button' ? '' : `<label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; font-family: sans-serif; color: #374151;"> ${f.label} ${f.required ? ' <span style="color: #ef4444;">*</span>' : ''}</label> `;
-                
-                const inputStyle = 'width: 100%; padding: 10px 12px; margin-bottom: 16px; border: 1px solid #d1d5db; border-radius: 6px; font-family: sans-serif; font-size: 14px; color: #111827; box-sizing: border-box;';
-                
-                if (typeLower === 'textarea' || typeLower === 'text area') {
-                  inputHtml =  `<textarea style=" ${inputStyle} min-height: 100px;"  ${placeholderAttr}  ${reqAttr}></textarea> `;
-                } else if (typeLower === 'button') {
-                  inputHtml =  `<button type="submit" style="background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: 600; font-family: sans-serif; font-size: 16px; transition: background 0.2s;"> ${f.label || 'Submit'}</button> `;
-                } else if (typeLower === 'select') {
-                  inputHtml =  `<select style=" ${inputStyle}"  ${reqAttr}>
-                    <option value="" disabled selected> ${f.placeholder || 'Select an option'}</option>
-                     ${(f.options || []).map(o =>  `<option value=" ${o}"> ${o}</option> `).join('')}
-                  </select> `;
-                } else if (typeLower === 'radio group') {
-                   inputHtml =  `<div style="margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px;"> ${(f.options || []).map(o =>  `<label style="font-family: sans-serif; font-size: 14px; color: #374151; display: flex; align-items: center; gap: 8px;"><input type="radio" name=" ${f.id}" value=" ${o}"  ${reqAttr}>  ${o}</label> `).join('')}</div> `;
-                } else if (typeLower === 'checkbox group') {
-                   inputHtml =  `<div style="margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px;"> ${(f.options || []).map(o =>  `<label style="font-family: sans-serif; font-size: 14px; color: #374151; display: flex; align-items: center; gap: 8px;"><input type="checkbox" value=" ${o}">  ${o}</label> `).join('')}</div> `;
-                } else {
-                  let inputType = 'text';
-                  if (typeLower.includes('email')) inputType = 'email';
-                  else if (typeLower.includes('tel') || typeLower.includes('phone')) inputType = 'tel';
-                  else if (typeLower.includes('number')) inputType = 'number';
-                  else if (typeLower.includes('date')) inputType = 'date';
-                  else if (typeLower.includes('time')) inputType = 'time';
-                  
-                  inputHtml =  `<input type=" ${inputType}" style=" ${inputStyle}"  ${placeholderAttr}  ${reqAttr} /> `;
-                }
-                return  `<div> ${labelHtml} ${inputHtml}</div> `;
-              }).join('')}
-            </form>
-          `;
-          
-          editor.BlockManager.add(`form-${form._id}`, {
-            label:  `
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 5px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-              <div style="font-size: 11px; margin-top: 5px; line-height: 1.2;"> ${form.name}</div>
-             `,
-            category: 'Forms',
-            content: formHtml
-          });
-        });
-
-        // Register form templates with a distinct category
-        formTemplates.forEach(form => {
-          const formHtml = `
-            <form style="padding: 24px; border: 1px solid #e5e7eb; border-radius: 12px; background: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);" data-form-id="${form._id}" data-is-template="true">
-              <h3 style="margin-top: 0; margin-bottom: 20px; font-family: sans-serif; color: #111827;">${form.name}</h3>
-              ${(form.fields || []).map(f => {
-                const typeLower = f.type.toLowerCase();
-                const reqAttr = f.required ? 'required' : '';
-                const placeholderAttr = f.placeholder ? `placeholder=" ${f.placeholder}"` : '';
-                
-                let inputHtml = '';
-                const labelHtml = typeLower === 'button' ? '' : `<label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; font-family: sans-serif; color: #374151;"> ${f.label} ${f.required ? ' <span style="color: #ef4444;">*</span>' : ''}</label> `;
-                
-                const inputStyle = 'width: 100%; padding: 10px 12px; margin-bottom: 16px; border: 1px solid #d1d5db; border-radius: 6px; font-family: sans-serif; font-size: 14px; color: #111827; box-sizing: border-box;';
-                
-                if (typeLower === 'textarea' || typeLower === 'text area') {
-                  inputHtml =  `<textarea style=" ${inputStyle} min-height: 100px;"  ${placeholderAttr}  ${reqAttr}></textarea> `;
-                } else if (typeLower === 'button') {
-                  inputHtml =  `<button type="submit" style="background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: 600; font-family: sans-serif; font-size: 16px; transition: background 0.2s;"> ${f.label || 'Submit'}</button> `;
-                } else if (typeLower === 'select') {
-                  inputHtml =  `<select style=" ${inputStyle}"  ${reqAttr}>
-                    <option value="" disabled selected> ${f.placeholder || 'Select an option'}</option>
-                     ${(f.options || []).map(o =>  `<option value=" ${o}"> ${o}</option> `).join('')}
-                  </select> `;
-                } else if (typeLower === 'radio group') {
-                   inputHtml =  `<div style="margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px;"> ${(f.options || []).map(o =>  `<label style="font-family: sans-serif; font-size: 14px; color: #374151; display: flex; align-items: center; gap: 8px;"><input type="radio" name=" ${f.id}" value=" ${o}"  ${reqAttr}>  ${o}</label> `).join('')}</div> `;
-                } else if (typeLower === 'checkbox group') {
-                   inputHtml =  `<div style="margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px;"> ${(f.options || []).map(o =>  `<label style="font-family: sans-serif; font-size: 14px; color: #374151; display: flex; align-items: center; gap: 8px;"><input type="checkbox" value=" ${o}">  ${o}</label> `).join('')}</div> `;
-                } else {
-                  let inputType = 'text';
-                  if (typeLower.includes('email')) inputType = 'email';
-                  else if (typeLower.includes('tel') || typeLower.includes('phone')) inputType = 'tel';
-                  else if (typeLower.includes('number')) inputType = 'number';
-                  else if (typeLower.includes('date')) inputType = 'date';
-                  else if (typeLower.includes('time')) inputType = 'time';
-                  
-                  inputHtml =  `<input type=" ${inputType}" style=" ${inputStyle}"  ${placeholderAttr}  ${reqAttr} /> `;
-                }
-                return  `<div> ${labelHtml} ${inputHtml}</div> `;
-              }).join('')}
-            </form>
-          `;
-          
-          editor.BlockManager.add(`form-template-${form._id}`, {
-            label:  `
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 5px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-              <div style="font-size: 11px; margin-top: 5px; line-height: 1.2;"> ${form.name} <span style="color: #10b981; font-weight: 800;">(T)</span></div>
-             `,
-            category: 'Form Templates',
-            content: formHtml
-          });
-        });
-      } catch (err) {
-        console.warn('[GrapesPageEditor] Error fetching forms/templates for BlockManager:', err);
-      }
+      await fetchFormTools(editor);
     });
 
     // ── Upload response normalisation ──────────────────────────────────────
@@ -889,15 +946,172 @@ const GrapesPageEditor = ({
       style={{
         height,
         width: '100%',
-        display: 'flex',
-        flexDirection: 'column',
+        display: 'grid',
+        gridTemplateColumns: '280px minmax(0, 1fr)',
         minHeight: 0,
       }}
     >
+      <aside
+        style={{
+          minHeight: 0,
+          overflow: 'auto',
+          borderRight: '1px solid var(--border-color)',
+          background: 'var(--bg-secondary)',
+          padding: 12,
+        }}
+      >
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 6,
+            padding: 4,
+            borderRadius: 8,
+            border: '1px solid var(--border-color)',
+            background: 'var(--bg-primary)',
+            marginBottom: 14,
+          }}
+        >
+          {[
+            { key: 'basic', label: 'Basic' },
+            { key: 'forms', label: 'Forms' },
+          ].map((tool) => (
+            <button
+              key={tool.key}
+              type="button"
+              onClick={() => setActiveTool(tool.key)}
+              style={{
+                height: 34,
+                border: 'none',
+                borderRadius: 6,
+                cursor: 'pointer',
+                background: activeTool === tool.key ? 'var(--accent-primary)' : 'transparent',
+                color: activeTool === tool.key ? '#fff' : 'var(--text-secondary)',
+                fontWeight: 800,
+                fontSize: 13,
+              }}
+            >
+              {tool.label}
+            </button>
+          ))}
+        </div>
+
+        {activeTool === 'basic' ? (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-tertiary)', marginBottom: 10 }}>
+              BASIC
+            </div>
+            {[
+              { key: 'section', label: 'Section', desc: 'Wide content band' },
+              { key: 'text', label: 'Text', desc: 'Heading and paragraph' },
+              { key: 'image', label: 'Image', desc: 'Responsive image' },
+              { key: 'button', label: 'Button', desc: 'Call to action' },
+            ].map((block) => (
+              <button
+                key={block.key}
+                type="button"
+                onClick={() => insertBasicBlock(block.key)}
+                style={{
+                  width: '100%',
+                  minHeight: 58,
+                  textAlign: 'left',
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--bg-primary)',
+                  color: 'var(--text-primary)',
+                  borderRadius: 8,
+                  padding: '10px 12px',
+                  marginBottom: 8,
+                  cursor: 'pointer',
+                }}
+              >
+                <span style={{ display: 'block', fontWeight: 800, fontSize: 13, marginBottom: 3 }}>
+                  {block.label}
+                </span>
+                <span style={{ display: 'block', color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.3 }}>
+                  {block.desc}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-tertiary)' }}>
+                FORM TEMPLATES
+              </div>
+              <button
+                type="button"
+                onClick={() => fetchFormTools(editorRef.current)}
+                disabled={formsLoading}
+                style={{
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--bg-primary)',
+                  color: 'var(--text-secondary)',
+                  borderRadius: 6,
+                  padding: '5px 8px',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: formsLoading ? 'default' : 'pointer',
+                }}
+              >
+                {formsLoading ? 'Loading' : 'Refresh'}
+              </button>
+            </div>
+
+            {formsError && (
+              <div style={{ border: '1px solid rgba(239, 68, 68, 0.25)', background: 'rgba(239, 68, 68, 0.08)', color: 'var(--accent-danger)', borderRadius: 8, padding: 10, fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
+                {formsError}
+              </div>
+            )}
+
+            {!formsLoading && !formsError && formTemplates.length === 0 && (
+              <div style={{ border: '1px dashed var(--border-color)', color: 'var(--text-secondary)', borderRadius: 8, padding: 14, fontSize: 13, lineHeight: 1.5 }}>
+                No saved form templates yet.
+              </div>
+            )}
+
+            {formTemplates.map((form) => (
+              <div
+                key={form._id || form.id}
+                style={{
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--bg-primary)',
+                  borderRadius: 8,
+                  padding: 12,
+                  marginBottom: 8,
+                }}
+              >
+                <div style={{ fontWeight: 800, color: 'var(--text-primary)', fontSize: 13, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {form.name || 'Form template'}
+                </div>
+                <div style={{ color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, marginBottom: 10 }}>
+                  {(form.fields || []).length} fields
+                </div>
+                <button
+                  type="button"
+                  onClick={() => insertFormTemplate(form)}
+                  style={{
+                    width: '100%',
+                    height: 34,
+                    border: 'none',
+                    borderRadius: 6,
+                    background: 'var(--accent-primary)',
+                    color: '#fff',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Use form
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </aside>
+
       <div
         ref={holderRef}
         style={{
-          flex: 1,
           minHeight: 0,
           width: '100%',
           borderRadius: 8,
