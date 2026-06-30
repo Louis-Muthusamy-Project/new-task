@@ -1,28 +1,23 @@
 import React, { useState, useEffect } from "react";
-import { Button, Input, Table, Typography, Space, Select, DatePicker, Card, Row, Col, Modal, Checkbox, Tag, Radio } from "antd";
+import { Button, Input, Table, Typography, Space, Select, DatePicker, Card, Row, Col, Modal, Checkbox, Tag, Radio, message } from "antd";
 import { Plus, Search, X, ArrowUp, ArrowDown, Edit3, Copy, HelpCircle, FileText, BarChart3, Inbox, Calendar, Link2, ListPlus, MousePointerClick, CheckSquare, Upload, Type, EyeOff, Hash, AlignLeft, List, ChevronDown, Menu } from "lucide-react";
 import { motion } from "framer-motion";
-import axios from "axios";
+import { websiteWizardApi } from "../../../api/websiteWizardApi";
 import formTemplates from "../../../data/formTemplates.json";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 
-const FormBuilderView = ({ activeForm, setActiveForm, itemVariants }) => {
+const FormBuilderView = ({ activeForm, setActiveForm, itemVariants, onTemplatesChanged }) => {
   const [fields, setFields] = useState(
-    activeForm?.from === "scratch" ? [] : (activeForm?.fields?.length ? activeForm.fields.map(f => ({
+    activeForm?.fields?.length ? activeForm.fields.map(f => ({
       id: f.id,
       type: f.type,
       label: f.label,
       placeholder: f.placeholder,
       required: f.required,
       options: f.options || []
-    })) : [
-      { id: "1", type: "Text Field", label: "First Name", placeholder: "Jane", required: true },
-      { id: "2", type: "Text Field", label: "Last Name", placeholder: "Doe", required: true },
-      { id: "3", type: "Text Field", label: "Phone", placeholder: "Phone", required: true },
-      { id: "4", type: "Text Field", label: "Email", placeholder: "you@example.com", required: true },
-    ])
+    })) : []
   );
 
   const [isJsonView, setIsJsonView] = useState(false);
@@ -73,14 +68,28 @@ const FormBuilderView = ({ activeForm, setActiveForm, itemVariants }) => {
   const handleSubmitForm = async () => {
     setIsSubmitting(true);
     try {
-      await axios.post('/api/website-builder/forms', {
-        name: activeForm.name,
-        fields: fields
-      }, { withCredentials: true });
-      // In a real app, maybe show a success message
-      setActiveForm(null); // Return to list
+      if (activeForm?._id) {
+        await websiteWizardApi.updateForm(activeForm._id, {
+          name: activeForm.name,
+          fields: fields,
+          status: "Draft",
+          isTemplate: true,
+        });
+        message.success(`"Template" updated.`);
+        await onTemplatesChanged?.();
+      } else {
+        await websiteWizardApi.createFormTemplate({
+          name: activeForm.name,
+          fields: fields,
+          status: "Draft"
+        });
+        message.success(`"${activeForm.name}" saved as template.`);
+        await onTemplatesChanged?.();
+      }
+      setActiveForm(null);
     } catch (error) {
-      console.error("Error saving form:", error);
+      console.error("Error saving form template:", error);
+      message.error(error?.message || "Failed to save form template.");
     } finally {
       setIsSubmitting(false);
     }
@@ -324,6 +333,27 @@ const FormsTab = ({ itemVariants }) => {
   const [formName, setFormName] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState(null);
 
+  const [savedTemplates, setSavedTemplates] = useState([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+
+  const fetchTemplates = async () => {
+    setLoadingTemplates(true);
+    try {
+      const templates = await websiteWizardApi.getFormTemplates();
+      setSavedTemplates(templates || []);
+    } catch (err) {
+      console.error('Failed to fetch form templates:', err);
+    } finally {
+      setLoadingTemplates(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === "builder") {
+      fetchTemplates();
+    }
+  }, [activeSubTab]);
+
   const handleCreateContinue = () => {
     setIsCreateModalOpen(false);
     if (createType === "templates") {
@@ -331,6 +361,34 @@ const FormsTab = ({ itemVariants }) => {
     } else {
       setActiveForm({ name: formName || "New Form", from: "scratch" });
     }
+  };
+
+  const handleUseTemplate = async () => {
+    if (!selectedTemplate) return;
+    
+    // Check if it's a saved database template (has _id and no templateName)
+    const existingTemplate = savedTemplates.find(t => 
+      t._id === selectedTemplate._id || 
+      t._id === selectedTemplate.id ||
+      (selectedTemplate._id && t._id === selectedTemplate._id)
+    );
+    
+    if (existingTemplate) {
+      setActiveForm({
+        name: existingTemplate.name,
+        from: "template",
+        fields: existingTemplate.fields || [],
+        _id: existingTemplate._id,
+      });
+    } else {
+      // JSON predefined template
+      setActiveForm({
+        name: selectedTemplate.templateName || selectedTemplate.name || "Template Form",
+        from: "template",
+        fields: selectedTemplate.fields || [],
+      });
+    }
+    setIsTemplateModalOpen(false);
   };
 
   const renderHeader = () => {
@@ -349,10 +407,37 @@ const FormsTab = ({ itemVariants }) => {
   const headerInfo = renderHeader();
 
   const renderBuilderList = () => {
+    const templateRows = savedTemplates.map((tpl) => ({
+      key: tpl._id || tpl.id,
+      ...tpl,
+      updated: tpl.updatedAt ? new Date(tpl.updatedAt).toLocaleDateString() : "-",
+      fieldCount: (tpl.fields || []).length,
+    }));
+
     const columns = [
       { title: "NAME", dataIndex: "name", key: "name", render: t => <span style={{ fontWeight: 800, color: 'var(--text-primary)' }}>{t}</span> },
       { title: "STATUS", dataIndex: "status", key: "status", render: t => <Tag color="green" style={{ borderRadius: 12, padding: '2px 10px', fontWeight: 700 }}>{t}</Tag> },
+      { title: "FIELDS", dataIndex: "fieldCount", key: "fieldCount", render: t => <Text type="secondary" style={{ fontWeight: 600 }}>{t}</Text> },
       { title: "UPDATED", dataIndex: "updated", key: "updated", render: t => <Text type="secondary" style={{ fontWeight: 500 }}>{t}</Text> },
+      {
+        title: "ACTION",
+        key: "action",
+        render: (_, record) => (
+          <Button
+            icon={<Edit3 size={15} />}
+            onClick={() => setActiveForm({
+              _id: record._id,
+              name: record.name,
+              fields: record.fields || [],
+              status: record.status || "Draft",
+              from: "saved-template",
+            })}
+            style={{ borderRadius: 8, fontWeight: 700 }}
+          >
+            Edit
+          </Button>
+        ),
+      },
     ];
 
     return (
@@ -365,7 +450,8 @@ const FormsTab = ({ itemVariants }) => {
         <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
           <Table
             columns={columns}
-            dataSource={[]}
+            dataSource={templateRows}
+            loading={loadingTemplates}
             pagination={false}
             locale={{
               emptyText: (
@@ -488,7 +574,14 @@ const FormsTab = ({ itemVariants }) => {
   };
 
   if (activeForm) {
-    return <FormBuilderView activeForm={activeForm} setActiveForm={setActiveForm} itemVariants={itemVariants} />;
+    return (
+      <FormBuilderView
+        activeForm={activeForm}
+        setActiveForm={setActiveForm}
+        itemVariants={itemVariants}
+        onTemplatesChanged={fetchTemplates}
+      />
+    );
   }
 
   return (
@@ -698,73 +791,98 @@ const FormsTab = ({ itemVariants }) => {
               <Input size="large" placeholder="Search templates..." prefix={<Search size={16} color="var(--text-tertiary)" />} style={{ width: 300, borderRadius: 8 }} />
             </div>
 
-            <div style={{ flex: 1, overflowY: "auto", margin: "-12px", padding: "12px" }}>
-              <Row gutter={[24, 24]}>
-                {formTemplates.map((tpl, i) => (
-                  <Col span={8} key={tpl.id}>
-                    <Card
-                      onClick={() => setSelectedTemplate(tpl)}
-                      bodyStyle={{ padding: 0 }}
-                      style={{
-                        borderRadius: 16,
-                        overflow: "hidden",
-                        border: selectedTemplate?.id === tpl.id ? "2px solid var(--accent-primary)" : "1px solid var(--border-color)",
-                        cursor: "pointer",
-                        background: 'var(--bg-secondary)',
-                        transition: 'all 0.2s',
-                        boxShadow: selectedTemplate?.id === tpl.id ? "0 4px 20px rgba(59, 130, 246, 0.15)" : "none"
-                      }}
-                      className="hover-shadow-md">
-                      <div style={{ height: 200, background: "var(--bg-primary)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, borderBottom: '1px solid var(--border-color)' }}>
-                        <div style={{ width: "100%", height: "100%", border: "1px solid var(--border-color)", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 12, background: 'var(--bg-secondary)', boxShadow: 'var(--shadow-sm)' }}>
-                          <div style={{ width: "60%", height: 8, background: "var(--text-tertiary)", borderRadius: 4, opacity: 0.5 }}></div>
-                          <div style={{ width: "100%", height: 28, background: "var(--bg-primary)", borderRadius: 6, border: "1px solid var(--border-color)" }}></div>
-                          <div style={{ width: "100%", height: 28, background: "var(--bg-primary)", borderRadius: 6, border: "1px solid var(--border-color)" }}></div>
-                          <div style={{ width: "100%", height: 28, background: "var(--bg-primary)", borderRadius: 6, border: "1px solid var(--border-color)" }}></div>
-                          <div style={{ width: "100%", height: 32, background: "var(--accent-primary)", borderRadius: 6, marginTop: "auto" }}></div>
-                        </div>
-                      </div>
-                      <div style={{ padding: "20px" }}>
-                        <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 8, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tpl.templateName}</div>
-                        <div style={{ color: "var(--text-secondary)", fontSize: 12, fontWeight: 600 }}>{tpl.category} · {tpl.fieldCount} fields</div>
-                      </div>
-                    </Card>
-                  </Col>
-                ))}
-              </Row>
-            </div>
-          </div>
-        </div>
+<div style={{ flex: 1, overflowY: "auto", margin: "-12px", padding: "12px" }}>
+               <Row gutter={[24, 24]}>
+                 {/* Saved templates from database */}
+                 {savedTemplates.map((tpl) => (
+                   <Col span={8} key={tpl._id || tpl.id}>
+                     <Card
+                       onClick={() => setSelectedTemplate(tpl)}
+                       bodyStyle={{ padding: 0 }}
+                       style={{
+                         borderRadius: 16,
+                         overflow: "hidden",
+                         border: selectedTemplate?._id === tpl._id || selectedTemplate?.id === tpl._id ? "2px solid var(--accent-primary)" : "1px solid var(--border-color)",
+                         cursor: "pointer",
+                         background: 'var(--bg-secondary)',
+                         transition: 'all 0.2s',
+                         boxShadow: selectedTemplate?._id === tpl._id || selectedTemplate?.id === tpl._id ? "0 4px 20px rgba(59, 130, 246, 0.15)" : "none"
+                       }}
+                       className="hover-shadow-md">
+                       <div style={{ height: 200, background: "var(--bg-primary)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, borderBottom: '1px solid var(--border-color)' }}>
+                         <div style={{ width: "100%", height: "100%", border: "1px solid var(--border-color)", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 12, background: 'var(--bg-secondary)', boxShadow: 'var(--shadow-sm)' }}>
+                           <div style={{ width: "60%", height: 8, background: "var(--text-tertiary)", borderRadius: 4, opacity: 0.5 }}></div>
+                           <div style={{ width: "100%", height: 28, background: "var(--bg-primary)", borderRadius: 6, border: "1px solid var(--border-color)" }}></div>
+                           <div style={{ width: "100%", height: 28, background: "var(--bg-primary)", borderRadius: 6, border: "1px solid var(--border-color)" }}></div>
+                           <div style={{ width: "100%", height: 28, background: "var(--bg-primary)", borderRadius: 6, border: "1px solid var(--border-color)" }}></div>
+                           <div style={{ width: "100%", height: 32, background: "var(--accent-primary)", borderRadius: 6, marginTop: "auto" }}></div>
+                         </div>
+                       </div>
+                       <div style={{ padding: "20px" }}>
+                         <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 8, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tpl.name}</div>
+                         <div style={{ color: "var(--text-secondary)", fontSize: 12, fontWeight: 600 }}>Saved Template · {(tpl.fields || []).length} fields</div>
+                       </div>
+                     </Card>
+                   </Col>
+                 ))}
+                 {/* Predefined templates */}
+                 {formTemplates.map((tpl, i) => (
+                   <Col span={8} key={`predefined-${tpl.id}`}>
+                     <Card
+                       onClick={() => setSelectedTemplate(tpl)}
+                       bodyStyle={{ padding: 0 }}
+                       style={{
+                         borderRadius: 16,
+                         overflow: "hidden",
+                         border: selectedTemplate?.id === tpl.id ? "2px solid var(--accent-primary)" : "1px solid var(--border-color)",
+                         cursor: "pointer",
+                         background: 'var(--bg-secondary)',
+                         transition: 'all 0.2s',
+                         boxShadow: selectedTemplate?.id === tpl.id ? "0 4px 20px rgba(59, 130, 246, 0.15)" : "none"
+                       }}
+                       className="hover-shadow-md">
+                       <div style={{ height: 200, background: "var(--bg-primary)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, borderBottom: '1px solid var(--border-color)' }}>
+                         <div style={{ width: "100%", height: "100%", border: "1px solid var(--border-color)", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 12, background: 'var(--bg-secondary)', boxShadow: 'var(--shadow-sm)' }}>
+                           <div style={{ width: "60%", height: 8, background: "var(--text-tertiary)", borderRadius: 4, opacity: 0.5 }}></div>
+                           <div style={{ width: "100%", height: 28, background: "var(--bg-primary)", borderRadius: 6, border: "1px solid var(--border-color)" }}></div>
+                           <div style={{ width: "100%", height: 28, background: "var(--bg-primary)", borderRadius: 6, border: "1px solid var(--border-color)" }}></div>
+                           <div style={{ width: "100%", height: 28, background: "var(--bg-primary)", borderRadius: 6, border: "1px solid var(--border-color)" }}></div>
+                           <div style={{ width: "100%", height: 32, background: "var(--accent-primary)", borderRadius: 6, marginTop: "auto" }}></div>
+                         </div>
+                       </div>
+                       <div style={{ padding: "20px" }}>
+                         <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 8, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tpl.templateName}</div>
+                         <div style={{ color: "var(--text-secondary)", fontSize: 12, fontWeight: 600 }}>{tpl.category} · {tpl.fieldCount} fields</div>
+                       </div>
+                     </Card>
+                   </Col>
+                 ))}
+               </Row>
+             </div>
+           </div>
+         </div>
 
-        {/* Template Footer */}
-        <div style={{ padding: "24px 32px", borderTop: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg-secondary)" }}>
-          <div style={{ width: 400 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8, color: "var(--text-primary)" }}>Form name</div>
-            <Input
-              size="large"
-              placeholder="Uses template name if empty"
-              style={{ borderRadius: 8, borderColor: "var(--accent-primary)" }}
-            />
-          </div>
-          <Space size="large">
-            <Button size="large" style={{ borderRadius: 8, fontWeight: 700, padding: "0 32px", borderColor: 'var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }} onClick={() => setIsTemplateModalOpen(false)}>
-              Back
-            </Button>
-            <Button size="large" type="primary" disabled={!selectedTemplate} style={{ borderRadius: 8, fontWeight: 800, padding: "0 32px", background: "var(--accent-primary)", border: 'none' }} onClick={() => {
-              setIsTemplateModalOpen(false);
-              setActiveForm({
-                name: formName || selectedTemplate?.templateName || "Template Form",
-                from: "template",
-                fields: selectedTemplate?.fields || []
-              });
-            }}>
-              Use template
-            </Button>
-          </Space>
-        </div>
-      </Modal>
-    </motion.div>
-  );
+         <div style={{ padding: "24px 32px", borderTop: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg-secondary)" }}>
+           <div style={{ width: 400 }}>
+             <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8, color: "var(--text-primary)" }}>Form name</div>
+             <Input
+               size="large"
+               placeholder="Uses template name if empty"
+               style={{ borderRadius: 8, borderColor: "var(--accent-primary)" }}
+             />
+           </div>
+           <Space size="large">
+             <Button size="large" style={{ borderRadius: 8, fontWeight: 700, padding: "0 32px", borderColor: 'var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }} onClick={() => setIsTemplateModalOpen(false)}>
+               Back
+             </Button>
+             <Button size="large" type="primary" disabled={!selectedTemplate} style={{ borderRadius: 8, fontWeight: 800, padding: "0 32px", background: "var(--accent-primary)", border: 'none' }} onClick={handleUseTemplate}>
+               Use template
+             </Button>
+           </Space>
+         </div>
+       </Modal>
+     </motion.div>
+   );
 };
 
 export default FormsTab;

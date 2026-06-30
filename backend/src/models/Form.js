@@ -33,6 +33,11 @@ const formSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  isTemplate: {
+    type: Boolean,
+    default: false,
+    index: true,
+  },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Form', formSchema);

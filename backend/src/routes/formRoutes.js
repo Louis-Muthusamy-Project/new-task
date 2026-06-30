@@ -12,6 +12,10 @@ router
   .get(formController.getForms);
 
 router
+  .route('/forms/templates')
+  .get(formController.getFormTemplates);
+
+router
   .route('/forms/:id')
   .get(formController.getFormById)
   .put(formController.updateForm)

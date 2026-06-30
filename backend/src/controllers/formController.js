@@ -23,7 +23,7 @@ const invalidIdError = () => {
 };
 
 exports.createForm = async (req, res) => {
-  const { name, fields, status, websiteId } = req.body;
+  const { name, fields, status, websiteId, isTemplate } = req.body;
 
   if (!name) {
     return res.status(400).json({ success: false, error: 'Form name is required.' });
@@ -37,6 +37,7 @@ exports.createForm = async (req, res) => {
     fields: fields || [],
     status: status || 'Draft',
     websiteId: websiteId || undefined,
+    isTemplate: isTemplate || false,
   });
 
   res.status(201).json({
@@ -60,6 +61,21 @@ exports.getForms = async (req, res) => {
   res.status(200).json({
     success: true,
     data: forms,
+  });
+};
+
+exports.getFormTemplates = async (req, res) => {
+  const filter = {
+    ...buildOwnershipFilter(req),
+    isDeleted: false,
+    isTemplate: true,
+  };
+
+  const templates = await Form.find(filter).sort({ updatedAt: -1 }).lean();
+
+  res.status(200).json({
+    success: true,
+    data: templates,
   });
 };
 
@@ -93,7 +109,7 @@ exports.updateForm = async (req, res) => {
     throw invalidIdError();
   }
 
-  const allowedFields = ['name', 'fields', 'status', 'websiteId'];
+  const allowedFields = ['name', 'fields', 'status', 'websiteId', 'isTemplate'];
   const updates = {};
 
   for (const field of allowedFields) {

@@ -9,9 +9,9 @@ router.use('/health', healthRoutes);
 router.use('/website-builder', require('./websiteRoutes'));
 router.use('/website-builder', require('./pageRoutes'));
 router.use('/website-builder', require('./mediaRoutes'));
-router.use('/website-builder', require('./domainRoutes'));
 router.use('/website-builder', require('./publishRoutes'));
 router.use('/website-builder', require('./formRoutes'));
+router.use('/website-builder', require('./domainRoutes'));
 
 // Templates endpoint used by WebsiteTemplatePage.jsx
 router.use('/templates', require('./templatesRoutes'));

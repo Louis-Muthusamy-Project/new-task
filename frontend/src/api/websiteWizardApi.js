@@ -138,4 +138,22 @@ export const websiteWizardApi = {
     
     return unwrapSuccess(await requestMultipart('/templates', form));
   },
+
+  getFormTemplates: async () => unwrapSuccess(await request('/website-builder/forms/templates', { method: 'GET' })),
+
+  createFormTemplate: async (payload) =>
+    unwrapSuccess(
+      await request('/website-builder/forms', {
+        method: 'POST',
+        body: { ...payload, isTemplate: true },
+      })
+    ),
+
+  updateForm: async (id, payload) =>
+    unwrapSuccess(
+      await request(`/website-builder/forms/${id}`, {
+        method: 'PUT',
+        body: payload,
+      })
+    ),
 };
