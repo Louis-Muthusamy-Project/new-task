@@ -406,14 +406,80 @@ const GrapesPageEditor = ({
     panels: { defaults: [] },
     assetManager: {
       ...assetManager,
+      // NOTE: We use a custom uploadFile handler below instead of relying on
+      // GrapesJS's built-in upload behaviour. The built-in uploader appends
+      // '[]' to the uploadName (sending 'file[]'), but our backend multer
+      // middleware uses upload.single('file') which expects exactly 'file'.
+      // This field-name mismatch caused multer to silently ignore the file,
+      // returning "No file uploaded".
       upload: uploadUrl,
       uploadName: 'file',
       embedAsBase64: false,
       autoAdd: true,
       showUrlInput: true,
-      uploadMultipart: true,
-      params: websiteId ? { websiteId } : {},
       headers: {},
+      // Custom upload handler — bypasses GrapesJS's default FormData logic
+      // so we can control the exact field name sent to the server.
+      uploadFile: (e) => {
+        const files = e.dataTransfer ? e.dataTransfer.files : e.target.files;
+        if (!files || files.length === 0) return;
+
+        // Append each file with field name 'file' (matches multer.single('file'))
+        // For single-file upload; if multiple files are dropped we upload them
+        // sequentially to stay compatible with multer.single().
+        const uploadSingle = async (file) => {
+          const fd = new FormData();
+          fd.append('file', file);
+          if (websiteIdRef.current) {
+            fd.append('websiteId', websiteIdRef.current);
+          }
+
+          try {
+            const res = await fetch(uploadUrl, {
+              method: 'POST',
+              body: fd,
+              // Do NOT set Content-Type — the browser sets it automatically
+              // with the correct multipart boundary.
+            });
+
+            if (!res.ok) {
+              const errText = await res.text().catch(() => res.statusText);
+              console.error('[GrapesPageEditor] upload failed:', res.status, errText);
+              return;
+            }
+
+            const json = await res.json();
+
+            // Normalise response: backend returns { data: { src, ... } }
+            // GrapesJS expects an array of assets.
+            const assets = Array.isArray(json?.data)
+              ? json.data
+              : json?.data?.src
+                ? [json.data]
+                : [];
+
+            // Add each uploaded asset to the AssetManager
+            if (editorRef.current?.AssetManager) {
+              for (const asset of assets) {
+                editorRef.current.AssetManager.add(asset);
+              }
+            }
+          } catch (err) {
+            console.error('[GrapesPageEditor] uploadFile error:', err);
+          }
+        };
+
+        // Process all dropped/selected files sequentially
+        (async () => {
+          for (let i = 0; i < files.length; i++) {
+            await uploadSingle(files[i]);
+          }
+          // Refresh assets from backend after all uploads complete
+          if (editorRef.current) {
+            syncAssetsFromBackend(editorRef.current, websiteIdRef.current).catch(() => {});
+          }
+        })();
+      },
     },
     plugins: [presetWebpage],
     pluginsOpts: {

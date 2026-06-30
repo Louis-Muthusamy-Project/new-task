@@ -93,13 +93,41 @@ exports.getWebsites = async (req, res) => {
   const skip = (page - 1) * limit;
 
   const [websites, total] = await Promise.all([
-    Website.find(filter).sort({ updatedAt: -1 }).skip(skip).limit(limit),
+    Website.find(filter).sort({ updatedAt: -1 }).skip(skip).limit(limit).lean(),
     Website.countDocuments(filter),
   ]);
 
+  // ── Aggregate page counts from WebsitePage collection ──────────────────
+  // The Website model does not store a pages array or pageCount field;
+  // pages live in the separate WebsitePage collection. We batch-aggregate
+  // counts for all returned websites in a single query to keep it efficient.
+  const WebsitePage = require('../models/WebsitePage');
+  const websiteIds = websites.map((w) => w._id);
+
+  let pageCountMap = {};
+  if (websiteIds.length > 0) {
+    try {
+      const counts = await WebsitePage.aggregate([
+        { $match: { websiteId: { $in: websiteIds }, isDeleted: false } },
+        { $group: { _id: '$websiteId', count: { $sum: 1 } } },
+      ]);
+      for (const c of counts) {
+        pageCountMap[String(c._id)] = c.count;
+      }
+    } catch (err) {
+      console.warn('[getWebsites] page count aggregation failed:', err.message);
+    }
+  }
+
+  // Attach pageCount to each website document
+  const websitesWithPageCount = websites.map((w) => ({
+    ...w,
+    pageCount: pageCountMap[String(w._id)] || 0,
+  }));
+
   res.status(200).json({
     success: true,
-    data: websites,
+    data: websitesWithPageCount,
     meta: {
       page,
       limit,
