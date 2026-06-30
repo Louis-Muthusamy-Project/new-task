@@ -1,0 +1,160 @@
+[
+  {
+    "id": 1,
+    "templateName": "Test Drive Booking",
+    "category": "Automotive",
+    "type": "form",
+    "fieldCount": 5,
+    "status": "active",
+    "buttonText": "Submit Request",
+    "fields": [
+      {
+        "id": "field_1",
+        "label": "Full Name",
+        "name": "full_name",
+        "type": "text",
+        "placeholder": "Enter Full Name",
+        "required": true
+      },
+      {
+        "id": "field_2",
+        "label": "Email Address",
+        "name": "email_address",
+        "type": "email",
+        "placeholder": "Enter Email Address",
+        "required": true
+      },
+      {
+        "id": "field_3",
+        "label": "Phone Number",
+        "name": "phone_number",
+        "type": "tel",
+        "placeholder": "Enter Phone Number",
+        "required": true
+      },
+      {
+        "id": "field_4",
+        "label": "Vehicle of Interest",
+        "name": "vehicle_of_interest",
+        "type": "text",
+        "placeholder": "Enter Vehicle of Interest",
+        "required": true
+      },
+      {
+        "id": "field_5",
+        "label": "Preferred Date",
+        "name": "preferred_date",
+        "type": "date",
+        "placeholder": "Enter Preferred Date",
+        "required": true
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "templateName": "Service Appointment",
+    "category": "Automotive",
+    "type": "form",
+    "fieldCount": 5,
+    "status": "active",
+    "buttonText": "Submit Request",
+    "fields": [
+      {
+        "id": "field_1",
+        "label": "Full Name",
+        "name": "full_name",
+        "type": "text",
+        "placeholder": "Enter Full Name",
+        "required": true
+      },
+      {
+        "id": "field_2",
+        "label": "Email Address",
+        "name": "email_address",
+        "type": "email",
+        "placeholder": "Enter Email Address",
+        "required": true
+      },
+      {
+        "id": "field_3",
+        "label": "Phone Number",
+        "name": "phone_number",
+        "type": "tel",
+        "placeholder": "Enter Phone Number",
+        "required": true
+      },
+      {
+        "id": "field_4",
+        "label": "Registration Number",
+        "name": "registration_number",
+        "type": "text",
+        "placeholder": "Enter Registration Number",
+        "required": true
+      },
+      {
+        "id": "field_5",
+        "label": "Service Type",
+        "name": "service_type",
+        "type": "select",
+        "placeholder": "Select Service Type",
+        "required": true,
+        "options": [
+          "Oil Change",
+          "Tire Rotation",
+          "General Inspection"
+        ]
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "templateName": "Towing & Roadside",
+    "category": "Automotive",
+    "type": "form",
+    "fieldCount": 5,
+    "status": "active",
+    "buttonText": "Submit Request",
+    "fields": [
+      {
+        "id": "field_1",
+        "label": "Full Name",
+        "name": "full_name",
+        "type": "text",
+        "placeholder": "Enter Full Name",
+        "required": true
+      },
+      {
+        "id": "field_2",
+        "label": "Email Address",
+        "name": "email_address",
+        "type": "email",
+        "placeholder": "Enter Email Address",
+        "required": true
+      },
+      {
+        "id": "field_3",
+        "label": "Phone Number",
+        "name": "phone_number",
+        "type": "tel",
+        "placeholder": "Enter Phone Number",
+        "required": true
+      },
+      {
+        "id": "field_4",
+        "label": "Your Location",
+        "name": "your_location",
+        "type": "textarea",
+        "placeholder": "Enter Your Location",
+        "required": true
+      },
+      {
+        "id": "field_5",
+        "label": "What Do You Need",
+        "name": "what_do_you_need",
+        "type": "textarea",
+        "placeholder": "Enter What Do You Need",
+        "required": true
+      }
+    ]
+  }
+]

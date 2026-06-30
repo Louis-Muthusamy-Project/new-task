@@ -11,6 +11,7 @@ router.use('/website-builder', require('./pageRoutes'));
 router.use('/website-builder', require('./mediaRoutes'));
 router.use('/website-builder', require('./domainRoutes'));
 router.use('/website-builder', require('./publishRoutes'));
+router.use('/website-builder', require('./formRoutes'));
 
 // Templates endpoint used by WebsiteTemplatePage.jsx
 router.use('/templates', require('./templatesRoutes'));

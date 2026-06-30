@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import grapesjs from 'grapesjs';
 import presetWebpage from 'grapesjs-preset-webpage';
+import axios from 'axios';
 
 const API_BASE = import.meta.env?.VITE_WEBSITE_WIZARD_API_BASE || 'http://localhost:5500/api';
 
@@ -96,7 +97,7 @@ function injectCanvasLink(editor, href) {
     return new Promise((resolve) => {
       try {
         // Safe attribute-selector escape: replace backslashes and double-quotes.
-        const escaped = href.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        const escaped = href.replace(/  /g, '    ').replace(/"/g, '  "');
         const existing = doc.head.querySelector(`link[href="${escaped}"]`);
         if (existing) {
           // FIX 3: do NOT use existing.sheet as a "loaded" indicator.
@@ -198,7 +199,7 @@ function normalizeToBodyAndCss(rawHtml = '', rawCss = '', rawHeadLinks = '') {
 
   try {
     const parser = new DOMParser();
-    const doc    = parser.parseFromString(`${headLinks}\n${html}`, 'text/html');
+    const doc    = parser.parseFromString(`${headLinks} n${html}`, 'text/html');
 
     // ── 1. Collect external stylesheet / font / icon links ────────────────
     // These must be injected into the canvas iframe, not fed to setStyle().
@@ -236,7 +237,7 @@ function normalizeToBodyAndCss(rawHtml = '', rawCss = '', rawHeadLinks = '') {
     const extractedCss = allStyleEls
       .map((el) => (el.textContent || '').trim())
       .filter(Boolean)
-      .join('\n');
+      .join(' n');
 
     // ── 3. Clean body ─────────────────────────────────────────────────────
     const body = doc.body.cloneNode(true);
@@ -255,7 +256,7 @@ function normalizeToBodyAndCss(rawHtml = '', rawCss = '', rawHeadLinks = '') {
     if (extractedCss.trim() && extractedCss.trim() !== cssBase.trim()) {
       cssBlocks.push(extractedCss.trim());
     }
-    const stylesCss = cssBlocks.join('\n');
+    const stylesCss = cssBlocks.join(' n');
 
     return { componentsHtml: bodyHtml, stylesCss, externalLinks };
   } catch (e) {
@@ -279,7 +280,7 @@ function extractAllAssetUrls(htmlString) {
   const isUrl = (s) => s && (s.startsWith('http') || s.startsWith('//') || s.startsWith('/') || s.startsWith('data:'));
 
   // img[src]
-  const srcRe = /<img\b[^>]*\bsrc=["']([^"']+)["']/gi;
+  const srcRe = /<img b[^>]* bsrc=["']([^"']+)["']/gi;
   let m;
   while ((m = srcRe.exec(htmlString)) !== null) {
     const v = m[1].trim();
@@ -287,16 +288,16 @@ function extractAllAssetUrls(htmlString) {
   }
 
   // img[srcset], source[srcset], [data-srcset]
-  const srcsetRe = /\b(?:srcset|data-srcset)=["']([^"']+)["']/gi;
+  const srcsetRe = / b(?:srcset|data-srcset)=["']([^"']+)["']/gi;
   while ((m = srcsetRe.exec(htmlString)) !== null) {
     for (const part of m[1].split(',')) {
-      const url = part.trim().split(/\s+/)[0];
+      const url = part.trim().split(/ s+/)[0];
       if (url && isUrl(url)) urls.add(url);
     }
   }
 
   // CSS url() — covers background-image in style attrs and <style> blocks
-  const cssUrlRe = /url\(\s*['"]?([^'")]+)['"]?\s*\)/gi;
+  const cssUrlRe = /url ( s*['"]?([^'")]+)['"]? s* )/gi;
   while ((m = cssUrlRe.exec(htmlString)) !== null) {
     const v = m[1].trim();
     if (isUrl(v)) urls.add(v);
@@ -676,6 +677,66 @@ const GrapesPageEditor = ({
           initialCssLen:  initialCss?.length,
           initialHeadLinksLen: initialHeadLinks?.length,
         });
+      }
+
+      // Fetch and register forms as blocks
+      try {
+        const res = await axios.get(`${API_BASE}/website-builder/forms`, { withCredentials: true });
+        const forms = res.data?.data || [];
+        
+        forms.forEach(form => {
+          const formHtml = `
+            <form style="padding: 24px; border: 1px solid #e5e7eb; border-radius: 12px; background: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);" data-form-id="${form._id}">
+              <h3 style="margin-top: 0; margin-bottom: 20px; font-family: sans-serif; color: #111827;">${form.name}</h3>
+              ${form.fields.map(f => {
+                const typeLower = f.type.toLowerCase();
+                const reqAttr = f.required ? 'required' : '';
+                const placeholderAttr = f.placeholder ? `placeholder=" ${f.placeholder}"` : '';
+                
+                let inputHtml = '';
+                const labelHtml = typeLower === 'button' ? '' : `<label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; font-family: sans-serif; color: #374151;"> ${f.label} ${f.required ? ' <span style="color: #ef4444;">*</span>' : ''}</label> `;
+                
+                const inputStyle = 'width: 100%; padding: 10px 12px; margin-bottom: 16px; border: 1px solid #d1d5db; border-radius: 6px; font-family: sans-serif; font-size: 14px; color: #111827; box-sizing: border-box;';
+                
+                if (typeLower === 'textarea' || typeLower === 'text area') {
+                  inputHtml =  `<textarea style=" ${inputStyle} min-height: 100px;"  ${placeholderAttr}  ${reqAttr}></textarea> `;
+                } else if (typeLower === 'button') {
+                  inputHtml =  `<button type="submit" style="background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: 600; font-family: sans-serif; font-size: 16px; transition: background 0.2s;"> ${f.label || 'Submit'}</button> `;
+                } else if (typeLower === 'select') {
+                  inputHtml =  `<select style=" ${inputStyle}"  ${reqAttr}>
+                    <option value="" disabled selected> ${f.placeholder || 'Select an option'}</option>
+                     ${(f.options || []).map(o =>  `<option value=" ${o}"> ${o}</option> `).join('')}
+                  </select> `;
+                } else if (typeLower === 'radio group') {
+                   inputHtml =  `<div style="margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px;"> ${(f.options || []).map(o =>  `<label style="font-family: sans-serif; font-size: 14px; color: #374151; display: flex; align-items: center; gap: 8px;"><input type="radio" name=" ${f.id}" value=" ${o}"  ${reqAttr}>  ${o}</label> `).join('')}</div> `;
+                } else if (typeLower === 'checkbox group') {
+                   inputHtml =  `<div style="margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px;"> ${(f.options || []).map(o =>  `<label style="font-family: sans-serif; font-size: 14px; color: #374151; display: flex; align-items: center; gap: 8px;"><input type="checkbox" value=" ${o}">  ${o}</label> `).join('')}</div> `;
+                } else {
+                  let inputType = 'text';
+                  if (typeLower.includes('email')) inputType = 'email';
+                  else if (typeLower.includes('tel') || typeLower.includes('phone')) inputType = 'tel';
+                  else if (typeLower.includes('number')) inputType = 'number';
+                  else if (typeLower.includes('date')) inputType = 'date';
+                  else if (typeLower.includes('time')) inputType = 'time';
+                  
+                  inputHtml =  `<input type=" ${inputType}" style=" ${inputStyle}"  ${placeholderAttr}  ${reqAttr} /> `;
+                }
+                return  `<div> ${labelHtml} ${inputHtml}</div> `;
+              }).join('')}
+            </form>
+          `;
+          
+          editor.BlockManager.add( `form- ${form._id} `, {
+            label:  `
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 5px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+              <div style="font-size: 11px; margin-top: 5px; line-height: 1.2;"> ${form.name}</div>
+             `,
+            category: 'Forms',
+            content: formHtml
+          });
+        });
+      } catch (err) {
+        console.warn('[GrapesPageEditor] Error fetching forms for BlockManager:', err);
       }
     });
 

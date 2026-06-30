@@ -1,24 +1,111 @@
 import React, { useState, useEffect } from "react";
-import { Button, Input, Table, Typography, Space, Select, DatePicker, Card, Row, Col, Modal, Checkbox, Tag } from "antd";
-import { Plus, Search, X, ArrowUp, ArrowDown, Edit3, Copy, HelpCircle, FileText, BarChart3, Inbox, Calendar, Link2, ListPlus } from "lucide-react";
+import { Button, Input, Table, Typography, Space, Select, DatePicker, Card, Row, Col, Modal, Checkbox, Tag, Radio } from "antd";
+import { Plus, Search, X, ArrowUp, ArrowDown, Edit3, Copy, HelpCircle, FileText, BarChart3, Inbox, Calendar, Link2, ListPlus, MousePointerClick, CheckSquare, Upload, Type, EyeOff, Hash, AlignLeft, List, ChevronDown, Menu } from "lucide-react";
 import { motion } from "framer-motion";
+import axios from "axios";
+import formTemplates from "../../../data/formTemplates.json";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 
 const FormBuilderView = ({ activeForm, setActiveForm, itemVariants }) => {
+  const [fields, setFields] = useState(
+    activeForm?.from === "scratch" ? [] : (activeForm?.fields?.length ? activeForm.fields.map(f => ({
+      id: f.id,
+      type: f.type,
+      label: f.label,
+      placeholder: f.placeholder,
+      required: f.required,
+      options: f.options || []
+    })) : [
+      { id: "1", type: "Text Field", label: "First Name", placeholder: "Jane", required: true },
+      { id: "2", type: "Text Field", label: "Last Name", placeholder: "Doe", required: true },
+      { id: "3", type: "Text Field", label: "Phone", placeholder: "Phone", required: true },
+      { id: "4", type: "Text Field", label: "Email", placeholder: "you@example.com", required: true },
+    ])
+  );
+
+  const [isJsonView, setIsJsonView] = useState(false);
+  const [editingField, setEditingField] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const addField = (type) => {
+    const newField = {
+      id: Date.now().toString(),
+      type,
+      label: `New ${type}`,
+      placeholder: "",
+      required: false,
+      options: ["Option 1", "Option 2"]
+    };
+    setFields([...fields, newField]);
+  };
+
+  const removeField = (id) => {
+    setFields(fields.filter(f => f.id !== id));
+  };
+
+  const duplicateField = (field) => {
+    const newField = { ...field, id: Date.now().toString() };
+    const index = fields.findIndex(f => f.id === field.id);
+    const newFields = [...fields];
+    newFields.splice(index + 1, 0, newField);
+    setFields(newFields);
+  };
+
+  const moveField = (index, direction) => {
+    if (direction === "up" && index > 0) {
+      const newFields = [...fields];
+      [newFields[index - 1], newFields[index]] = [newFields[index], newFields[index - 1]];
+      setFields(newFields);
+    } else if (direction === "down" && index < fields.length - 1) {
+      const newFields = [...fields];
+      [newFields[index], newFields[index + 1]] = [newFields[index + 1], newFields[index]];
+      setFields(newFields);
+    }
+  };
+
+  const saveEditedField = (updatedField) => {
+    setFields(fields.map(f => f.id === updatedField.id ? updatedField : f));
+    setEditingField(null);
+  };
+
+  const handleSubmitForm = async () => {
+    setIsSubmitting(true);
+    try {
+      await axios.post('/api/website-builder/forms', {
+        name: activeForm.name,
+        fields: fields
+      }, { withCredentials: true });
+      // In a real app, maybe show a success message
+      setActiveForm(null); // Return to list
+    } catch (error) {
+      console.error("Error saving form:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <motion.div variants={itemVariants} className="builder-view-container" style={{ minHeight: "calc(100vh - 64px)" }}>
       <div style={{ maxWidth: 1200, margin: "0 auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32 }}>
           <div>
             <Title level={4} style={{ margin: '0 0 8px', color: 'var(--text-primary)', fontWeight: 800 }}>{activeForm?.name}</Title>
-            <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>Drag fields from the left, reorder on the canvas, then save.</Text>
+            <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>Click fields on the right to add them, reorder on the canvas, then save.</Text>
           </div>
           <Space size="large">
             <div style={{ background: 'var(--bg-secondary)', padding: '4px', borderRadius: 8, display: 'flex', gap: 4, border: '1px solid var(--border-color)' }}>
-              <div style={{ padding: '6px 16px', background: 'var(--accent-primary)', color: '#fff', borderRadius: 6, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Visual</div>
-              <div style={{ padding: '6px 16px', color: 'var(--text-secondary)', borderRadius: 6, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>JSON</div>
+              <div
+                onClick={() => setIsJsonView(false)}
+                style={{ padding: '6px 16px', background: !isJsonView ? 'var(--accent-primary)' : 'transparent', color: !isJsonView ? '#fff' : 'var(--text-secondary)', borderRadius: 6, fontWeight: 700, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s' }}>
+                Visual
+              </div>
+              <div
+                onClick={() => setIsJsonView(true)}
+                style={{ padding: '6px 16px', background: isJsonView ? 'var(--accent-primary)' : 'transparent', color: isJsonView ? '#fff' : 'var(--text-secondary)', borderRadius: 6, fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s' }}>
+                JSON
+              </div>
             </div>
           </Space>
         </div>
@@ -26,88 +113,96 @@ const FormBuilderView = ({ activeForm, setActiveForm, itemVariants }) => {
         <div style={{ display: "flex", gap: 32, alignItems: "flex-start" }}>
           {/* Main Canvas */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 24 }}>
-            <Card bodyStyle={{ padding: "40px" }} style={{ borderRadius: 16, border: "1px solid var(--border-color)", background: 'var(--bg-secondary)', boxShadow: 'var(--shadow-md)' }} className="builder-canvas">
-              
-              {/* Field 1 */}
-              <div style={{ marginBottom: 24, padding: 16, border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-primary)', position: 'relative' }} className="builder-field-row">
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    First Name <span style={{ color: "var(--accent-danger)" }}>*</span> <HelpCircle size={14} color="var(--text-tertiary)" />
-                  </div>
-                  <div style={{ display: "flex", gap: 8, opacity: 0.6 }}>
-                    <Edit3 size={16} style={{ cursor: 'pointer' }} />
-                    <Copy size={16} style={{ cursor: 'pointer' }} />
-                    <ArrowUp size={16} style={{ cursor: 'pointer' }} />
-                    <ArrowDown size={16} style={{ cursor: 'pointer' }} />
-                    <X size={16} style={{ cursor: 'pointer', color: 'var(--accent-danger)' }} />
-                  </div>
-                </div>
-                <Input size="large" placeholder="Jane" style={{ borderRadius: 8 }} />
-              </div>
+            <Card 
+              bodyStyle={{ padding: "40px" }} 
+              style={{ borderRadius: 16, border: "1px solid var(--border-color)", background: 'var(--bg-secondary)', boxShadow: 'var(--shadow-md)' }} 
+              className="builder-canvas"
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                const type = e.dataTransfer.getData('fieldType');
+                if (type) addField(type);
+              }}
+            >
 
-              {/* Field 2 */}
-              <div style={{ marginBottom: 24, padding: 16, border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-primary)' }} className="builder-field-row">
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    Last Name <span style={{ color: "var(--accent-danger)" }}>*</span> <HelpCircle size={14} color="var(--text-tertiary)" />
+              {isJsonView ? (
+                <pre style={{ background: 'var(--bg-primary)', padding: 16, borderRadius: 12, border: '1px solid var(--border-color)', color: 'var(--text-primary)', overflowX: 'auto' }}>
+                  {JSON.stringify(fields, null, 2)}
+                </pre>
+              ) : (
+                fields.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                    No fields added yet. Click an item on the right to add it.
                   </div>
-                  <div style={{ display: "flex", gap: 8, opacity: 0.6 }}>
-                    <Edit3 size={16} style={{ cursor: 'pointer' }} />
-                    <Copy size={16} style={{ cursor: 'pointer' }} />
-                    <ArrowUp size={16} style={{ cursor: 'pointer' }} />
-                    <ArrowDown size={16} style={{ cursor: 'pointer' }} />
-                    <X size={16} style={{ cursor: 'pointer', color: 'var(--accent-danger)' }} />
-                  </div>
-                </div>
-                <Input size="large" placeholder="Doe" style={{ borderRadius: 8 }} />
-              </div>
-
-              {/* Field 3 */}
-              <div style={{ marginBottom: 24, padding: 16, border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-primary)' }} className="builder-field-row">
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    Phone <span style={{ color: "var(--accent-danger)" }}>*</span> <HelpCircle size={14} color="var(--text-tertiary)" />
-                  </div>
-                  <div style={{ display: "flex", gap: 8, opacity: 0.6 }}>
-                    <Edit3 size={16} style={{ cursor: 'pointer' }} />
-                    <Copy size={16} style={{ cursor: 'pointer' }} />
-                    <ArrowUp size={16} style={{ cursor: 'pointer' }} />
-                    <ArrowDown size={16} style={{ cursor: 'pointer' }} />
-                    <X size={16} style={{ cursor: 'pointer', color: 'var(--accent-danger)' }} />
-                  </div>
-                </div>
-                <Input size="large" placeholder="Phone" style={{ borderRadius: 8 }} />
-              </div>
-
-              {/* Field 4 */}
-              <div style={{ marginBottom: 0, padding: 16, border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-primary)' }} className="builder-field-row">
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    Email <span style={{ color: "var(--accent-danger)" }}>*</span> <HelpCircle size={14} color="var(--text-tertiary)" />
-                  </div>
-                  <div style={{ display: "flex", gap: 8, opacity: 0.6 }}>
-                    <Edit3 size={16} style={{ cursor: 'pointer' }} />
-                    <Copy size={16} style={{ cursor: 'pointer' }} />
-                    <ArrowUp size={16} style={{ cursor: 'pointer' }} />
-                    <ArrowDown size={16} style={{ cursor: 'pointer' }} />
-                    <X size={16} style={{ cursor: 'pointer', color: 'var(--accent-danger)' }} />
-                  </div>
-                </div>
-                <Input size="large" placeholder="you@example.com" style={{ borderRadius: 8 }} />
-              </div>
+                ) : (
+                  fields.map((field, index) => (
+                    <div key={field.id} style={{ marginBottom: index === fields.length - 1 ? 0 : 24, padding: 16, border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-primary)', position: 'relative' }} className="builder-field-row">
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {field.label} {field.required && <span style={{ color: "var(--accent-danger)" }}>*</span>} <HelpCircle size={14} color="var(--text-tertiary)" />
+                        </div>
+                        <div style={{ display: "flex", gap: 8, opacity: 0.6 }}>
+                          <Edit3 size={16} style={{ cursor: 'pointer' }} onClick={() => setEditingField(field)} />
+                          <Copy size={16} style={{ cursor: 'pointer' }} onClick={() => duplicateField(field)} />
+                          <ArrowUp size={16} style={{ cursor: index === 0 ? 'not-allowed' : 'pointer', opacity: index === 0 ? 0.3 : 1 }} onClick={() => moveField(index, "up")} />
+                          <ArrowDown size={16} style={{ cursor: index === fields.length - 1 ? 'not-allowed' : 'pointer', opacity: index === fields.length - 1 ? 0.3 : 1 }} onClick={() => moveField(index, "down")} />
+                          <X size={16} style={{ cursor: 'pointer', color: 'var(--accent-danger)' }} onClick={() => removeField(field.id)} />
+                        </div>
+                      </div>
+                      {(() => {
+                        const commonProps = {
+                          size: "large",
+                          placeholder: field.placeholder || field.type,
+                          style: { borderRadius: 8, width: '100%' },
+                        };
+                        switch (field.type.toLowerCase()) {
+                          case "textarea":
+                          case "text area":
+                            return <Input.TextArea {...commonProps} rows={4} />;
+                          case "select":
+                            return (
+                              <Select {...commonProps}>
+                                {(field.options || []).map((opt, i) => <Option key={i} value={opt}>{opt}</Option>)}
+                              </Select>
+                            );
+                          case "checkbox group":
+                            return <Checkbox.Group options={field.options || []} />;
+                          case "radio group":
+                            return <Radio.Group options={field.options || []} />;
+                          case "date field":
+                          case "date":
+                            return <DatePicker {...commonProps} />;
+                          case "number":
+                            return <Input type="number" {...commonProps} />;
+                          case "email":
+                            return <Input type="email" {...commonProps} />;
+                          case "tel":
+                            return <Input type="tel" {...commonProps} />;
+                          case "time":
+                            return <Input type="time" {...commonProps} />;
+                          case "button":
+                            return <Button type="primary" size="large" style={{ borderRadius: 8, height: 44, fontWeight: 700, padding: '0 32px' }}>{field.label || "Submit"}</Button>;
+                          default:
+                            return <Input {...commonProps} />;
+                        }
+                      })()}
+                    </div>
+                  ))
+                )
+              )}
             </Card>
 
             {/* Submit Button Area */}
             <div style={{ textAlign: "center", marginTop: 8 }}>
-              <Button type="primary" block style={{ height: 56, borderRadius: 12, backgroundColor: "var(--accent-success)", border: 'none', fontWeight: 800, fontSize: 16, boxShadow: 'var(--shadow-md)' }}>
-                Submit Form
+              <Button type="primary" block loading={isSubmitting} onClick={handleSubmitForm} style={{ height: 56, borderRadius: 12, backgroundColor: "var(--accent-success)", border: 'none', fontWeight: 800, fontSize: 16, boxShadow: 'var(--shadow-md)' }}>
+                Save Form Template
               </Button>
               <div style={{ marginTop: 16, fontSize: 12, color: "var(--text-secondary)", fontWeight: 600, display: 'flex', justifyContent: 'center', gap: 16 }}>
                 <span style={{ cursor: 'pointer', textDecoration: 'underline' }}>Privacy Policy</span>
                 <span style={{ cursor: 'pointer', textDecoration: 'underline' }}>Terms of Service</span>
               </div>
             </div>
-            
+
             <Button style={{ margin: "32px auto 0", display: "block", borderRadius: 8, height: 44, padding: '0 32px', fontWeight: 700, borderColor: 'var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }} onClick={() => setActiveForm(null)}>
               Back to Forms
             </Button>
@@ -120,19 +215,46 @@ const FormBuilderView = ({ activeForm, setActiveForm, itemVariants }) => {
                 <div style={{ fontWeight: 800, fontSize: 16, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}><ListPlus size={18} /> Add Fields</div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column' }}>
-                {["Autocomplete", "Button", "Checkbox Group", "Date Field", "File Upload", "Header", "Hidden Input", "Number", "Paragraph", "Radio Group", "Select", "Text Field", "Text Area"].map((item, idx) => (
-                  <div key={idx} style={{ 
-                    padding: '16px 24px', 
-                    borderBottom: idx === 12 ? 'none' : '1px solid var(--border-color)', 
-                    color: 'var(--text-primary)', 
-                    fontWeight: 600, 
+                {[
+                  { type: "Autocomplete", icon: <Search size={16} /> },
+                  { type: "Button", icon: <MousePointerClick size={16} /> },
+                  { type: "Checkbox Group", icon: <CheckSquare size={16} /> },
+                  { type: "Date Field", icon: <Calendar size={16} /> },
+                  { type: "File Upload", icon: <Upload size={16} /> },
+                  { type: "Header", icon: <Type size={16} /> },
+                  { type: "Hidden Input", icon: <EyeOff size={16} /> },
+                  { type: "Number", icon: <Hash size={16} /> },
+                  { type: "Paragraph", icon: <AlignLeft size={16} /> },
+                  { type: "Radio Group", icon: <List size={16} /> },
+                  { type: "Select", icon: <ChevronDown size={16} /> },
+                  { type: "Text Field", icon: <Type size={16} /> },
+                  { type: "Text Area", icon: <Menu size={16} /> }
+                ].map((item, idx) => (
+                  <div key={idx} style={{
+                    padding: '16px 24px',
+                    borderBottom: idx === 12 ? 'none' : '1px solid var(--border-color)',
+                    color: 'var(--text-primary)',
+                    fontWeight: 600,
                     cursor: 'grab',
                     transition: 'all 0.2s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12
                   }}
-                  onMouseOver={(e) => e.currentTarget.style.background = 'var(--bg-primary)'}
-                  onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('fieldType', item.type);
+                      e.target.style.opacity = '0.5';
+                    }}
+                    onDragEnd={(e) => {
+                      e.target.style.opacity = '1';
+                    }}
+                    onMouseOver={(e) => e.currentTarget.style.background = 'var(--bg-primary)'}
+                    onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                    onClick={() => addField(item.type)}
                   >
-                    {item}
+                    <span style={{ color: 'var(--text-secondary)' }}>{item.icon}</span>
+                    {item.type}
                   </div>
                 ))}
               </div>
@@ -140,6 +262,53 @@ const FormBuilderView = ({ activeForm, setActiveForm, itemVariants }) => {
           </div>
         </div>
       </div>
+
+      <Modal
+        title={<div style={{ fontSize: 20, fontWeight: 800, marginTop: 8, color: 'var(--text-primary)' }}>Edit Field</div>}
+        open={!!editingField}
+        onCancel={() => setEditingField(null)}
+        footer={null}
+        width={500}
+        centered
+        className="glassmorphism-modal"
+      >
+        {editingField && (
+          <div style={{ marginTop: 24 }}>
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8, color: 'var(--text-primary)' }}>Label</div>
+              <Input size="large" value={editingField.label} onChange={(e) => setEditingField({ ...editingField, label: e.target.value })} style={{ borderRadius: 8 }} />
+            </div>
+            {editingField.type.toLowerCase() !== "button" && (
+              <>
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8, color: 'var(--text-primary)' }}>Placeholder</div>
+                  <Input size="large" value={editingField.placeholder} onChange={(e) => setEditingField({ ...editingField, placeholder: e.target.value })} style={{ borderRadius: 8 }} />
+                </div>
+                <div style={{ marginBottom: 32 }}>
+                  <Checkbox checked={editingField.required} onChange={(e) => setEditingField({ ...editingField, required: e.target.checked })}>
+                    <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Required Field</span>
+                  </Checkbox>
+                </div>
+              </>
+            )}
+            
+            {["select", "radio group", "checkbox group"].includes(editingField.type.toLowerCase()) && (
+              <div style={{ marginBottom: 32 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8, color: 'var(--text-primary)' }}>Options (comma-separated)</div>
+                <Input.TextArea rows={3} size="large" value={(editingField.options || []).join(', ')} onChange={(e) => setEditingField({ ...editingField, options: e.target.value.split(',').map(o => o.trim()).filter(Boolean) })} style={{ borderRadius: 8 }} placeholder="Option 1, Option 2, Option 3" />
+              </div>
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 16 }}>
+              <Button style={{ borderRadius: 8, fontWeight: 700, height: 44, padding: "0 32px", borderColor: 'var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }} onClick={() => setEditingField(null)}>
+                Cancel
+              </Button>
+              <Button type="primary" style={{ borderRadius: 8, fontWeight: 800, height: 44, padding: "0 32px", background: "var(--accent-primary)", border: 'none' }} onClick={() => saveEditedField(editingField)}>
+                Save Changes
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </motion.div>
   );
 };
@@ -147,12 +316,13 @@ const FormBuilderView = ({ activeForm, setActiveForm, itemVariants }) => {
 const FormsTab = ({ itemVariants }) => {
   const [activeSubTab, setActiveSubTab] = useState("builder");
   const [activeForm, setActiveForm] = useState(null);
-  
+
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
 
   const [createType, setCreateType] = useState("templates");
   const [formName, setFormName] = useState("");
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
 
   const handleCreateContinue = () => {
     setIsCreateModalOpen(false);
@@ -332,9 +502,9 @@ const FormsTab = ({ itemVariants }) => {
         </div>
         {activeSubTab === "builder" && (
           <Space>
-            <Button 
-              type="primary" 
-              icon={<Plus size={18} />} 
+            <Button
+              type="primary"
+              icon={<Plus size={18} />}
               style={{ backgroundColor: "var(--accent-primary)", border: 'none', borderRadius: 8, fontWeight: 700, height: 44, padding: '0 24px', boxShadow: 'var(--shadow-md)' }}
               onClick={() => setIsCreateModalOpen(true)}
             >
@@ -350,7 +520,7 @@ const FormsTab = ({ itemVariants }) => {
           { key: "analyze", label: "Analyze", icon: <BarChart3 size={16} /> },
           { key: "submissions", label: "Submissions", icon: <Inbox size={16} /> }
         ].map(tab => (
-          <div 
+          <div
             key={tab.key}
             onClick={() => setActiveSubTab(tab.key)}
             style={{
@@ -389,7 +559,7 @@ const FormsTab = ({ itemVariants }) => {
         <div style={{ marginTop: 24 }}>
           <Row gutter={24} style={{ marginBottom: 32 }}>
             <Col span={12}>
-              <div 
+              <div
                 onClick={() => setCreateType("scratch")}
                 style={{
                   border: createType === "scratch" ? "2px solid var(--accent-primary)" : "1px solid var(--border-color)",
@@ -417,7 +587,7 @@ const FormsTab = ({ itemVariants }) => {
               </div>
             </Col>
             <Col span={12}>
-              <div 
+              <div
                 onClick={() => setCreateType("templates")}
                 style={{
                   border: createType === "templates" ? "2px solid var(--accent-primary)" : "1px solid var(--border-color)",
@@ -448,7 +618,7 @@ const FormsTab = ({ itemVariants }) => {
 
           <div style={{ marginBottom: 32 }}>
             <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8, color: 'var(--text-primary)' }}>Form name <span style={{ color: "var(--accent-danger)" }}>*</span></div>
-            <Input 
+            <Input
               size="large"
               placeholder="e.g. Contact form, Workshop registration"
               value={formName}
@@ -485,7 +655,7 @@ const FormsTab = ({ itemVariants }) => {
             <FileText size={20} color="var(--accent-primary)" /> Template Library
           </Title>
         </div>
-        
+
         <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
           {/* Left Sidebar */}
           <div style={{ width: 280, borderRight: "1px solid var(--border-color)", padding: "24px", overflowY: "auto", background: 'var(--bg-secondary)' }}>
@@ -530,28 +700,33 @@ const FormsTab = ({ itemVariants }) => {
 
             <div style={{ flex: 1, overflowY: "auto", margin: "-12px", padding: "12px" }}>
               <Row gutter={[24, 24]}>
-                {[
-                  { title: "Automotive — Test Drive Booking", sub: "Automotive · 5 fields", btn: "var(--accent-primary)" },
-                  { title: "Automotive — Service Appointment", sub: "Automotive · 5 fields", btn: "var(--text-primary)" },
-                  { title: "Automotive — Towing & Roadside", sub: "Automotive · 5 fields", btn: "var(--accent-warning)" },
-                  { title: "Automotive — Trade-in Valuation", sub: "Automotive · 6 fields", btn: "var(--accent-info)" },
-                  { title: "Beauty & Fashion — Salon", sub: "Beauty & Fashion · 5 fields", btn: "var(--accent-danger)" },
-                  { title: "Beauty & Fashion — Skincare", sub: "Beauty & Fashion · 5 fields", btn: "var(--accent-secondary)" },
-                ].map((tpl, i) => (
-                  <Col span={8} key={i}>
-                    <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, overflow: "hidden", border: "1px solid var(--border-color)", cursor: "pointer", background: 'var(--bg-secondary)', transition: 'all 0.2s' }} className="hover-shadow-md">
+                {formTemplates.map((tpl, i) => (
+                  <Col span={8} key={tpl.id}>
+                    <Card
+                      onClick={() => setSelectedTemplate(tpl)}
+                      bodyStyle={{ padding: 0 }}
+                      style={{
+                        borderRadius: 16,
+                        overflow: "hidden",
+                        border: selectedTemplate?.id === tpl.id ? "2px solid var(--accent-primary)" : "1px solid var(--border-color)",
+                        cursor: "pointer",
+                        background: 'var(--bg-secondary)',
+                        transition: 'all 0.2s',
+                        boxShadow: selectedTemplate?.id === tpl.id ? "0 4px 20px rgba(59, 130, 246, 0.15)" : "none"
+                      }}
+                      className="hover-shadow-md">
                       <div style={{ height: 200, background: "var(--bg-primary)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, borderBottom: '1px solid var(--border-color)' }}>
                         <div style={{ width: "100%", height: "100%", border: "1px solid var(--border-color)", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 12, background: 'var(--bg-secondary)', boxShadow: 'var(--shadow-sm)' }}>
-                           <div style={{ width: "60%", height: 8, background: "var(--text-tertiary)", borderRadius: 4, opacity: 0.5 }}></div>
-                           <div style={{ width: "100%", height: 28, background: "var(--bg-primary)", borderRadius: 6, border: "1px solid var(--border-color)" }}></div>
-                           <div style={{ width: "100%", height: 28, background: "var(--bg-primary)", borderRadius: 6, border: "1px solid var(--border-color)" }}></div>
-                           <div style={{ width: "100%", height: 28, background: "var(--bg-primary)", borderRadius: 6, border: "1px solid var(--border-color)" }}></div>
-                           <div style={{ width: "100%", height: 32, background: tpl.btn, borderRadius: 6, marginTop: "auto" }}></div>
+                          <div style={{ width: "60%", height: 8, background: "var(--text-tertiary)", borderRadius: 4, opacity: 0.5 }}></div>
+                          <div style={{ width: "100%", height: 28, background: "var(--bg-primary)", borderRadius: 6, border: "1px solid var(--border-color)" }}></div>
+                          <div style={{ width: "100%", height: 28, background: "var(--bg-primary)", borderRadius: 6, border: "1px solid var(--border-color)" }}></div>
+                          <div style={{ width: "100%", height: 28, background: "var(--bg-primary)", borderRadius: 6, border: "1px solid var(--border-color)" }}></div>
+                          <div style={{ width: "100%", height: 32, background: "var(--accent-primary)", borderRadius: 6, marginTop: "auto" }}></div>
                         </div>
                       </div>
                       <div style={{ padding: "20px" }}>
-                        <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 8, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tpl.title}</div>
-                        <div style={{ color: "var(--text-secondary)", fontSize: 12, fontWeight: 600 }}>{tpl.sub}</div>
+                        <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 8, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tpl.templateName}</div>
+                        <div style={{ color: "var(--text-secondary)", fontSize: 12, fontWeight: 600 }}>{tpl.category} · {tpl.fieldCount} fields</div>
                       </div>
                     </Card>
                   </Col>
@@ -565,7 +740,7 @@ const FormsTab = ({ itemVariants }) => {
         <div style={{ padding: "24px 32px", borderTop: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg-secondary)" }}>
           <div style={{ width: 400 }}>
             <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8, color: "var(--text-primary)" }}>Form name</div>
-            <Input 
+            <Input
               size="large"
               placeholder="Uses template name if empty"
               style={{ borderRadius: 8, borderColor: "var(--accent-primary)" }}
@@ -575,9 +750,13 @@ const FormsTab = ({ itemVariants }) => {
             <Button size="large" style={{ borderRadius: 8, fontWeight: 700, padding: "0 32px", borderColor: 'var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }} onClick={() => setIsTemplateModalOpen(false)}>
               Back
             </Button>
-            <Button size="large" type="primary" style={{ borderRadius: 8, fontWeight: 800, padding: "0 32px", background: "var(--accent-primary)", border: 'none' }} onClick={() => {
+            <Button size="large" type="primary" disabled={!selectedTemplate} style={{ borderRadius: 8, fontWeight: 800, padding: "0 32px", background: "var(--accent-primary)", border: 'none' }} onClick={() => {
               setIsTemplateModalOpen(false);
-              setActiveForm({ name: "Template Form", from: "template" });
+              setActiveForm({
+                name: formName || selectedTemplate?.templateName || "Template Form",
+                from: "template",
+                fields: selectedTemplate?.fields || []
+              });
             }}>
               Use template
             </Button>
