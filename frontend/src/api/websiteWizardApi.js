@@ -156,4 +156,14 @@ export const websiteWizardApi = {
         body: payload,
       })
     ),
+
+  getFormSubmissions: async (params = {}) => {
+    const query = Object.entries(params)
+      .filter(([, value]) => value !== undefined && value !== null && value !== '')
+      .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+      .join('&');
+    return unwrapSuccess(
+      await request(`/website-builder/forms/submissions${query ? `?${query}` : ''}`, { method: 'GET' })
+    );
+  },
 };

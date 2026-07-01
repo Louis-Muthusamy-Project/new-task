@@ -382,6 +382,11 @@ function buildFormHtml(form, { isTemplate = false } = {}) {
   const formId = escapeHtml(form?._id || form?.id || '');
   const formName = escapeHtml(form?.name || 'Form');
 
+  const buttonField = fields.find((f) => String(f?.type || '').toLowerCase() === 'button');
+  const customPostUrl = buttonField?.postUrl && String(buttonField.postUrl).trim();
+  const defaultPostUrl = `${API_BASE}/website-builder/forms/${formId}/submissions`;
+  const submitUrl = escapeHtml(customPostUrl || defaultPostUrl);
+
   return `
     <form style="padding: 24px; border: 1px solid #e5e7eb; border-radius: 12px; background: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);" data-form-id="${formId}"${isTemplate ? ' data-is-template="true"' : ''}>
       <h3 style="margin-top: 0; margin-bottom: 20px; font-family: sans-serif; color: #111827;">${formName}</h3>
@@ -397,11 +402,11 @@ function buildFormHtml(form, { isTemplate = false } = {}) {
 
         let inputHtml = '';
         if (typeLower === 'textarea' || typeLower === 'text area') {
-          inputHtml = `<textarea style="${inputStyle} min-height: 100px;" ${placeholderAttr} ${reqAttr}></textarea>`;
+          inputHtml = `<textarea name="${fieldId}" style="${inputStyle} min-height: 100px;" ${placeholderAttr} ${reqAttr}></textarea>`;
         } else if (typeLower === 'button') {
           inputHtml = `<button type="submit" style="background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: 600; font-family: sans-serif; font-size: 16px;">${fieldLabel || 'Submit'}</button>`;
         } else if (typeLower === 'select') {
-          inputHtml = `<select style="${inputStyle}" ${reqAttr}>
+          inputHtml = `<select name="${fieldId}" style="${inputStyle}" ${reqAttr}>
             <option value="" disabled selected>${placeholder || 'Select an option'}</option>
             ${(field.options || []).map((option) => {
               const safeOption = escapeHtml(option);
@@ -416,7 +421,7 @@ function buildFormHtml(form, { isTemplate = false } = {}) {
         } else if (typeLower === 'checkbox group') {
           inputHtml = `<div style="margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px;">${(field.options || []).map((option) => {
             const safeOption = escapeHtml(option);
-            return `<label style="font-family: sans-serif; font-size: 14px; color: #374151; display: flex; align-items: center; gap: 8px;"><input type="checkbox" value="${safeOption}">${safeOption}</label>`;
+            return `<label style="font-family: sans-serif; font-size: 14px; color: #374151; display: flex; align-items: center; gap: 8px;"><input type="checkbox" name="${fieldId}" value="${safeOption}">${safeOption}</label>`;
           }).join('')}</div>`;
         } else {
           let inputType = 'text';
@@ -426,12 +431,63 @@ function buildFormHtml(form, { isTemplate = false } = {}) {
           else if (typeLower.includes('date')) inputType = 'date';
           else if (typeLower.includes('time')) inputType = 'time';
 
-          inputHtml = `<input type="${inputType}" style="${inputStyle}" ${placeholderAttr} ${reqAttr} />`;
+          inputHtml = `<input type="${inputType}" name="${fieldId}" style="${inputStyle}" ${placeholderAttr} ${reqAttr} />`;
         }
 
         return `<div>${labelHtml}${inputHtml}</div>`;
       }).join('')}
     </form>
+    <script>
+      (function () {
+        var form = document.querySelector('form[data-form-id="${formId}"]');
+        if (!form || form.dataset.submitWired) return;
+        form.dataset.submitWired = "true";
+        form.addEventListener('submit', function (e) {
+          e.preventDefault();
+          var submitBtn = form.querySelector('button[type="submit"]');
+          var originalLabel = submitBtn ? submitBtn.textContent : null;
+          if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Submitting...'; }
+
+          var fd = new FormData(form);
+          var data = {};
+          fd.forEach(function (value, key) {
+            if (Object.prototype.hasOwnProperty.call(data, key)) {
+              if (!Array.isArray(data[key])) data[key] = [data[key]];
+              data[key].push(value);
+            } else {
+              data[key] = value;
+            }
+          });
+
+          fetch('${submitUrl}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data: data, pageUrl: window.location.href }),
+          })
+            .then(function (res) {
+              if (!res.ok) throw new Error('Request failed with status ' + res.status);
+              return res.json().catch(function () { return {}; });
+            })
+            .then(function () {
+              form.reset();
+              var existing = form.querySelector('[data-form-success]');
+              if (!existing) {
+                var msg = document.createElement('div');
+                msg.setAttribute('data-form-success', 'true');
+                msg.textContent = 'Thanks! Your submission has been received.';
+                msg.style.cssText = 'margin-top:16px;padding:12px 16px;border-radius:8px;background:#ecfdf5;color:#047857;font-family:sans-serif;font-size:14px;font-weight:600;';
+                form.appendChild(msg);
+              }
+            })
+            .catch(function () {
+              alert('Something went wrong submitting the form. Please try again.');
+            })
+            .finally(function () {
+              if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = originalLabel; }
+            });
+        });
+      })();
+    </script>
   `;
 }
 
@@ -578,6 +634,12 @@ const GrapesPageEditor = ({
     notice: false,
     storageManager: false,
     panels: { defaults: [] },
+    // GrapesJS strips <script> tags out of any imported/inserted HTML unless
+    // this is explicitly enabled (default: false). Form templates rely on an
+    // inline <script> to POST submissions to the backend, so without this the
+    // handler is silently deleted the moment the form block is dropped onto
+    // the canvas — the button then has nothing wired up to it at all.
+    allowScripts: 1,
     assetManager: {
       ...assetManager,
       // NOTE: We use a custom uploadFile handler below instead of relying on

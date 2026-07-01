@@ -7,6 +7,10 @@ const fieldSchema = new mongoose.Schema({
   placeholder: { type: String },
   required: { type: Boolean, default: false },
   options: [{ type: String }], // For select, radio, checkbox
+  // Only meaningful for type: "Button". If set, the generated form on the
+  // live site POSTs submissions to this URL instead of the default
+  // built-in submissions endpoint (e.g. a custom webhook).
+  postUrl: { type: String, default: '' },
 }, { _id: false });
 
 const formSchema = new mongoose.Schema({

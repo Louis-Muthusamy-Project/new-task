@@ -16,7 +16,8 @@ const FormBuilderView = ({ activeForm, setActiveForm, itemVariants, onTemplatesC
       label: f.label,
       placeholder: f.placeholder,
       required: f.required,
-      options: f.options || []
+      options: f.options || [],
+      postUrl: f.postUrl || ""
     })) : []
   );
 
@@ -31,7 +32,9 @@ const FormBuilderView = ({ activeForm, setActiveForm, itemVariants, onTemplatesC
       label: `New ${type}`,
       placeholder: "",
       required: false,
-      options: ["Option 1", "Option 2"]
+      options: ["Option 1", "Option 2"],
+      // Button-only: empty means "use the default submission endpoint".
+      postUrl: type === "Button" ? "" : undefined
     };
     setFields([...fields, newField]);
   };
@@ -300,6 +303,22 @@ const FormBuilderView = ({ activeForm, setActiveForm, itemVariants, onTemplatesC
                 </div>
               </>
             )}
+
+            {editingField.type.toLowerCase() === "button" && (
+              <div style={{ marginBottom: 32 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8, color: 'var(--text-primary)' }}>POST Request URL</div>
+                <Input
+                  size="large"
+                  value={editingField.postUrl || ""}
+                  onChange={(e) => setEditingField({ ...editingField, postUrl: e.target.value })}
+                  placeholder="Default: this form's built-in submission endpoint"
+                  style={{ borderRadius: 8 }}
+                />
+                <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500, lineHeight: 1.5 }}>
+                  By default this button saves entries to <strong style={{ color: 'var(--text-primary)' }}>Forms &gt; Submissions</strong>. Set a custom URL here to POST the submitted data to your own endpoint (e.g. a webhook) instead.
+                </div>
+              </div>
+            )}
             
             {["select", "radio group", "checkbox group"].includes(editingField.type.toLowerCase()) && (
               <div style={{ marginBottom: 32 }}>
@@ -336,6 +355,14 @@ const FormsTab = ({ itemVariants }) => {
   const [savedTemplates, setSavedTemplates] = useState([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
 
+  const [submissions, setSubmissions] = useState([]);
+  const [loadingSubmissions, setLoadingSubmissions] = useState(false);
+  const [submissionFormFilter, setSubmissionFormFilter] = useState("all");
+  const [submissionDateFrom, setSubmissionDateFrom] = useState(null);
+  const [submissionDateTo, setSubmissionDateTo] = useState(null);
+  const [submissionSearch, setSubmissionSearch] = useState("");
+  const [viewingSubmission, setViewingSubmission] = useState(null);
+
   const fetchTemplates = async () => {
     setLoadingTemplates(true);
     try {
@@ -348,11 +375,43 @@ const FormsTab = ({ itemVariants }) => {
     }
   };
 
+  const fetchSubmissions = async () => {
+    setLoadingSubmissions(true);
+    try {
+      const results = await websiteWizardApi.getFormSubmissions({
+        formId: submissionFormFilter !== "all" ? submissionFormFilter : undefined,
+        from: submissionDateFrom ? submissionDateFrom.format("YYYY-MM-DD") : undefined,
+        to: submissionDateTo ? submissionDateTo.format("YYYY-MM-DD") : undefined,
+      });
+      setSubmissions(results || []);
+    } catch (err) {
+      console.error('Failed to fetch submissions:', err);
+      message.error('Failed to load submissions.');
+    } finally {
+      setLoadingSubmissions(false);
+    }
+  };
+
   useEffect(() => {
     if (activeSubTab === "builder") {
       fetchTemplates();
     }
+    if (activeSubTab === "submissions") {
+      fetchTemplates();
+      fetchSubmissions();
+    }
+    if (activeSubTab === "analyze") {
+      fetchTemplates();
+      fetchSubmissions();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSubTab]);
+
+  const filteredSubmissions = submissions.filter((s) => {
+    if (!submissionSearch.trim()) return true;
+    const haystack = JSON.stringify(s.data || {}).toLowerCase();
+    return haystack.includes(submissionSearch.trim().toLowerCase());
+  });
 
   const handleCreateContinue = () => {
     setIsCreateModalOpen(false);
@@ -474,6 +533,16 @@ const FormsTab = ({ itemVariants }) => {
   };
 
   const renderAnalyze = () => {
+    const now = Date.now();
+    const last30 = submissions.filter((s) => now - new Date(s.createdAt).getTime() <= 30 * 24 * 60 * 60 * 1000).length;
+
+    const perFormCounts = {};
+    submissions.forEach((s) => {
+      const key = s.formName || "Unknown form";
+      perFormCounts[key] = (perFormCounts[key] || 0) + 1;
+    });
+    const analyzeRows = Object.entries(perFormCounts).map(([form, count], idx) => ({ key: idx, form, submissions: count }));
+
     const columns = [
       { title: "FORM", dataIndex: "form", key: "form" },
       { title: "SUBMISSIONS", dataIndex: "submissions", key: "submissions" },
@@ -485,21 +554,21 @@ const FormsTab = ({ itemVariants }) => {
           <Col span={8}>
             <Card bodyStyle={{ padding: 24 }} style={{ borderRadius: 16, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
               <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-tertiary)', marginBottom: 12, letterSpacing: 0.5 }}>ALL TIME</div>
-              <div style={{ fontSize: 36, fontWeight: 800, marginBottom: 8, color: 'var(--text-primary)', lineHeight: 1 }}>0</div>
+              <div style={{ fontSize: 36, fontWeight: 800, marginBottom: 8, color: 'var(--text-primary)', lineHeight: 1 }}>{submissions.length}</div>
               <div style={{ color: 'var(--text-secondary)', fontWeight: 600, fontSize: 13 }}>Submissions</div>
             </Card>
           </Col>
           <Col span={8}>
             <Card bodyStyle={{ padding: 24 }} style={{ borderRadius: 16, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
               <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-tertiary)', marginBottom: 12, letterSpacing: 0.5 }}>LAST 30 DAYS</div>
-              <div style={{ fontSize: 36, fontWeight: 800, marginBottom: 8, color: 'var(--accent-info)', lineHeight: 1 }}>0</div>
+              <div style={{ fontSize: 36, fontWeight: 800, marginBottom: 8, color: 'var(--accent-info)', lineHeight: 1 }}>{last30}</div>
               <div style={{ color: 'var(--text-secondary)', fontWeight: 600, fontSize: 13 }}>Submissions</div>
             </Card>
           </Col>
           <Col span={8}>
             <Card bodyStyle={{ padding: 24 }} style={{ borderRadius: 16, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
               <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-tertiary)', marginBottom: 12, letterSpacing: 0.5 }}>FORMS</div>
-              <div style={{ fontSize: 36, fontWeight: 800, marginBottom: 8, color: 'var(--text-primary)', lineHeight: 1 }}>0</div>
+              <div style={{ fontSize: 36, fontWeight: 800, marginBottom: 8, color: 'var(--text-primary)', lineHeight: 1 }}>{savedTemplates.length}</div>
               <div style={{ color: 'var(--text-secondary)', fontWeight: 600, fontSize: 13 }}>In workspace</div>
             </Card>
           </Col>
@@ -507,7 +576,8 @@ const FormsTab = ({ itemVariants }) => {
         <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
           <Table
             columns={columns}
-            dataSource={[]}
+            dataSource={analyzeRows}
+            loading={loadingSubmissions}
             pagination={false}
             locale={{ emptyText: <div style={{ padding: '40px 0', color: 'var(--text-secondary)', fontWeight: 500 }}>No analytics data yet.</div> }}
           />
@@ -518,13 +588,32 @@ const FormsTab = ({ itemVariants }) => {
 
   const renderSubmissions = () => {
     const columns = [
-      { title: "SUBMITTED AT", dataIndex: "submittedAt", key: "submittedAt" },
-      { title: "FORM", dataIndex: "form", key: "form" },
-      { title: "NAME", dataIndex: "name", key: "name" },
-      { title: "EMAIL", dataIndex: "email", key: "email" },
-      { title: "FIRST NAME", dataIndex: "firstName", key: "firstName" },
-      { title: "PHONE", dataIndex: "phone", key: "phone" },
-      { title: "DETAILS", dataIndex: "details", key: "details" },
+      {
+        title: "SUBMITTED AT",
+        dataIndex: "createdAt",
+        key: "createdAt",
+        render: (t) => t ? new Date(t).toLocaleString() : "-",
+      },
+      { title: "FORM", dataIndex: "formName", key: "formName", render: (t) => <span style={{ fontWeight: 700 }}>{t}</span> },
+      {
+        title: "SUMMARY",
+        dataIndex: "data",
+        key: "data",
+        render: (data) => {
+          const entries = Object.entries(data || {});
+          const preview = entries.slice(0, 3).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('  •  ');
+          return <Text style={{ fontSize: 13 }}>{preview || "-"}</Text>;
+        },
+      },
+      {
+        title: "ACTION",
+        key: "action",
+        render: (_, record) => (
+          <Button size="small" style={{ borderRadius: 8, fontWeight: 700 }} onClick={() => setViewingSubmission(record)}>
+            View
+          </Button>
+        ),
+      },
     ];
 
     return (
@@ -533,33 +622,37 @@ const FormsTab = ({ itemVariants }) => {
           <div>
             <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-tertiary)', marginBottom: 8, letterSpacing: 0.5 }}>FORM</div>
             <Space>
-              <Select defaultValue="all" size="large" style={{ width: 180 }}>
+              <Select value={submissionFormFilter} onChange={setSubmissionFormFilter} size="large" style={{ width: 200 }}>
                 <Option value="all">All forms</Option>
+                {savedTemplates.map((tpl) => (
+                  <Option key={tpl._id} value={tpl._id}>{tpl.name}</Option>
+                ))}
               </Select>
-              <Tag style={{ margin: 0, color: 'var(--accent-info)', background: 'rgba(14, 165, 233, 0.1)', border: 'none', padding: '6px 12px', borderRadius: 8, fontWeight: 700, fontSize: 13 }}>0 submissions</Tag>
+              <Tag style={{ margin: 0, color: 'var(--accent-info)', background: 'rgba(14, 165, 233, 0.1)', border: 'none', padding: '6px 12px', borderRadius: 8, fontWeight: 700, fontSize: 13 }}>{filteredSubmissions.length} submissions</Tag>
             </Space>
           </div>
           <div>
             <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-tertiary)', marginBottom: 8, letterSpacing: 0.5 }}>FROM</div>
-            <DatePicker size="large" placeholder="dd-mm-yyyy" format="DD-MM-YYYY" style={{ width: 150, borderRadius: 8 }} />
+            <DatePicker value={submissionDateFrom} onChange={setSubmissionDateFrom} size="large" placeholder="dd-mm-yyyy" format="DD-MM-YYYY" style={{ width: 150, borderRadius: 8 }} />
           </div>
           <div>
             <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-tertiary)', marginBottom: 8, letterSpacing: 0.5 }}>TO</div>
-            <DatePicker size="large" placeholder="dd-mm-yyyy" format="DD-MM-YYYY" style={{ width: 150, borderRadius: 8 }} />
+            <DatePicker value={submissionDateTo} onChange={setSubmissionDateTo} size="large" placeholder="dd-mm-yyyy" format="DD-MM-YYYY" style={{ width: 150, borderRadius: 8 }} />
           </div>
           <div style={{ flex: 1, minWidth: 200 }}>
             <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-tertiary)', marginBottom: 8, letterSpacing: 0.5 }}>SEARCH</div>
-            <Input size="large" placeholder="Search name, email, phone..." prefix={<Search size={16} color="var(--text-tertiary)" />} style={{ borderRadius: 8 }} />
+            <Input size="large" value={submissionSearch} onChange={(e) => setSubmissionSearch(e.target.value)} placeholder="Search name, email, phone..." prefix={<Search size={16} color="var(--text-tertiary)" />} style={{ borderRadius: 8 }} />
           </div>
           <div style={{ alignSelf: 'flex-end' }}>
-            <Button type="primary" size="large" style={{ borderRadius: 8, fontWeight: 700, background: 'var(--accent-primary)', border: 'none', padding: '0 32px' }}>Filter</Button>
+            <Button type="primary" size="large" loading={loadingSubmissions} onClick={fetchSubmissions} style={{ borderRadius: 8, fontWeight: 700, background: 'var(--accent-primary)', border: 'none', padding: '0 32px' }}>Filter</Button>
           </div>
         </div>
         <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
           <Table
             columns={columns}
-            dataSource={[]}
-            pagination={false}
+            dataSource={filteredSubmissions.map((s) => ({ ...s, key: s._id }))}
+            loading={loadingSubmissions}
+            pagination={{ pageSize: 10 }}
             locale={{
               emptyText: (
                 <div style={{ padding: "60px 0", color: "var(--text-secondary)", fontSize: "15px", fontWeight: 600 }}>
@@ -569,6 +662,28 @@ const FormsTab = ({ itemVariants }) => {
             }}
           />
         </Card>
+
+        <Modal
+          title={<div style={{ fontSize: 18, fontWeight: 800, marginTop: 8 }}>Submission details</div>}
+          open={!!viewingSubmission}
+          onCancel={() => setViewingSubmission(null)}
+          footer={null}
+          centered
+        >
+          {viewingSubmission && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ marginBottom: 16, color: 'var(--text-secondary)', fontSize: 13, fontWeight: 600 }}>
+                {viewingSubmission.formName} · {new Date(viewingSubmission.createdAt).toLocaleString()}
+              </div>
+              {Object.entries(viewingSubmission.data || {}).map(([key, value]) => (
+                <div key={key} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid var(--border-color)' }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-tertiary)', marginBottom: 4 }}>{key}</div>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{Array.isArray(value) ? value.join(', ') : String(value)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Modal>
       </motion.div>
     );
   };
