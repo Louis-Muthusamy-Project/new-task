@@ -15,7 +15,7 @@ import {
 import { websiteWizardApi } from "../../../api/websiteWizardApi";
 
 import GrapesPageEditor from "./GrapesPageEditor";
-import useUnsavedChangesWarning from "./useUnsavedChangesWarning";
+import useUnsavedChangesWarning from "../utils/useUnsavedChangesWarning";
 import { openPagePreview } from "../utils/previewHtml";
 
 const { Option } = Select;
