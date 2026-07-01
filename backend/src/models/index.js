@@ -3,4 +3,5 @@ module.exports = {
   Submission: require('./Submission'),
   Website: require('./Website'),
   QRCode: require('./QRCode'),
+  ChatWidget: require('./ChatWidget'),
 };

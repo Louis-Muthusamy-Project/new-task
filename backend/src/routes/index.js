@@ -14,6 +14,7 @@ router.use('/website-builder', require('./formRoutes'));
 router.use('/website-builder', require('./domainRoutes'));
 router.use('/website-builder', require('./blogRoutes'));
 router.use('/website-builder', require('./qrCodeRoutes'));
+router.use('/website-builder', require('./chatWidgetRoutes'));
 
 // Templates endpoint used by WebsiteTemplatePage.jsx
 router.use('/templates', require('./templatesRoutes'));

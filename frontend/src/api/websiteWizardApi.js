@@ -178,4 +178,35 @@ export const websiteWizardApi = {
     ),
 
   deleteQr: async (id) => unwrapSuccess(await request(`/website-builder/qrcodes/${id}`, { method: 'DELETE' })),
+
+  // ─── Chat Widgets ────────────────────────────────────────────────────────
+
+  listChatWidgets: async () =>
+    unwrapSuccess(await request('/website-builder/chat-widgets', { method: 'GET' })),
+
+  createChatWidget: async (payload) =>
+    unwrapSuccess(
+      await request('/website-builder/chat-widgets', {
+        method: 'POST',
+        body: payload,
+      })
+    ),
+
+  getChatWidget: async (id) =>
+    unwrapSuccess(
+      await request(`/website-builder/chat-widgets/${id}`, { method: 'GET' })
+    ),
+
+  updateChatWidget: async (id, payload) =>
+    unwrapSuccess(
+      await request(`/website-builder/chat-widgets/${id}`, {
+        method: 'PUT',
+        body: payload,
+      })
+    ),
+
+  deleteChatWidget: async (id) =>
+    unwrapSuccess(
+      await request(`/website-builder/chat-widgets/${id}`, { method: 'DELETE' })
+    ),
 };

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { Button, Input, Table, Typography, Space, Tag, Card, Row, Col, Select, Checkbox, Popconfirm } from "antd";
+import { Button, Input, Table, Typography, Space, Tag, Card, Row, Col, Select, Checkbox, Popconfirm, Divider, message, Spin } from "antd";
 import { FacebookOutlined, InstagramOutlined } from "@ant-design/icons";
 import { Plus, Search, Trash2, ArrowRight, ArrowLeft, MessageCircle, MessageSquare, Phone, Mail, Bot, Smartphone, Monitor } from "lucide-react";
 
 import { motion } from "framer-motion";
+import { websiteWizardApi } from "../../../api/websiteWizardApi";
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -285,7 +286,7 @@ const ConfigureWidgetView = ({ activeWidget, setView, handleUpdateWidget, handle
             </div>
           </Card>
 
-          <Popconfirm title="Are you sure you want to delete this widget?" onConfirm={() => handleDeleteWidget(activeWidget.key)}>
+          <Popconfirm title="Are you sure you want to delete this widget?" onConfirm={() => handleDeleteWidget(activeWidget._id)}>
             <Button size="large" block danger style={{ height: 48, borderRadius: 12, fontWeight: 800, background: "rgba(239, 68, 68, 0.1)", border: "none", color: "var(--accent-danger)" }}>
               Delete Widget
             </Button>
@@ -302,50 +303,90 @@ const ChatWidgetsTab = ({ itemVariants }) => {
   const [widgets, setWidgets] = useState([]);
   const [activeWidget, setActiveWidget] = useState(null);
   const [searchText, setSearchText] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // Fetch widgets from database
+  const fetchWidgets = async () => {
+    try {
+      setLoading(true);
+      const data = await websiteWizardApi.listChatWidgets();
+      const formattedData = data.map(widget => ({
+        ...widget,
+        key: widget._id,
+      }));
+      setWidgets(formattedData);
+    } catch (error) {
+      console.error("Failed to fetch widgets:", error);
+      message.error("Failed to load chat widgets");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const saved = localStorage.getItem("tunepath_chat_widgets");
-    if (saved) {
-      try {
-        setWidgets(JSON.parse(saved));
-      } catch (e) {
-        console.error("Parse error", e);
-      }
-    } else {
-      setWidgets([
-        { key: '1', name: 'Jeema Stores', type: 'All-in-one chat', status: 'Published', assignments: 0 },
-        { key: '2', name: 'Support Bot', type: 'Voice AI', status: 'Draft', assignments: 0 },
-        { key: '3', name: 'Sales Demo', type: 'SMS / Email chat', status: 'Published', assignments: 1 },
-      ]);
-    }
+    fetchWidgets();
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem("tunepath_chat_widgets", JSON.stringify(widgets));
-  }, [widgets]);
-
-  const handleCreateWidget = (data) => {
-    const newWidget = {
-      key: Date.now().toString(),
-      name: data.name,
-      type: data.type,
-      status: "Draft",
-      assignments: 0
-    };
-    setWidgets([newWidget, ...widgets]);
-    setActiveWidget(newWidget);
-    setView("configure");
+  const handleCreateWidget = async (data) => {
+    try {
+      setLoading(true);
+      const newWidget = await websiteWizardApi.createChatWidget({
+        name: data.name,
+        type: data.type,
+      });
+      
+      const formattedWidget = {
+        ...newWidget,
+        key: newWidget._id,
+      };
+      
+      setWidgets([formattedWidget, ...widgets]);
+      setActiveWidget(formattedWidget);
+      setView("configure");
+      message.success("Chat widget created successfully");
+    } catch (error) {
+      console.error("Failed to create widget:", error);
+      message.error("Failed to create chat widget");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleUpdateWidget = (data) => {
-    setWidgets(widgets.map(w => w.key === activeWidget.key ? { ...w, ...data } : w));
-    setActiveWidget({ ...activeWidget, ...data });
-    setView("list");
+  const handleUpdateWidget = async (data) => {
+    try {
+      setLoading(true);
+      const updatedWidget = await websiteWizardApi.updateChatWidget(activeWidget._id, data);
+      
+      const formattedWidget = {
+        ...updatedWidget,
+        key: updatedWidget._id,
+      };
+      
+      setWidgets(widgets.map(w => w._id === activeWidget._id ? formattedWidget : w));
+      setActiveWidget(formattedWidget);
+      setView("list");
+      message.success("Chat widget updated successfully");
+    } catch (error) {
+      console.error("Failed to update widget:", error);
+      message.error("Failed to update chat widget");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleDeleteWidget = (key) => {
-    setWidgets(widgets.filter(w => w.key !== key));
-    setView("list");
+  const handleDeleteWidget = async (widgetId) => {
+    try {
+      setLoading(true);
+      await websiteWizardApi.deleteChatWidget(widgetId);
+      setWidgets(widgets.filter(w => w._id !== widgetId));
+      setView("list");
+      message.success("Chat widget deleted successfully");
+    } catch (error) {
+      console.error("Failed to delete widget:", error);
+      message.error("Failed to delete chat widget");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const renderList = () => {
@@ -433,36 +474,41 @@ const ChatWidgetsTab = ({ itemVariants }) => {
         </div>
 
         <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
-          <Table
-            columns={columns}
-            dataSource={filtered}
-            pagination={false}
-            locale={{
-              emptyText: (
-                <div style={{ padding: "80px 0", textAlign: "center" }}>
-                  <div style={{ width: 80, height: 80, background: 'rgba(59, 130, 246, 0.1)', color: 'var(--accent-primary)', borderRadius: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px' }}>
-                    <MessageCircle size={40} />
+          <Spin spinning={loading}>
+            <Table
+              rowKey="key"
+              columns={columns}
+              dataSource={filtered}
+              pagination={false}
+              locale={{
+                emptyText: (
+                  <div style={{ padding: "80px 0", textAlign: "center" }}>
+                    <div style={{ width: 80, height: 80, background: 'rgba(59, 130, 246, 0.1)', color: 'var(--accent-primary)', borderRadius: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px' }}>
+                      <MessageCircle size={40} />
+                    </div>
+                    <Title level={4} style={{ marginBottom: 12, color: 'var(--text-primary)', fontWeight: 800 }}>No chat widgets yet</Title>
+                    <Text type="secondary" style={{ display: 'block', marginBottom: 32, fontSize: 15, fontWeight: 500 }}>
+                      Click <strong style={{ color: "var(--text-primary)" }}>+ Create Widget</strong> to build customer engagement tools.
+                    </Text>
+                    <Button type="primary" icon={<Plus size={18} />} onClick={() => setView("create")} style={{ borderRadius: 8, height: 44, background: 'var(--accent-primary)', border: 'none', fontWeight: 700, padding: '0 32px' }}>Create Widget</Button>
                   </div>
-                  <Title level={4} style={{ marginBottom: 12, color: 'var(--text-primary)', fontWeight: 800 }}>No chat widgets yet</Title>
-                  <Text type="secondary" style={{ display: 'block', marginBottom: 32, fontSize: 15, fontWeight: 500 }}>
-                    Click <strong style={{ color: "var(--text-primary)" }}>+ Create Widget</strong> to build customer engagement tools.
-                  </Text>
-                  <Button type="primary" icon={<Plus size={18} />} onClick={() => setView("create")} style={{ borderRadius: 8, height: 44, background: 'var(--accent-primary)', border: 'none', fontWeight: 700, padding: '0 32px' }}>Create Widget</Button>
-                </div>
-              )
-            }}
-          />
+                )
+              }}
+            />
+          </Spin>
         </Card>
       </motion.div>
     );
   };
 
   return (
-    <div style={{ position: "relative" }}>
-      {view === "list" && renderList()}
-      {view === "create" && <CreateWidgetView setView={setView} handleCreateWidget={handleCreateWidget} itemVariants={itemVariants} />}
-      {view === "configure" && <ConfigureWidgetView activeWidget={activeWidget} setView={setView} handleUpdateWidget={handleUpdateWidget} handleDeleteWidget={handleDeleteWidget} itemVariants={itemVariants} />}
-    </div>
+    <Spin spinning={loading} style={{ position: "relative" }}>
+      <div style={{ position: "relative" }}>
+        {view === "list" && renderList()}
+        {view === "create" && <CreateWidgetView setView={setView} handleCreateWidget={handleCreateWidget} itemVariants={itemVariants} />}
+        {view === "configure" && <ConfigureWidgetView activeWidget={activeWidget} setView={setView} handleUpdateWidget={handleUpdateWidget} handleDeleteWidget={handleDeleteWidget} itemVariants={itemVariants} />}
+      </div>
+    </Spin>
   );
 };
 

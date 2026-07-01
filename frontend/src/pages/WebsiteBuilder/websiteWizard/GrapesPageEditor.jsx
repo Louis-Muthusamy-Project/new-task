@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import grapesjs from 'grapesjs';
 import presetWebpage from 'grapesjs-preset-webpage';
 import axios from 'axios';
+import QRCode from 'qrcode';
 
 const API_BASE = import.meta.env?.VITE_WEBSITE_WIZARD_API_BASE || 'http://localhost:5500/api';
 
@@ -377,6 +378,47 @@ function escapeHtml(value = '') {
     .replace(/'/g, '&#039;');
 }
 
+function resolveQrColor(color, fallback) {
+  if (!color || typeof color !== 'string') return fallback;
+  const trimmed = color.trim();
+  if (!trimmed) return fallback;
+  if (trimmed.startsWith('var(')) {
+    const varMatch = trimmed.match(/var\((--[\w-]+)\)/i);
+    if (varMatch?.[1] && typeof window !== 'undefined' && window.getComputedStyle) {
+      const resolved = window.getComputedStyle(document.documentElement).getPropertyValue(varMatch[1]).trim();
+      return resolved || fallback;
+    }
+    return fallback;
+  }
+  return trimmed;
+}
+
+async function buildQrHtml(qr = {}) {
+  const name = escapeHtml(qr.name || 'QR link');
+  const scanLink = String(qr.scanLink || qr.customUrl || qr.url || '').trim() || 'https://example.com';
+  const foreground = resolveQrColor(qr.foreground, '#111827');
+  const background = resolveQrColor(qr.background, '#ffffff');
+  const dataUrl = await QRCode.toDataURL(scanLink, {
+    width: 220,
+    margin: 2,
+    color: {
+      dark: foreground,
+      light: background,
+    },
+  });
+
+  return `
+    <div style="padding: 24px 20px; border: 1px solid #e5e7eb; border-radius: 16px; background: ${background}; font-family: sans-serif;">
+      <div style="font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7280; margin-bottom: 10px;">QR Link</div>
+      <div style="font-size: 20px; font-weight: 800; color: ${foreground}; margin-bottom: 8px;">${name}</div>
+      <div style="font-size: 13px; color: #6b7280; margin-bottom: 16px; word-break: break-all;">${escapeHtml(scanLink)}</div>
+      <div style="display: inline-flex; padding: 16px; background: ${background}; border-radius: 12px; border: 1px solid #e5e7eb;">
+        <img src="${dataUrl}" alt="${name}" style="display: block; width: 220px; height: 220px; max-width: 100%;" />
+      </div>
+    </div>
+  `;
+}
+
 function buildFormHtml(form, { isTemplate = false } = {}) {
   const fields = Array.isArray(form?.fields) ? form.fields : [];
   const formId = escapeHtml(form?._id || form?.id || '');
@@ -591,6 +633,9 @@ const GrapesPageEditor = ({
   const [blogItems, setBlogItems] = useState([]);
   const [blogsLoading, setBlogsLoading] = useState(false);
   const [blogsError, setBlogsError] = useState('');
+  const [qrItems, setQrItems] = useState([]);
+  const [qrsLoading, setQrsLoading] = useState(false);
+  const [qrsError, setQrsError] = useState('');
   const [activeTool, setActiveTool] = useState('basic');
 
   const canvasReadyRef    = useRef(false);
@@ -617,6 +662,13 @@ const GrapesPageEditor = ({
       }
       return;
     }
+
+    if (activeTool === 'qrs') {
+      if (!qrsLoading && qrItems.length === 0) {
+        fetchQrTools();
+      }
+      return;
+    }
   }, [activeTool]);
 
   const fetchBlogTools = async () => {
@@ -631,6 +683,21 @@ const GrapesPageEditor = ({
       setBlogsError('Blogs could not be loaded.');
     } finally {
       setBlogsLoading(false);
+    }
+  };
+
+  const fetchQrTools = async () => {
+    setQrsLoading(true);
+    setQrsError('');
+    try {
+      const response = await axios.get(`${API_BASE}/website-builder/qrcodes`);
+      const data = Array.isArray(response.data?.data) ? response.data.data : [];
+      setQrItems(data);
+    } catch (err) {
+      console.warn('[GrapesPageEditor] Error fetching QR codes:', err);
+      setQrsError('QR codes could not be loaded.');
+    } finally {
+      setQrsLoading(false);
     }
   };
 
@@ -746,6 +813,30 @@ const GrapesPageEditor = ({
       editor.refresh();
     } catch (err) {
       console.warn('[GrapesPageEditor] insertBlogTemplate failed:', err);
+    } finally {
+      isSyncingRef.current = false;
+    }
+
+    onChange?.({ html: editor.getHtml(), css: editor.getCss() });
+  };
+
+  const insertQrTemplate = async (qr) => {
+    const editor = editorRef.current;
+    if (!editor || !qr) return;
+
+    const htmlToInsert = await buildQrHtml(qr);
+    const selected = editor.getSelected?.();
+
+    isSyncingRef.current = true;
+    try {
+      if (selected && typeof selected.append === 'function') {
+        selected.append(htmlToInsert);
+      } else {
+        editor.addComponents(htmlToInsert);
+      }
+      editor.refresh();
+    } catch (err) {
+      console.warn('[GrapesPageEditor] insertQrTemplate failed:', err);
     } finally {
       isSyncingRef.current = false;
     }
@@ -1162,6 +1253,7 @@ const GrapesPageEditor = ({
             { key: 'basic', label: 'Basic' },
             { key: 'forms', label: 'Forms' },
             { key: 'blogs', label: 'Blogs' },
+            { key: 'qrs', label: 'QR' },
           ].map((tool) => (
             <button
               key={tool.key}
@@ -1276,6 +1368,68 @@ const GrapesPageEditor = ({
                     </div>
                     {blog.publicUrl && (
                       <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>URL: {blog.publicUrl}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : activeTool === 'qrs' ? (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-tertiary)' }}>
+                QR LINKS
+              </div>
+              <button
+                type="button"
+                onClick={fetchQrTools}
+                disabled={qrsLoading}
+                style={{
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--bg-primary)',
+                  color: 'var(--text-secondary)',
+                  borderRadius: 6,
+                  padding: '5px 8px',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: qrsLoading ? 'default' : 'pointer',
+                }}
+              >
+                {qrsLoading ? 'Loading' : 'Refresh'}
+              </button>
+            </div>
+
+            {qrsError && (
+              <div style={{ border: '1px solid rgba(239, 68, 68, 0.25)', background: 'rgba(239, 68, 68, 0.08)', color: 'var(--accent-danger)', borderRadius: 8, padding: 10, fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
+                {qrsError}
+              </div>
+            )}
+
+            {!qrsLoading && !qrsError && qrItems.length === 0 && (
+              <div style={{ border: '1px dashed var(--border-color)', color: 'var(--text-secondary)', borderRadius: 8, padding: 14, fontSize: 13, lineHeight: 1.5 }}>
+                No saved QR links yet.
+              </div>
+            )}
+
+            {!qrsLoading && !qrsError && qrItems.length > 0 && (
+              <div style={{ display: 'grid', gap: 10 }}>
+                {qrItems.map((qr) => (
+                  <div key={qr._id || qr.id || qr.name} style={{ border: '1px solid var(--border-color)', borderRadius: 10, background: 'var(--bg-primary)', padding: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)' }}>{qr.name || 'Untitled QR'}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>{qr.type || 'Website'}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => insertQrTemplate(qr)}
+                        style={{ border: 'none', borderRadius: 8, background: 'var(--accent-primary)', color: '#fff', padding: '8px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}
+                      >
+                        Insert
+                      </button>
+                    </div>
+                    {(qr.scanLink || qr.customUrl) && (
+                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', wordBreak: 'break-all' }}>URL: {qr.scanLink || qr.customUrl}</div>
                     )}
                   </div>
                 ))}
