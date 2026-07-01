@@ -6,21 +6,21 @@ const jwtMiddleware = require('../middlewares/jwtMiddleware');
 
 const router = express.Router();
 
-
-router.use(jwtMiddleware);
-
 router.post(
   '/websites/:websiteId/domains',
+  jwtMiddleware,
   asyncHandler(domainController.createDomain)
 );
 
 router.get(
   '/websites/:websiteId/domains',
+  jwtMiddleware,
   asyncHandler(domainController.getDomainsByWebsite)
 );
 
 router.delete(
   '/domains/:id',
+  jwtMiddleware,
   asyncHandler(domainController.deleteDomain)
 );
 

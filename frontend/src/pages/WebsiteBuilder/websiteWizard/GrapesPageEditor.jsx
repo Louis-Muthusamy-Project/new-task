@@ -491,6 +491,79 @@ function buildFormHtml(form, { isTemplate = false } = {}) {
   `;
 }
 
+function buildBlogHtml(blog = {}) {
+  const blogName = escapeHtml(blog.name || 'Latest posts');
+  const baseUrl = escapeHtml(blog.publicUrl || '/blog');
+  const formattedPosts = (Array.isArray(blog.postList) ? blog.postList : []).map((post) => {
+    const title = String(post?.title || 'Untitled post');
+    const excerpt = String(post?.excerpt || 'Read the latest post from our blog.');
+    const slug = title.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    return {
+      title: escapeHtml(title),
+      excerpt: escapeHtml(excerpt),
+      url: escapeHtml(`${baseUrl}/${slug}`),
+    };
+  });
+
+  const postsData = JSON.stringify(formattedPosts).replace(/</g, '\u003c');
+
+  return `
+    <section style="padding: 56px 32px; background: #ffffff; color: #111827;">
+      <div style="max-width: 1120px; margin: 0 auto;">
+        <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 28px;">
+          <div>
+            <h2 style="margin: 0; font-family: sans-serif; font-size: 32px; line-height: 1.1;">${blogName}</h2>
+            <p style="margin: 8px 0 0; color: #6b7280; font-family: sans-serif; font-size: 14px;">Showing the latest three posts for this blog. Click the button to show all posts.</p>
+          </div>
+          <a href="#" class="grapesjs-blog-toggle" style="padding: 12px 20px; background: #4f46e5; color: #ffffff; text-decoration: none; border-radius: 10px; font-family: sans-serif; font-weight: 700;">View all posts</a>
+        </div>
+        <div class="grapesjs-blog-posts" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;"></div>
+      </div>
+    </section>
+    <script>
+      (function () {
+        var postsContainer = document.querySelector('.grapesjs-blog-posts');
+        var toggleLink = document.querySelector('.grapesjs-blog-toggle');
+        if (!postsContainer || !toggleLink || postsContainer.dataset.grapesBlogLoaded) return;
+        postsContainer.dataset.grapesBlogLoaded = '1';
+
+        var allPosts = ${postsData};
+        var showAll = false;
+
+        function renderPosts() {
+          var posts = showAll ? allPosts : allPosts.slice(0, 3);
+          if (!posts.length) {
+            postsContainer.innerHTML = '<div style="grid-column: 1 / -1; padding: 24px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 16px; color: #6b7280; font-family: sans-serif; text-align: center;">No blog posts available.</div>';
+            return;
+          }
+          postsContainer.innerHTML = posts.map(function (post) {
+            return '<article style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 20px; padding: 24px; box-shadow: 0 12px 36px rgba(15,23,42,0.08);">'
+              + '<div style="font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: #6366f1; font-family: sans-serif; margin-bottom: 10px;">Blog</div>'
+              + '<h3 style="margin: 0 0 14px; font-family: sans-serif; font-size: 22px; line-height: 1.25; color: #111827;">' + post.title + '</h3>'
+              + '<p style="margin: 0 0 18px; color: #4b5563; font-family: sans-serif; line-height: 1.7;">' + post.excerpt + '</p>'
+              + '<a href="' + post.url + '" style="display: inline-block; color: #4f46e5; font-family: sans-serif; font-weight: 700; text-decoration: none;">Read more →</a>'
+              + '</article>';
+          }).join('');
+        }
+
+        function updateToggleLabel() {
+          toggleLink.textContent = showAll ? 'Show latest 3' : 'View all posts';
+        }
+
+        toggleLink.addEventListener('click', function (event) {
+          event.preventDefault();
+          showAll = !showAll;
+          updateToggleLabel();
+          renderPosts();
+        });
+
+        updateToggleLabel();
+        renderPosts();
+      })();
+    </script>
+  `;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GrapesPageEditor component
 // ─────────────────────────────────────────────────────────────────────────────
@@ -515,6 +588,9 @@ const GrapesPageEditor = ({
   const [formTemplates, setFormTemplates] = useState([]);
   const [formsLoading, setFormsLoading] = useState(false);
   const [formsError, setFormsError] = useState('');
+  const [blogItems, setBlogItems] = useState([]);
+  const [blogsLoading, setBlogsLoading] = useState(false);
+  const [blogsError, setBlogsError] = useState('');
   const [activeTool, setActiveTool] = useState('basic');
 
   const canvasReadyRef    = useRef(false);
@@ -528,11 +604,35 @@ const GrapesPageEditor = ({
   useEffect(() => { websiteIdRef.current = websiteId; }, [websiteId]);
 
   useEffect(() => {
-    if (activeTool !== 'forms') return;
-    if (formsLoading || formTemplates.length > 0) return;
-    fetchFormTools(editorRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (activeTool === 'forms') {
+      if (!formsLoading && formTemplates.length === 0) {
+        fetchFormTools(editorRef.current);
+      }
+      return;
+    }
+
+    if (activeTool === 'blogs') {
+      if (!blogsLoading && blogItems.length === 0) {
+        fetchBlogTools();
+      }
+      return;
+    }
   }, [activeTool]);
+
+  const fetchBlogTools = async () => {
+    setBlogsLoading(true);
+    setBlogsError('');
+    try {
+      const response = await axios.get(`${API_BASE}/website-builder/blogs`);
+      const data = Array.isArray(response.data?.data) ? response.data.data : [];
+      setBlogItems(data);
+    } catch (err) {
+      console.warn('[GrapesPageEditor] Error fetching blogs:', err);
+      setBlogsError('Blogs could not be loaded.');
+    } finally {
+      setBlogsLoading(false);
+    }
+  };
 
   const fetchFormTools = async (editor) => {
     setFormsLoading(true);
@@ -622,6 +722,30 @@ const GrapesPageEditor = ({
       editor.refresh();
     } catch (err) {
       console.warn('[GrapesPageEditor] insertBasicBlock failed:', err);
+    } finally {
+      isSyncingRef.current = false;
+    }
+
+    onChange?.({ html: editor.getHtml(), css: editor.getCss() });
+  };
+
+  const insertBlogTemplate = (blog) => {
+    const editor = editorRef.current;
+    if (!editor || !blog) return;
+
+    const htmlToInsert = buildBlogHtml(blog);
+    const selected = editor.getSelected?.();
+
+    isSyncingRef.current = true;
+    try {
+      if (selected && typeof selected.append === 'function') {
+        selected.append(htmlToInsert);
+      } else {
+        editor.addComponents(htmlToInsert);
+      }
+      editor.refresh();
+    } catch (err) {
+      console.warn('[GrapesPageEditor] insertBlogTemplate failed:', err);
     } finally {
       isSyncingRef.current = false;
     }
@@ -1037,6 +1161,7 @@ const GrapesPageEditor = ({
           {[
             { key: 'basic', label: 'Basic' },
             { key: 'forms', label: 'Forms' },
+            { key: 'blogs', label: 'Blogs' },
           ].map((tool) => (
             <button
               key={tool.key}
@@ -1094,6 +1219,68 @@ const GrapesPageEditor = ({
                 </span>
               </button>
             ))}
+          </div>
+        ) : activeTool === 'blogs' ? (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-tertiary)' }}>
+                BLOGS
+              </div>
+              <button
+                type="button"
+                onClick={fetchBlogTools}
+                disabled={blogsLoading}
+                style={{
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--bg-primary)',
+                  color: 'var(--text-secondary)',
+                  borderRadius: 6,
+                  padding: '5px 8px',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: blogsLoading ? 'default' : 'pointer',
+                }}
+              >
+                {blogsLoading ? 'Loading' : 'Refresh'}
+              </button>
+            </div>
+
+            {blogsError && (
+              <div style={{ border: '1px solid rgba(239, 68, 68, 0.25)', background: 'rgba(239, 68, 68, 0.08)', color: 'var(--accent-danger)', borderRadius: 8, padding: 10, fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
+                {blogsError}
+              </div>
+            )}
+
+            {!blogsLoading && !blogsError && blogItems.length === 0 && (
+              <div style={{ border: '1px dashed var(--border-color)', color: 'var(--text-secondary)', borderRadius: 8, padding: 14, fontSize: 13, lineHeight: 1.5 }}>
+                No saved blogs yet.
+              </div>
+            )}
+
+            {!blogsLoading && !blogsError && blogItems.length > 0 && (
+              <div style={{ display: 'grid', gap: 10 }}>
+                {blogItems.map((blog) => (
+                  <div key={blog._id || blog.id || blog.name} style={{ border: '1px solid var(--border-color)', borderRadius: 10, background: 'var(--bg-primary)', padding: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)' }}>{blog.name || 'Untitled blog'}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>{(Array.isArray(blog.postList) ? blog.postList.length : 0)} posts</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => insertBlogTemplate(blog)}
+                        style={{ border: 'none', borderRadius: 8, background: 'var(--accent-primary)', color: '#fff', padding: '8px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}
+                      >
+                        Insert
+                      </button>
+                    </div>
+                    {blog.publicUrl && (
+                      <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>URL: {blog.publicUrl}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
           <div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Button, Table, Typography, Space, Input, Select, Card, Row, Col, Popconfirm, Checkbox, Modal } from "antd";
+import { Button, Table, Typography, Space, Input, Select, Card, Row, Col, Popconfirm, Checkbox, Modal, message } from "antd";
 import { Plus, Trash2, Edit3, Newspaper, LayoutTemplate, Settings, Tag as TagIcon, LayoutList, FileText, ArrowRight, ArrowLeft } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -345,91 +345,145 @@ const BlogsTab = ({ itemVariants }) => {
   const [manageSubTab, setManageSubTab] = useState("posts");
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [editingPost, setEditingPost] = useState(null);
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    const savedBlogs = localStorage.getItem("tunepath_blogs_v2");
-    if (savedBlogs) {
-      try {
-        setBlogs(JSON.parse(savedBlogs));
-      } catch (e) {
-        console.error("Failed to parse blogs from local storage");
+  const fetchBlogs = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || "http://localhost:5500"}/api/website-builder/blogs`);
+      const result = await response.json();
+      if (result.success) {
+        setBlogs(result.data.map(blog => ({ ...blog, key: blog._id })));
       }
-    } else {
-      setBlogs([
-        {
-          key: '1',
-          name: 'Tech Insights',
-          slug: 'tech-insights',
-          assignedTo: 'Any site / store',
-          publicUrl: '/blog/tech-insights',
-          website: '—',
-          webstore: '—',
-          description: 'Latest news and insights from the tech world.',
-          status: 'active',
-          postsPerPage: 12,
-          postList: [
-            { key: 'p1', title: 'Building a Scalable React Architecture for 2026', category: undefined, status: 'draft', website: '—', webstore: '—', excerpt: '', metaTitle: '', metaDescription: '', featured: false }
-          ],
-          categoryList: []
-        }
-      ]);
+    } catch (error) {
+      console.error("Failed to load blogs", error);
+      message.error("Unable to load blogs right now.");
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  };
 
   useEffect(() => {
-    if (blogs.length) {
-      localStorage.setItem("tunepath_blogs_v2", JSON.stringify(blogs));
-    }
-  }, [blogs]);
+    fetchBlogs();
+  }, []);
 
   const activeBlog = blogs.find(b => b.key === activeBlogKey) || null;
 
-  const updateActiveBlog = (updater) => {
-    setBlogs(prev => prev.map(b => (b.key === activeBlogKey ? updater(b) : b)));
+  const persistBlog = async (updatedBlog, successMessage) => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || "http://localhost:5500"}/api/website-builder/blogs/${updatedBlog._id || updatedBlog.id || updatedBlog.key}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedBlog)
+      });
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || "Request failed");
+      }
+      setBlogs(prev => prev.map(blog => blog.key === (updatedBlog._id || updatedBlog.id || updatedBlog.key) ? { ...blog, ...result.data, key: result.data._id } : blog));
+      message.success(successMessage);
+      return result.data;
+    } catch (error) {
+      console.error(error);
+      message.error(error.message || "Failed to save blog.");
+      return null;
+    }
   };
 
-  const handleCreateBlog = (newBlogData) => {
-    const slug = slugify(newBlogData.name);
-    const newBlog = {
-      key: Date.now().toString(),
-      name: newBlogData.name,
-      slug,
-      assignedTo: 'Any site / store',
-      publicUrl: `/blog/${slug}`,
-      website: newBlogData.website || '—',
-      webstore: newBlogData.webstore || '—',
-      description: newBlogData.description || '',
-      status: newBlogData.status || 'active',
-      postsPerPage: 12,
-      postList: [],
-      categoryList: []
-    };
-    setBlogs([...blogs, newBlog]);
-    setView("list");
+  const handleCreateBlog = async (newBlogData) => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || "http://localhost:5500"}/api/website-builder/blogs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newBlogData)
+      });
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || "Create failed");
+      }
+      const createdBlog = { ...result.data, key: result.data._id };
+      setBlogs(prev => [createdBlog, ...prev]);
+      setActiveBlogKey(createdBlog.key);
+      setView("manage");
+      message.success("Blog created and saved.");
+    } catch (error) {
+      console.error(error);
+      message.error(error.message || "Failed to create blog.");
+    }
   };
 
-  const handleUpdateBlog = (updatedData) => {
-    updateActiveBlog(b => ({ ...b, ...updatedData }));
-    setView("manage");
+  const handleUpdateBlog = async (updatedData) => {
+    if (!activeBlog) return;
+    const updated = await persistBlog({ ...activeBlog, ...updatedData, id: activeBlog._id || activeBlog.key }, "Blog settings updated.");
+    if (updated) {
+      setView("manage");
+    }
   };
 
-  const handleDeleteBlog = (key) => {
-    setBlogs(blogs.filter(b => b.key !== key));
+  const handleDeleteBlog = async (key) => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || "http://localhost:5500"}/api/website-builder/blogs/${key}`, {
+        method: "DELETE"
+      });
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || "Delete failed");
+      }
+      setBlogs(prev => prev.filter(blog => blog.key !== key));
+      message.success("Blog deleted.");
+    } catch (error) {
+      console.error(error);
+      message.error(error.message || "Failed to delete blog.");
+    }
   };
 
-  const handleCreatePost = (postData) => {
+  const handleCreatePost = async (postData) => {
+    if (!activeBlog) return;
     const newPost = { key: Date.now().toString(), ...postData };
-    updateActiveBlog(b => ({ ...b, postList: [newPost, ...(b.postList || [])] }));
-    setManageSubTab("posts");
-    setView("manage");
+    const updatedBlogPayload = {
+      ...activeBlog,
+      postList: [newPost, ...(activeBlog.postList || [])],
+      id: activeBlog._id || activeBlog.key
+    };
+    const updated = await persistBlog(updatedBlogPayload, "Post created and saved.");
+    if (updated) {
+      setManageSubTab("posts");
+      setView("manage");
+      setEditingPost(null);
+    }
   };
 
-  const handleAddCategory = () => {
-    if (!newCategoryName.trim()) return;
+  const handleUpdatePost = async (postData) => {
+    if (!activeBlog || !editingPost) return;
+    const updatedPostList = (activeBlog.postList || []).map(post => post.key === editingPost.key ? { ...post, ...postData } : post);
+    const updated = await persistBlog({ ...activeBlog, postList: updatedPostList, id: activeBlog._id || activeBlog.key }, "Post updated.");
+    if (updated) {
+      setEditingPost(null);
+      setView("manage");
+    }
+  };
+
+  const handleAddCategory = async () => {
+    if (!newCategoryName.trim() || !activeBlog) return;
     const newCategory = { key: Date.now().toString(), name: newCategoryName.trim(), slug: slugify(newCategoryName) };
-    updateActiveBlog(b => ({ ...b, categoryList: [...(b.categoryList || []), newCategory] }));
-    setNewCategoryName("");
-    setCategoryModalOpen(false);
+    const updated = await persistBlog({ ...activeBlog, categoryList: [...(activeBlog.categoryList || []), newCategory], id: activeBlog._id || activeBlog.key }, "Category added.");
+    if (updated) {
+      setNewCategoryName("");
+      setCategoryModalOpen(false);
+      setEditingCategory(null);
+    }
+  };
+
+  const handleUpdateCategory = async () => {
+    if (!activeBlog || !editingCategory) return;
+    const updatedCategoryList = (activeBlog.categoryList || []).map(category => category.key === editingCategory.key ? { ...category, name: editingCategory.name, slug: slugify(editingCategory.name) } : category);
+    const updated = await persistBlog({ ...activeBlog, categoryList: updatedCategoryList, id: activeBlog._id || activeBlog.key }, "Category updated.");
+    if (updated) {
+      setEditingCategory(null);
+      setCategoryModalOpen(false);
+    }
   };
 
   const renderList = () => {
@@ -626,11 +680,49 @@ const BlogsTab = ({ itemVariants }) => {
             {posts.map((post, idx) => (
               <div key={post.key} style={{ padding: "20px 24px", borderBottom: idx !== posts.length - 1 ? "1px solid var(--border-color)" : "none", display: "flex", justifyContent: "space-between", alignItems: "center" }} className="hover-bg-primary">
                 <div style={{ fontWeight: 600, maxWidth: "80%", color: 'var(--text-primary)', lineHeight: 1.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{post.title}</div>
-                <div style={{ color: "var(--accent-primary)", fontWeight: 700, cursor: "pointer", fontSize: 14, display: 'flex', alignItems: 'center', gap: 4 }}><Edit3 size={14} /> Edit</div>
+                <div onClick={() => setEditingPost(post)} style={{ color: "var(--accent-primary)", fontWeight: 700, cursor: "pointer", fontSize: 14, display: 'flex', alignItems: 'center', gap: 4 }}><Edit3 size={14} /> Edit</div>
               </div>
             ))}
           </div>
         </Card>
+
+        <Modal
+          title="Edit post"
+          open={!!editingPost}
+          onCancel={() => setEditingPost(null)}
+          onOk={() => handleUpdatePost(editingPost)}
+          okText="Save post"
+          okButtonProps={{ style: { backgroundColor: "var(--accent-primary)", border: "none", fontWeight: 700, borderRadius: 8 }, disabled: !editingPost?.title }}
+        >
+          {editingPost && (
+            <div style={{ display: 'grid', gap: 16 }}>
+              <div>
+                <div style={FIELD_LABEL_STYLE}>TITLE</div>
+                <Input value={editingPost.title} onChange={(e) => setEditingPost({ ...editingPost, title: e.target.value })} />
+              </div>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <div style={FIELD_LABEL_STYLE}>CATEGORY</div>
+                  <Select value={editingPost.category} allowClear onChange={(value) => setEditingPost({ ...editingPost, category: value })} style={{ width: '100%' }}>
+                    {(activeBlog.categoryList || []).map(cat => <Option key={cat.key} value={cat.name}>{cat.name}</Option>)}
+                  </Select>
+                </Col>
+                <Col span={12}>
+                  <div style={FIELD_LABEL_STYLE}>STATUS</div>
+                  <Select value={editingPost.status} onChange={(value) => setEditingPost({ ...editingPost, status: value })} style={{ width: '100%' }}>
+                    <Option value="draft">draft</Option>
+                    <Option value="published">published</Option>
+                  </Select>
+                </Col>
+              </Row>
+              <div>
+                <div style={FIELD_LABEL_STYLE}>EXCERPT</div>
+                <TextArea rows={3} value={editingPost.excerpt || ""} onChange={(e) => setEditingPost({ ...editingPost, excerpt: e.target.value })} />
+              </div>
+              <Checkbox checked={!!editingPost.featured} onChange={(e) => setEditingPost({ ...editingPost, featured: e.target.checked })}>Featured post</Checkbox>
+            </div>
+          )}
+        </Modal>
 
         <div style={{ backgroundColor: "rgba(59, 130, 246, 0.1)", border: "1px solid rgba(59, 130, 246, 0.2)", padding: 24, borderRadius: 16, color: "var(--accent-primary)", display: 'flex', gap: 16, alignItems: 'flex-start' }}>
           <FileText size={24} style={{ flexShrink: 0, marginTop: 2 }} />
@@ -652,7 +744,11 @@ const BlogsTab = ({ itemVariants }) => {
         title: "",
         key: "actions",
         align: "right",
-        render: () => <span style={{ color: "var(--accent-primary)", fontWeight: 700, cursor: "pointer" }}>Edit</span>
+        render: (_, record) => (
+          <span onClick={() => setEditingCategory(record)} style={{ color: "var(--accent-primary)", fontWeight: 700, cursor: "pointer" }}>
+            Edit
+          </span>
+        )
       }
     ];
 
@@ -689,24 +785,24 @@ const BlogsTab = ({ itemVariants }) => {
         </Card>
 
         <Modal
-          title="New category"
-          open={categoryModalOpen}
-          onCancel={() => { setCategoryModalOpen(false); setNewCategoryName(""); }}
-          onOk={handleAddCategory}
-          okText="Create category"
-          okButtonProps={{ style: { backgroundColor: "var(--accent-primary)", border: "none", fontWeight: 700, borderRadius: 8 }, disabled: !newCategoryName.trim() }}
+          title={editingCategory ? "Edit category" : "New category"}
+          open={categoryModalOpen || !!editingCategory}
+          onCancel={() => { setCategoryModalOpen(false); setNewCategoryName(""); setEditingCategory(null); }}
+          onOk={editingCategory ? handleUpdateCategory : handleAddCategory}
+          okText={editingCategory ? "Save category" : "Create category"}
+          okButtonProps={{ style: { backgroundColor: "var(--accent-primary)", border: "none", fontWeight: 700, borderRadius: 8 }, disabled: !(editingCategory ? editingCategory.name?.trim() : newCategoryName.trim()) }}
         >
           <div style={FIELD_LABEL_STYLE}>NAME</div>
           <Input
             size="large"
-            value={newCategoryName}
-            onChange={e => setNewCategoryName(e.target.value)}
-            onPressEnter={handleAddCategory}
+            value={editingCategory ? editingCategory.name : newCategoryName}
+            onChange={e => editingCategory ? setEditingCategory({ ...editingCategory, name: e.target.value }) : setNewCategoryName(e.target.value)}
+            onPressEnter={editingCategory ? handleUpdateCategory : handleAddCategory}
             style={{ borderRadius: 8 }}
             autoFocus
           />
-          {newCategoryName && (
-            <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-secondary)' }}>Slug: {slugify(newCategoryName)}</div>
+          {(editingCategory ? editingCategory.name : newCategoryName) && (
+            <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-secondary)' }}>Slug: {slugify(editingCategory ? editingCategory.name : newCategoryName)}</div>
           )}
         </Modal>
       </>
