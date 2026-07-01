@@ -197,19 +197,15 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
     }
   };
 
-  // Show every widget the account has (not just Published ones) so the
-  // dropdown isn't silently empty — tag status instead so it's clear which
-  // ones are live. Published widgets are listed first.
-  const sortedChatWidgets = [...chatWidgets].sort((a, b) => {
-    if (a.status === b.status) return 0;
-    return a.status === "Published" ? -1 : 1;
-  });
+  // Only Published (i.e. public/live) chat widgets can be assigned to a
+  // website — Draft widgets aren't ready to be shown to real visitors.
+  const publishedChatWidgets = chatWidgets.filter((w) => w.status === "Published");
 
   const chatWidgetOptions = [
     { value: null, label: "— None —" },
-    ...sortedChatWidgets.map((w) => ({
+    ...publishedChatWidgets.map((w) => ({
       value: w._id,
-      label: `${w.name} (${w.type})${w.status !== "Published" ? " — Draft" : ""}`,
+      label: `${w.name} (${w.type})`,
     })),
   ];
 
@@ -576,7 +572,7 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
                 notFoundContent={
                   chatWidgetsLoading
                     ? "Loading..."
-                    : "No published chat widgets yet"
+                    : "No published chat widgets yet — publish a widget first"
                 }
               />
               <Button

@@ -57,6 +57,9 @@ const WebsiteSetupPage = () => {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
 
+  const [savingChatWidget, setSavingChatWidget] = useState(false);
+  const [chatWidgetError, setChatWidgetError] = useState('');
+
   const onSaveWebsite = async () => {
     try {
       setSaving(true);
@@ -118,6 +121,28 @@ const WebsiteSetupPage = () => {
       setSaveError(e?.message || 'Failed to save');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const onSaveChatWidget = async () => {
+    try {
+      setChatWidgetError('');
+
+      if (!websiteId) {
+        setChatWidgetError('Save the website before attaching a chat widget.');
+        return;
+      }
+
+      setSavingChatWidget(true);
+
+      const websiteDoc = await websiteWizardApi.updateWebsite(websiteId, { chatWidgetId: chatWidgetId || null });
+
+      const savedWebsiteId = websiteDoc?._id || websiteDoc?.id || websiteId;
+      setWebsiteId(savedWebsiteId);
+    } catch (e) {
+      setChatWidgetError(e?.message || 'Failed to save chat widget');
+    } finally {
+      setSavingChatWidget(false);
     }
   };
 
@@ -281,7 +306,30 @@ const WebsiteSetupPage = () => {
                     <Select.Option value="w1">Widget 1</Select.Option>
                   </Select>
                 </div>
-                <Button type="primary" block style={{ background: 'var(--accent-info)', border: 'none', borderRadius: 12, fontWeight: 900, height: 48, marginTop: 12 }}>
+
+                {chatWidgetError ? (
+                  <Alert style={{ marginTop: 12 }} type="error" showIcon message={chatWidgetError} />
+                ) : null}
+
+                <Button
+                  type="primary"
+                  block
+                  onClick={onSaveChatWidget}
+                  disabled={savingChatWidget}
+                  style={{
+                    background: 'var(--accent-info)',
+                    border: 'none',
+                    borderRadius: 12,
+                    fontWeight: 900,
+                    height: 48,
+                    marginTop: 12,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 10,
+                  }}
+                >
+                  {savingChatWidget ? <Spin size="small" /> : null}
                   Save Chat Widget
                 </Button>
                 <div style={{ textAlign: 'center', color: 'var(--accent-info)', fontWeight: 900, marginTop: 10 }}>Create New Chat Widget</div>
@@ -373,4 +421,3 @@ const WebsiteSetupPage = () => {
 };
 
 export default WebsiteSetupPage;
-

@@ -135,6 +135,13 @@ function normalizeWebsite(doc) {
     name,
     description: doc.description || "",
     status: doc.status || "Draft",
+    faviconUrl: doc.faviconUrl || "",
+    tracking: doc.tracking || {},
+    // FIX: chatWidgetId was being dropped here, so re-opening a website after
+    // returning to the list view always showed the dropdown as unset even
+    // though it was saved correctly in the database.
+    chatWidgetId: doc.chatWidgetId || null,
+    domain: doc.domain || null,
     createdAt: doc.createdAt
       ? new Date(doc.createdAt).toLocaleDateString("en-GB", {
         day: "2-digit",
@@ -559,6 +566,11 @@ const WebsitesTab = ({ itemVariants }) => {
             ...prev,
             name: next.name,
             description: next.description,
+            status: next.status,
+            faviconUrl: next.faviconUrl,
+            tracking: next.tracking,
+            chatWidgetId: next.chatWidgetId,
+            domain: next.domain,
             rawPages: next.pages,
           }))
         }
