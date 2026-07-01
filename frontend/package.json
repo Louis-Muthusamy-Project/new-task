@@ -23,6 +23,7 @@
     "grapesjs-preset-webpage": "^1.0.3",
     "jszip": "^3.10.1",
     "lucide-react": "^1.17.0",
+    "qrcode": "^1.5.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-icons": "^5.6.0",

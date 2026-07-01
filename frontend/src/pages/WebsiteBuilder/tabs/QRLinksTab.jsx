@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { Button, Table, Typography, Space, Input, Select, Card, Row, Col, Popconfirm, Divider } from "antd";
+import { Button, Table, Typography, Space, Input, Select, Card, Row, Col, Popconfirm, Divider, message } from "antd";
 import { Plus, Trash2, Link2, MessageSquare, Phone, Mail, CreditCard, FormInput, User, FileText, Wifi, QrCode, ArrowRight, ArrowLeft } from "lucide-react";
+import QRCodeLib from 'qrcode';
 
 import { motion } from "framer-motion";
+import { websiteWizardApi } from '../../../api/websiteWizardApi';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -276,6 +278,7 @@ const CreateQRView = ({ setView, handleCreateQR, itemVariants }) => {
           <Button 
             size="large"
             type="primary" 
+            // loading={loading}
             style={{ backgroundColor: "var(--accent-primary)", border: "none", borderRadius: 8, fontWeight: 800, padding: "0 32px" }}
             onClick={() => {
               if (step < 3) setStep(step + 1);
@@ -316,12 +319,21 @@ const ManageQRView = ({ activeQR, setView, handleDeleteQR, itemVariants }) => {
           <Card style={{ borderRadius: 24, textAlign: "center", border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', boxShadow: 'var(--shadow-md)' }} bodyStyle={{ padding: 40 }}>
             <div style={{ marginBottom: 40, display: "flex", justifyContent: "center" }}>
                <div style={{ background: activeQR.background, padding: 32, borderRadius: activeQR.shape === 'Rounded' ? 32 : 16, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-color)' }}>
-                 <QrCode size={200} color={activeQR.foreground === 'var(--accent-primary)' ? '#3b82f6' : activeQR.foreground} />
+                 {activeQR.qrDataUrl ? (
+                   <img src={activeQR.qrDataUrl} alt={activeQR.name} style={{ width: 220, height: 220 }} />
+                 ) : (
+                   <QrCode size={200} color={activeQR.foreground === 'var(--accent-primary)' ? '#3b82f6' : activeQR.foreground} />
+                 )}
                </div>
             </div>
             <Space direction="vertical" style={{ width: '100%' }} size="middle">
-              <Button size="large" type="primary" block style={{ backgroundColor: "var(--accent-primary)", border: "none", borderRadius: 8, fontWeight: 800 }}>Download SVG</Button>
-              <Button size="large" block style={{ borderRadius: 8, fontWeight: 700, borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'var(--bg-primary)' }}>Open scan URL</Button>
+              <Button size="large" type="primary" block onClick={() => {
+                const link = document.createElement('a');
+                link.href = activeQR.qrDataUrl || '';
+                link.download = `${(activeQR.name || 'qr').replace(/\s+/g, '-')}.png`;
+                link.click();
+              }} style={{ backgroundColor: "var(--accent-primary)", border: "none", borderRadius: 8, fontWeight: 800 }}>Download PNG</Button>
+              <Button size="large" block onClick={() => window.open(activeQR.scanLink, '_blank', 'noopener,noreferrer')} style={{ borderRadius: 8, fontWeight: 700, borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'var(--bg-primary)' }}>Open scan URL</Button>
             </Space>
           </Card>
         </Col>
@@ -366,67 +378,78 @@ const QRLinksTab = ({ itemVariants }) => {
   const [view, setView] = useState("list"); // list, create, manage
   const [qrs, setQrs] = useState([]);
   const [activeQR, setActiveQR] = useState(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const savedQRs = localStorage.getItem("tunepath_qrcodes");
-    if (savedQRs) {
+    const loadQRs = async () => {
       try {
-        setQrs(JSON.parse(savedQRs));
-      } catch (e) {
-        console.error("Failed to parse qrcodes from local storage");
+        const items = await websiteWizardApi.listQrcodes();
+        setQrs(items.map((item) => ({ ...item, key: item._id || item.id, scans: item.scans || 0 })));
+      } catch (error) {
+        console.error('Failed to load QR codes', error);
+        setQrs([]);
       }
-    } else {
-      setQrs([
-        {
-          key: '1',
-          name: 'QR-1781009828',
-          slug: 'qr-1781009828',
-          type: 'Website',
-          scans: 12,
-          scanLink: 'https://jeema.one/q/qr-1781009828',
-          foreground: 'var(--accent-primary)',
-          background: '#ffffff',
-          shape: 'Square'
-        },
-        {
-          key: '2',
-          name: 'QR-1780906178',
-          slug: 'qr-1780906178',
-          type: 'WiFi',
-          scans: 45,
-          scanLink: 'Direct (device action)',
-          foreground: 'var(--accent-primary)',
-          background: '#ffffff',
-          shape: 'Square'
-        }
-      ]);
-    }
+    };
+
+    loadQRs();
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem("tunepath_qrcodes", JSON.stringify(qrs));
-  }, [qrs]);
+  const handleCreateQR = async (formData) => {
+    try {
+      setLoading(true);
+      const payload = {
+        name: formData.name,
+        slug: formData.name.toLowerCase().replace(/\s+/g, '-'),
+        type: formData.type,
+        customUrl: formData.customUrl || '',
+        foreground: formData.foreground,
+        background: formData.background,
+        shape: formData.shape,
+      };
 
-  const handleCreateQR = (formData) => {
-    const newQR = {
-      key: Date.now().toString(),
-      name: formData.name,
-      slug: formData.name.toLowerCase(),
-      type: formData.type,
-      scans: 0,
-      scanLink: formData.customUrl || `https://jeema.one/q/${formData.name.toLowerCase()}`,
-      foreground: formData.foreground,
-      background: formData.background,
-      shape: formData.shape
-    };
-    setQrs([newQR, ...qrs]);
-    setActiveQR(newQR);
-    setView("manage");
+      const destination = payload.customUrl || `https://jeema.one/q/${payload.slug}`;
+      const resolveColor = (color, fallback) => {
+        if (!color || typeof color !== 'string') return fallback;
+        return color.startsWith('var(') ? fallback : color;
+      };
+      const qrDataUrl = await QRCodeLib.toDataURL(destination, {
+        color: {
+          dark: resolveColor(payload.foreground, '#3b82f6'),
+          light: resolveColor(payload.background, '#ffffff'),
+        },
+        width: 320,
+        margin: 2,
+      });
+
+      const created = await websiteWizardApi.createQr(payload);
+      const newQR = {
+        ...created,
+        key: created._id || created.id,
+        scans: 0,
+        qrDataUrl,
+      };
+      setQrs([newQR, ...qrs]);
+      setActiveQR(newQR);
+      setView("manage");
+      message.success('QR code saved successfully.');
+    } catch (error) {
+      console.error(error);
+      message.error(error.message || 'Failed to create QR code.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleDeleteQR = (key) => {
-    setQrs(qrs.filter(q => q.key !== key));
-    setView("list");
+  const handleDeleteQR = async (key) => {
+    try {
+      await websiteWizardApi.deleteQr(key);
+      setQrs(qrs.filter((q) => (q.key || q._id) !== key));
+      setView("list");
+      message.success('QR code removed.');
+    } catch (error) {
+      console.error(error);
+      message.error(error.message || 'Failed to delete QR code.');
+    }
   };
 
   const renderList = () => {

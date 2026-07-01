@@ -13,6 +13,7 @@ router.use('/website-builder', require('./publishRoutes'));
 router.use('/website-builder', require('./formRoutes'));
 router.use('/website-builder', require('./domainRoutes'));
 router.use('/website-builder', require('./blogRoutes'));
+router.use('/website-builder', require('./qrCodeRoutes'));
 
 // Templates endpoint used by WebsiteTemplatePage.jsx
 router.use('/templates', require('./templatesRoutes'));

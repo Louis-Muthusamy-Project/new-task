@@ -166,4 +166,16 @@ export const websiteWizardApi = {
       await request(`/website-builder/forms/submissions${query ? `?${query}` : ''}`, { method: 'GET' })
     );
   },
+
+  listQrcodes: async () => unwrapSuccess(await request('/website-builder/qrcodes', { method: 'GET' })),
+
+  createQr: async (payload) =>
+    unwrapSuccess(
+      await request('/website-builder/qrcodes', {
+        method: 'POST',
+        body: payload,
+      })
+    ),
+
+  deleteQr: async (id) => unwrapSuccess(await request(`/website-builder/qrcodes/${id}`, { method: 'DELETE' })),
 };
