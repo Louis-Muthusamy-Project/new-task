@@ -9,6 +9,7 @@ module.exports = {
   StorePage: require('./store/StorePage'),
   StoreProduct: require('./store/StoreProduct'),
   StoreCollection: require('./store/StoreCollection'),
+  StoreTestimonial: require('./store/StoreTestimonial'),
   StoreCustomer: require('./store/StoreCustomer'),
   StoreOrder: require('./store/StoreOrder'),
   StoreDiscount: require('./store/StoreDiscount'),

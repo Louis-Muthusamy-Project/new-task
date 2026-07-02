@@ -3,6 +3,7 @@ import grapesjs from 'grapesjs';
 import presetWebpage from 'grapesjs-preset-webpage';
 import axios from 'axios';
 import QRCode from 'qrcode';
+import { registerStoreBlocks } from './storeDynamicBlocks';
 
 const API_BASE = import.meta.env?.VITE_WEBSITE_WIZARD_API_BASE || 'http://localhost:5500/api';
 
@@ -613,6 +614,7 @@ function buildBlogHtml(blog = {}) {
 const GrapesPageEditor = ({
   pageKey,
   websiteId,
+  isStore = false,
   height = '100%',
   initialHtml = '',
   initialCss = '',
@@ -647,6 +649,9 @@ const GrapesPageEditor = ({
   // causing the init effect to re-run.
   const websiteIdRef = useRef(websiteId);
   useEffect(() => { websiteIdRef.current = websiteId; }, [websiteId]);
+
+  const isStoreRef = useRef(isStore);
+  useEffect(() => { isStoreRef.current = isStore; }, [isStore]);
 
   useEffect(() => {
     if (activeTool === 'forms') {
@@ -1130,6 +1135,19 @@ const GrapesPageEditor = ({
       }
 
       await fetchFormTools(editor);
+
+      // Store pages get an extra "Store" block category (Hero, Product Grid,
+      // Featured Product, Collection, Testimonials, Search, Cart, Checkout,
+      // Footer) that render live data from the storefront API. Registered
+      // once per editor instance — websiteId here is the storeId for store
+      // pages (see BccBuilder, which passes storeId through as websiteId).
+      if (isStoreRef.current && websiteIdRef.current) {
+        try {
+          registerStoreBlocks(editor, { apiBase: API_BASE, storeId: websiteIdRef.current });
+        } catch (e) {
+          console.warn('[GrapesPageEditor] registerStoreBlocks failed:', e);
+        }
+      }
     });
 
     // ── Upload response normalisation ──────────────────────────────────────

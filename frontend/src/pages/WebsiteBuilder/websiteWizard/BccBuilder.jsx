@@ -633,6 +633,7 @@ const BccBuilder = () => {
               height="100%"
               pageKey={pageId}
               websiteId={entityId}
+              isStore={isStore}
               initialHtml={html}
               initialCss={css}
               initialHeadLinks={headLinks}

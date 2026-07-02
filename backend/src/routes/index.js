@@ -32,4 +32,9 @@ router.use('/store', require('./storeRoutesTemplates'));
 // StorePage documents — Store-module counterpart of pageRoutes.js.
 router.use('/store', require('./storePageRoutes'));
 
+// Public storefront data (products/collections/testimonials/search) used by
+// the GrapesJS "Dynamic Blocks" — Store-module counterpart of nothing else,
+// this is new surface area for rendering real data inside store blocks.
+router.use('/store', require('./storeStorefrontRoutes'));
+
 module.exports = router;
