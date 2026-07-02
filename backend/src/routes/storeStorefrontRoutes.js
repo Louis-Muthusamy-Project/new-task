@@ -24,4 +24,6 @@ router.get('/:storeId/search', asyncHandler(storeStorefrontController.search));
 
 router.post('/:storeId/orders', asyncHandler(storeStorefrontController.createOrder));
 
+router.post('/:storeId/track', asyncHandler(storeStorefrontController.trackVisit));
+
 module.exports = router;

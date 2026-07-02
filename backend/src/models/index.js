@@ -16,4 +16,5 @@ module.exports = {
   StoreShipping: require('./store/StoreShipping'),
   StorePayment: require('./store/StorePayment'),
   StoreEmailSettings: require('./store/StoreEmailSettings'),
+  StoreVisit: require('./store/StoreVisit'),
 };

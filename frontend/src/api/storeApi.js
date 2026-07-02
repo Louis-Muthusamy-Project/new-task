@@ -179,6 +179,86 @@ export const shippingApi = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────
+// Payments Module — admin config used by the Payments tab in StoresTab.jsx.
+// One StorePayment document per store; each gateway (Razorpay, Stripe,
+// PayPal, Cash on Delivery) is an independently-togglable sub-resource, so
+// a store can offer more than one method at checkout.
+// ─────────────────────────────────────────────────────────────────────────
+export const PAYMENT_METHODS = ['razorpay', 'stripe', 'paypal', 'cod'];
+
+export const paymentApi = {
+  get: async (storeId) => {
+    const json = unwrap(await requestJson(`/store/${storeId}/admin/payments`));
+    return json.data;
+  },
+
+  updateSettings: async (storeId, payload) => {
+    const json = unwrap(
+      await requestJson(`/store/${storeId}/admin/payments`, { method: 'PATCH', body: payload })
+    );
+    return json.data;
+  },
+
+  // method: 'razorpay' | 'stripe' | 'paypal' | 'cod'
+  updateMethod: async (storeId, method, payload) => {
+    const json = unwrap(
+      await requestJson(`/store/${storeId}/admin/payments/${method}`, { method: 'PATCH', body: payload })
+    );
+    return json.data;
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────
+// Email Sender Module — admin config used by the Email sender tab in
+// StoresTab.jsx (sub-tabs: SMTP, Templates, Order Mail, Welcome Mail). One
+// StoreEmailSettings document per store; each transactional event is an
+// independently-editable template sub-resource.
+// ─────────────────────────────────────────────────────────────────────────
+export const EMAIL_TEMPLATE_TYPES = ['orderConfirmation', 'shippingUpdate', 'orderCancelled', 'abandonedCart', 'welcome'];
+
+export const emailApi = {
+  get: async (storeId) => {
+    const json = unwrap(await requestJson(`/store/${storeId}/admin/email`));
+    return json.data;
+  },
+
+  updateSender: async (storeId, payload) => {
+    const json = unwrap(
+      await requestJson(`/store/${storeId}/admin/email/sender`, { method: 'PATCH', body: payload })
+    );
+    return json.data;
+  },
+
+  updateSmtp: async (storeId, payload) => {
+    const json = unwrap(
+      await requestJson(`/store/${storeId}/admin/email/smtp`, { method: 'PATCH', body: payload })
+    );
+    return json.data;
+  },
+
+  // type: 'orderConfirmation' | 'shippingUpdate' | 'orderCancelled' | 'abandonedCart' | 'welcome'
+  updateTemplate: async (storeId, type, payload) => {
+    const json = unwrap(
+      await requestJson(`/store/${storeId}/admin/email/templates/${type}`, { method: 'PATCH', body: payload })
+    );
+    return json.data;
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────
+// Analytics Module — read-only summary used by the Analytics tab in
+// StoresTab.jsx (Visitors, Sales, Orders, Revenue, Conversion + Top
+// products). Computed on the fly from orders + storefront visit pings, so
+// there's nothing to create/update — just a single GET.
+// ─────────────────────────────────────────────────────────────────────────
+export const analyticsApi = {
+  get: async (storeId, { days = 30 } = {}) => {
+    const json = unwrap(await requestJson(`/store/${storeId}/admin/analytics?days=${days}`));
+    return json.data;
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────
 // Discounts Module — admin CRUD used by the Discounts tab in StoresTab.jsx.
 // Create / Edit / Delete a coupon (code, Percentage/Flat value, Expiry,
 // Minimum Order).

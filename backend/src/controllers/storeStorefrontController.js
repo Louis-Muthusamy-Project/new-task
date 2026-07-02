@@ -350,3 +350,33 @@ exports.createOrder = async (req, res) => {
     },
   });
 };
+
+// ─────────────────────────────────────────────────────────────────────────
+// POST /api/store/:storeId/track
+// Body: { sessionId?, path?, referrer? }
+// Fire-and-forget pageview ping called once per storefront page load.
+// Powers the Visitors + Conversion metrics on the Analytics tab
+// (analyticsController.js). Generates a sessionId server-side when the
+// client doesn't have one yet (first visit) so the caller can persist it
+// (e.g. localStorage) and reuse it for the rest of the session.
+// ─────────────────────────────────────────────────────────────────────────
+const StoreVisit = require('../models/store/StoreVisit');
+
+exports.trackVisit = async (req, res) => {
+  const { storeId } = req.params;
+  requireValidId(storeId, 'storeId');
+
+  const { sessionId, path, referrer } = req.body || {};
+  const resolvedSessionId =
+    (sessionId && String(sessionId).trim()) ||
+    `sess_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+
+  await StoreVisit.create({
+    storeId,
+    sessionId: resolvedSessionId,
+    path: path || '/',
+    referrer: referrer || '',
+  });
+
+  res.status(201).json({ success: true, data: { sessionId: resolvedSessionId } });
+};

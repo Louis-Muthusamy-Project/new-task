@@ -61,4 +61,16 @@ router.use('/store', require('./discountRoutes'));
 // by the Shipping tab in StoresTab.jsx.
 router.use('/store', require('./shippingRoutes'));
 
+// Admin Payments config (Razorpay/Stripe/PayPal/Cash on Delivery) used by
+// the Payments tab in StoresTab.jsx.
+router.use('/store', require('./paymentRoutes'));
+
+// Admin Email sender config (SMTP, sender identity, per-event templates)
+// used by the Email sender tab in StoresTab.jsx.
+router.use('/store', require('./emailRoutes'));
+
+// Admin Analytics (Visitors/Sales/Orders/Revenue/Conversion + Top
+// products) used by the Analytics tab in StoresTab.jsx.
+router.use('/store', require('./analyticsRoutes'));
+
 module.exports = router;

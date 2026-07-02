@@ -1,19 +1,40 @@
 import React, { useState, useEffect } from "react";
-import { Button, Table, Typography, Space, Popconfirm, Select, Card, Input, InputNumber, Row, Col, Checkbox, Tag, message, Empty, Spin } from "antd";
-import { Plus, Trash2, Store, ShoppingBag, LayoutGrid, Users, Tag as TagIcon, LayoutTemplate, Truck, Settings, CreditCard, Mail, Search, ExternalLink, Activity, ArrowRight, Eye, Edit3, Image as ImageIcon } from "lucide-react";
+import { Button, Table, Typography, Space, Popconfirm, Select, Card, Input, InputNumber, Row, Col, Checkbox, Tag, message, Empty, Spin, Switch } from "antd";
+import { Plus, Trash2, Store, ShoppingBag, LayoutGrid, Users, Tag as TagIcon, LayoutTemplate, Truck, Settings, CreditCard, Mail, Search, ExternalLink, Activity, ArrowRight, Eye, Edit3, Image as ImageIcon, Wallet, Banknote, Landmark, Server, FileText, Package, Gift, ChevronDown, ChevronRight, TrendingUp, Percent, DollarSign } from "lucide-react";
 import { motion } from "framer-motion";
 import CreateStoreModal from "./CreateStoreModal";
 import StoreTemplateLibraryModal from "./StoreTemplateLibraryModal";
 import ProductFormModal from "./ProductFormModal";
 import CollectionFormModal from "./CollectionFormModal";
 import CustomerFormModal from "./CustomerFormModal";
-import { productApi, storeApi, collectionApi, customerApi, orderApi, ORDER_STATUSES, discountApi, DISCOUNT_TYPES, shippingApi } from "../../../api/storeApi";
+import { productApi, storeApi, collectionApi, customerApi, orderApi, ORDER_STATUSES, discountApi, DISCOUNT_TYPES, shippingApi, paymentApi, PAYMENT_METHODS, emailApi, EMAIL_TEMPLATE_TYPES, analyticsApi } from "../../../api/storeApi";
 import DiscountFormModal from "./DiscountFormModal";
 import ShippingZoneModal from "./ShippingZoneModal";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 const { TextArea } = Input;
+
+// Payments Module — the four gateways a store can offer at checkout.
+// Order here drives the display order of the cards on the Payments tab.
+const PAYMENT_METHOD_LABELS = {
+  razorpay: "Razorpay",
+  stripe: "Stripe",
+  paypal: "PayPal",
+  cod: "Cash on Delivery",
+};
+
+// Email Sender Module — the transactional events a store can send mail
+// for. Order Confirmation and Welcome get their own dedicated tabs (Order
+// Mail / Welcome Mail); all five show up in the Templates gallery.
+const EMAIL_TEMPLATE_META = {
+  orderConfirmation: { label: "Order Confirmation", description: "Sent the moment a customer completes checkout." },
+  shippingUpdate: { label: "Shipping Update", description: "Sent when an order's fulfillment status changes to shipped." },
+  orderCancelled: { label: "Order Cancelled", description: "Sent when an order is cancelled or refunded." },
+  abandonedCart: { label: "Abandoned Cart", description: "Sent to nudge a customer back after they leave items in their cart." },
+  welcome: { label: "Welcome Mail", description: "Sent the first time a new customer creates an account." },
+};
+const EMAIL_VARIABLE_HINT = "Available variables: {{customerName}}, {{orderNumber}}, {{orderTotal}}, {{trackingUrl}}, {{storeName}}";
 
 const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
   const [activeSubTab, setActiveSubTab] = useState("home");
@@ -244,6 +265,189 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
     } finally {
       setSavingFreeShipping(false);
     }
+  };
+
+  // ── Analytics Module state (Visitors/Sales/Orders/Revenue/Conversion) ──
+  const [analytics, setAnalytics] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsRange, setAnalyticsRange] = useState(30);
+
+  const loadAnalytics = async (days = analyticsRange) => {
+    if (!storeId) return;
+    setAnalyticsLoading(true);
+    try {
+      const data = await analyticsApi.get(storeId, { days });
+      setAnalytics(data || null);
+    } catch (err) {
+      message.error(err.message || "Failed to load analytics.");
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === "analytics") {
+      loadAnalytics(analyticsRange);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSubTab, storeId, analyticsRange]);
+
+  // ── Payments Module state (Razorpay/Stripe/PayPal/Cash on Delivery) ──
+  const [paymentConfig, setPaymentConfig] = useState(null);
+  const [paymentsLoading, setPaymentsLoading] = useState(false);
+  const [paymentDrafts, setPaymentDrafts] = useState({});
+  const [savingMethod, setSavingMethod] = useState(null);
+
+  const loadPayments = async () => {
+    if (!storeId) return;
+    setPaymentsLoading(true);
+    try {
+      const data = await paymentApi.get(storeId);
+      setPaymentConfig(data || null);
+      setPaymentDrafts(data?.methods || {});
+    } catch (err) {
+      message.error(err.message || "Failed to load payment settings.");
+    } finally {
+      setPaymentsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === "payments") {
+      loadPayments();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSubTab, storeId]);
+
+  const updatePaymentDraft = (method, field, value) => {
+    setPaymentDrafts((prev) => ({
+      ...prev,
+      [method]: { ...prev[method], [field]: value },
+    }));
+  };
+
+  const saveMethod = async (method, overrides = {}) => {
+    setSavingMethod(method);
+    try {
+      const payload = { ...paymentDrafts[method], ...overrides };
+      const updated = await paymentApi.updateMethod(storeId, method, payload);
+      setPaymentConfig(updated);
+      setPaymentDrafts(updated?.methods || {});
+      message.success(`${PAYMENT_METHOD_LABELS[method]} settings saved.`);
+    } catch (err) {
+      message.error(err.message || `Failed to save ${PAYMENT_METHOD_LABELS[method]} settings.`);
+      // Revert the optimistic draft (e.g. a toggle-on with no key set yet)
+      // back to the last known-good state from the server.
+      setPaymentDrafts((prev) => ({ ...prev, [method]: paymentConfig?.methods?.[method] || prev[method] }));
+    } finally {
+      setSavingMethod(null);
+    }
+  };
+
+  const toggleMethod = async (method, enabled) => {
+    // Optimistic flip so the switch feels instant; saveMethod() reconciles
+    // with the server response (and reverts the field on validation errors,
+    // e.g. enabling a gateway with no key set yet).
+    setPaymentDrafts((prev) => ({ ...prev, [method]: { ...prev[method], enabled } }));
+    await saveMethod(method, { enabled });
+  };
+
+  // ── Email Sender Module state (SMTP/Templates/Order Mail/Welcome Mail) ──
+  const [emailSettings, setEmailSettings] = useState(null);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailSection, setEmailSection] = useState("smtp");
+  const [senderDraft, setSenderDraft] = useState({});
+  const [smtpDraft, setSmtpDraft] = useState({});
+  const [templateDrafts, setTemplateDrafts] = useState({});
+  const [savingSender, setSavingSender] = useState(false);
+  const [savingSmtp, setSavingSmtp] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(null);
+  const [expandedTemplate, setExpandedTemplate] = useState(null);
+
+  const loadEmailSettings = async () => {
+    if (!storeId) return;
+    setEmailLoading(true);
+    try {
+      const data = await emailApi.get(storeId);
+      setEmailSettings(data || null);
+      setSenderDraft({
+        useCustomSender: data?.useCustomSender || false,
+        senderName: data?.senderName || "",
+        senderEmail: data?.senderEmail || "",
+        replyToEmail: data?.replyToEmail || "",
+      });
+      setSmtpDraft(data?.smtp || {});
+      setTemplateDrafts(data?.templates || {});
+    } catch (err) {
+      message.error(err.message || "Failed to load email settings.");
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === "email") {
+      loadEmailSettings();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSubTab, storeId]);
+
+  const updateSenderDraft = (field, value) => setSenderDraft((prev) => ({ ...prev, [field]: value }));
+
+  const saveSender = async () => {
+    setSavingSender(true);
+    try {
+      const updated = await emailApi.updateSender(storeId, senderDraft);
+      setEmailSettings(updated);
+      message.success("Sender identity saved.");
+    } catch (err) {
+      message.error(err.message || "Failed to save sender identity.");
+    } finally {
+      setSavingSender(false);
+    }
+  };
+
+  const updateSmtpDraft = (field, value) => setSmtpDraft((prev) => ({ ...prev, [field]: value }));
+
+  const saveSmtp = async (overrides = {}) => {
+    setSavingSmtp(true);
+    try {
+      const payload = { ...smtpDraft, ...overrides };
+      const updated = await emailApi.updateSmtp(storeId, payload);
+      setEmailSettings(updated);
+      setSmtpDraft(updated?.smtp || {});
+      message.success("SMTP settings saved.");
+    } catch (err) {
+      message.error(err.message || "Failed to save SMTP settings.");
+      setSmtpDraft(emailSettings?.smtp || {});
+    } finally {
+      setSavingSmtp(false);
+    }
+  };
+
+  const updateTemplateDraft = (type, field, value) => {
+    setTemplateDrafts((prev) => ({ ...prev, [type]: { ...prev[type], [field]: value } }));
+  };
+
+  const saveTemplate = async (type, overrides = {}) => {
+    setSavingTemplate(type);
+    try {
+      const payload = { ...templateDrafts[type], ...overrides };
+      const updated = await emailApi.updateTemplate(storeId, type, payload);
+      setEmailSettings(updated);
+      setTemplateDrafts(updated?.templates || {});
+      message.success(`${EMAIL_TEMPLATE_META[type].label} template saved.`);
+    } catch (err) {
+      message.error(err.message || `Failed to save the ${EMAIL_TEMPLATE_META[type].label} template.`);
+      setTemplateDrafts((prev) => ({ ...prev, [type]: emailSettings?.templates?.[type] || prev[type] }));
+    } finally {
+      setSavingTemplate(null);
+    }
+  };
+
+  const toggleTemplate = async (type, enabled) => {
+    setTemplateDrafts((prev) => ({ ...prev, [type]: { ...prev[type], enabled } }));
+    await saveTemplate(type, { enabled });
   };
 
   // ── Collections Module state (Create/Edit/Delete + Products link) ──
@@ -774,48 +978,74 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
     </motion.div>
   );
 
-  const renderAnalytics = () => (
-    <motion.div variants={itemVariants} className="store-manage-content">
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col span={8}>
-          <Card bodyStyle={{ padding: 24 }} style={{ borderRadius: 16, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', height: '100%' }}>
-            <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-tertiary)", letterSpacing: 0.5, marginBottom: 8 }}>LAST 30 DAYS REVENUE</div>
-            <div style={{ fontSize: 32, fontWeight: 800, color: 'var(--text-primary)' }}>INR 0.00</div>
-          </Card>
-        </Col>
-        <Col span={8}>
-          <Card bodyStyle={{ padding: 24 }} style={{ borderRadius: 16, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', height: '100%' }}>
-            <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-tertiary)", letterSpacing: 0.5, marginBottom: 8 }}>PAID ORDERS (30D)</div>
-            <div style={{ fontSize: 32, fontWeight: 800, color: 'var(--text-primary)' }}>0</div>
-          </Card>
-        </Col>
-        <Col span={8}>
-          <Card bodyStyle={{ padding: 24 }} style={{ borderRadius: 16, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', height: '100%' }}>
-            <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-tertiary)", letterSpacing: 0.5, marginBottom: 8 }}>AWAITING FULFILLMENT</div>
-            <div style={{ fontSize: 32, fontWeight: 800, color: "var(--accent-warning)" }}>0</div>
-          </Card>
-        </Col>
-      </Row>
+  const ANALYTICS_STAT_CARDS = [
+    { key: "visitors", label: "VISITORS", icon: <Users size={16} />, format: (d) => d.visitors.toLocaleString() },
+    { key: "sales", label: "SALES (UNITS)", icon: <ShoppingBag size={16} />, format: (d) => d.sales.toLocaleString() },
+    { key: "orders", label: "ORDERS", icon: <Package size={16} />, format: (d) => d.orders.toLocaleString() },
+    { key: "revenue", label: "REVENUE", icon: <DollarSign size={16} />, format: (d) => `${d.currency} ${Number(d.revenue).toFixed(2)}` },
+    { key: "conversion", label: "CONVERSION", icon: <Percent size={16} />, format: (d) => `${Number(d.conversionRate).toFixed(1)}%` },
+  ];
 
-      <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, border: "1px solid var(--border-color)", overflow: "hidden", background: 'var(--bg-secondary)' }}>
-        <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border-color)", fontWeight: 800, fontSize: 16, color: 'var(--text-primary)' }}>
-          Top products (30 days)
+  const renderAnalytics = () => {
+    const data = analytics || { visitors: 0, sales: 0, orders: 0, revenue: 0, conversionRate: 0, currency: "USD", topProducts: [] };
+
+    return (
+      <motion.div variants={itemVariants} className="store-manage-content">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+          <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <TrendingUp size={22} color="var(--text-tertiary)" /> Analytics
+          </div>
+          <Select value={analyticsRange} onChange={setAnalyticsRange} size="large" style={{ width: 160 }}>
+            <Option value={7}>Last 7 days</Option>
+            <Option value={30}>Last 30 days</Option>
+            <Option value={90}>Last 90 days</Option>
+          </Select>
         </div>
-        <Table 
-          columns={[
-            { title: "PRODUCT", key: "product" },
-            { title: "UNITS", key: "units" },
-            { title: "REVENUE", key: "revenue", align: "right" }
-          ]} 
-          dataSource={[]} 
-          pagination={false}
-          locale={{
-            emptyText: <div style={{ padding: "40px 0", color: "var(--text-secondary)", fontSize: 14, fontWeight: 600 }}>No paid orders in this window yet.</div>
-          }}
-        />
-      </Card>
-    </motion.div>
-  );
+
+        {!storeId ? (
+          <div style={{ padding: "20px 24px", borderRadius: 12, fontSize: 14, fontWeight: 600, background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.2)', color: 'var(--accent-warning)', lineHeight: 1.6 }}>
+            This store isn't linked to a backend record, so analytics can't be computed yet. Create a new store to try the Analytics module.
+          </div>
+        ) : analyticsLoading ? (
+          <div style={{ textAlign: "center", padding: 60 }}><Spin /></div>
+        ) : (
+          <>
+            <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+              {ANALYTICS_STAT_CARDS.map((c) => (
+                <Col span={Math.floor(24 / ANALYTICS_STAT_CARDS.length)} key={c.key}>
+                  <Card bodyStyle={{ padding: 22 }} style={{ borderRadius: 16, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', height: '100%' }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 800, color: "var(--text-tertiary)", letterSpacing: 0.5, marginBottom: 10 }}>
+                      {c.icon} {c.label}
+                    </div>
+                    <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--text-primary)' }}>{c.format(data)}</div>
+                  </Card>
+                </Col>
+              ))}
+            </Row>
+
+            <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, border: "1px solid var(--border-color)", overflow: "hidden", background: 'var(--bg-secondary)' }}>
+              <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border-color)", fontWeight: 800, fontSize: 16, color: 'var(--text-primary)' }}>
+                Top products ({analyticsRange} days)
+              </div>
+              <Table
+                rowKey={(r, i) => r.title + i}
+                columns={[
+                  { title: "PRODUCT", dataIndex: "title", key: "product", render: (v) => <Text style={{ fontWeight: 700, color: "var(--text-primary)" }}>{v}</Text> },
+                  { title: "UNITS", dataIndex: "units", key: "units" },
+                  { title: "REVENUE", key: "revenue", align: "right", render: (_, r) => `${data.currency} ${Number(r.revenue).toFixed(2)}` },
+                ]}
+                dataSource={data.topProducts || []}
+                pagination={false}
+                locale={{
+                  emptyText: <div style={{ padding: "40px 0", color: "var(--text-secondary)", fontSize: 14, fontWeight: 600 }}>No paid orders in this window yet.</div>
+                }}
+              />
+            </Card>
+          </>
+        )}
+      </motion.div>
+    );
+  };
 
   const ORDER_STATUS_COLORS = {
     Pending: { bg: "rgba(245, 158, 11, 0.12)", fg: "#b45309" },
@@ -1442,81 +1672,389 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
     </motion.div>
   );
 
-  const renderPayments = () => (
-    <motion.div variants={itemVariants} className="store-manage-content" style={{ display: "flex", justifyContent: "center" }}>
-      <div style={{ width: "100%", maxWidth: 800 }}>
-        
-        <div style={{ padding: "20px 24px", borderRadius: 12, fontSize: 14, marginBottom: 24, background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.2)', color: 'var(--accent-primary)', fontWeight: 500, lineHeight: 1.6 }}>
-          Payment credentials for this store's sub-account: <strong style={{ fontWeight: 800 }}>Jeema Agency</strong>. Configure gateways under <strong style={{ cursor: "pointer", textDecoration: "underline", fontWeight: 800 }}>Settings — Payment gateways</strong> (while this sub-account is selected in the sidebar). This page only picks which enabled gateway this store uses at checkout.
+  const renderPaymentMethodCard = ({ method, icon, description, fields }) => {
+    const draft = paymentDrafts[method] || {};
+    const isEnabled = !!draft.enabled;
+    const isSaving = savingMethod === method;
+
+    return (
+      <Card
+        key={method}
+        style={{ borderRadius: 16, border: "1px solid var(--border-color)", background: 'var(--bg-secondary)', marginBottom: 20 }}
+        bodyStyle={{ padding: 28 }}
+      >
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: isEnabled ? 24 : 0 }}>
+          <div style={{ display: "flex", gap: 14 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--bg-primary)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              {icon}
+            </div>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                {PAYMENT_METHOD_LABELS[method]}
+                {isEnabled && <Tag color="success" style={{ margin: 0, fontWeight: 700, borderRadius: 6 }}>Active</Tag>}
+              </div>
+              <div style={{ fontSize: 13, color: "var(--text-tertiary)", fontWeight: 500, marginTop: 2 }}>{description}</div>
+            </div>
+          </div>
+          <Switch checked={isEnabled} loading={isSaving} onChange={(checked) => toggleMethod(method, checked)} />
         </div>
 
-        <div style={{ padding: "20px 24px", borderRadius: 12, fontSize: 14, fontWeight: 600, marginBottom: 32, background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.2)', color: 'var(--accent-warning)', lineHeight: 1.6 }}>
-          No payment gateway is enabled for this scope yet. <strong style={{ cursor: "pointer", textDecoration: "underline", fontWeight: 800 }}>Set up payment gateways</strong> first, then return here to choose checkout.
+        {isEnabled && (
+          <>
+            <Row gutter={16}>
+              {fields.map((f) => (
+                <Col span={f.span || 12} key={f.key} style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>{f.label}</div>
+                  {f.type === "select" ? (
+                    <Select
+                      size="large"
+                      style={{ width: "100%" }}
+                      value={draft[f.key] ?? f.options[0]}
+                      onChange={(v) => updatePaymentDraft(method, f.key, v)}
+                    >
+                      {f.options.map((opt) => (
+                        <Option value={opt} key={opt}>{opt}</Option>
+                      ))}
+                    </Select>
+                  ) : f.type === "number" ? (
+                    <InputNumber
+                      size="large"
+                      style={{ width: "100%", borderRadius: 8 }}
+                      min={0}
+                      value={draft[f.key] ?? 0}
+                      onChange={(v) => updatePaymentDraft(method, f.key, v)}
+                    />
+                  ) : f.type === "textarea" ? (
+                    <TextArea
+                      size="large"
+                      style={{ borderRadius: 8, minHeight: 80 }}
+                      value={draft[f.key] ?? ""}
+                      onChange={(e) => updatePaymentDraft(method, f.key, e.target.value)}
+                    />
+                  ) : (
+                    <Input
+                      size="large"
+                      style={{ borderRadius: 8 }}
+                      type={f.secret ? "password" : "text"}
+                      placeholder={f.placeholder}
+                      value={draft[f.key] ?? ""}
+                      onChange={(e) => updatePaymentDraft(method, f.key, e.target.value)}
+                    />
+                  )}
+                </Col>
+              ))}
+            </Row>
+            <Button
+              type="primary"
+              loading={isSaving}
+              style={{ background: "var(--accent-success)", border: 'none', borderRadius: 8, fontWeight: 800, height: 44, padding: "0 32px" }}
+              onClick={() => saveMethod(method)}
+            >
+              Save {PAYMENT_METHOD_LABELS[method]} settings
+            </Button>
+          </>
+        )}
+      </Card>
+    );
+  };
+
+  const renderPayments = () => {
+    const enabledCount = PAYMENT_METHODS.filter((m) => paymentDrafts[m]?.enabled).length;
+
+    return (
+      <motion.div variants={itemVariants} className="store-manage-content" style={{ display: "flex", justifyContent: "center" }}>
+        <div style={{ width: "100%", maxWidth: 800 }}>
+
+          <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 4, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <CreditCard size={22} color="var(--text-tertiary)" /> Payments
+          </div>
+          <div style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 24, fontWeight: 500, lineHeight: 1.6 }}>
+            Turn on any combination of gateways below — customers will choose between whichever ones are active at checkout.
+          </div>
+
+          {!storeId ? (
+            <div style={{ padding: "20px 24px", borderRadius: 12, fontSize: 14, fontWeight: 600, background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.2)', color: 'var(--accent-warning)', lineHeight: 1.6 }}>
+              This store isn't linked to a backend record, so payment methods can't be managed yet. Create a new store to try the Payments module.
+            </div>
+          ) : paymentsLoading ? (
+            <div style={{ textAlign: "center", padding: 60 }}><Spin /></div>
+          ) : (
+            <>
+              {enabledCount === 0 && (
+                <div style={{ padding: "20px 24px", borderRadius: 12, fontSize: 14, fontWeight: 600, marginBottom: 24, background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.2)', color: 'var(--accent-warning)', lineHeight: 1.6 }}>
+                  No payment method is enabled yet. Customers won't be able to check out until at least one is turned on.
+                </div>
+              )}
+
+              {renderPaymentMethodCard({
+                method: "razorpay",
+                icon: <Wallet size={20} color="var(--accent-primary)" />,
+                description: "Cards, UPI, netbanking and wallets for India.",
+                fields: [
+                  { key: "mode", label: "Mode", type: "select", options: ["Test", "Live"], span: 24 },
+                  { key: "keyId", label: "Key ID", placeholder: "rzp_test_xxxxxxxxxxxx" },
+                  { key: "keySecret", label: "Key Secret", placeholder: "••••••••••••", secret: true },
+                ],
+              })}
+
+              {renderPaymentMethodCard({
+                method: "stripe",
+                icon: <CreditCard size={20} color="var(--accent-primary)" />,
+                description: "Cards and wallets, worldwide.",
+                fields: [
+                  { key: "mode", label: "Mode", type: "select", options: ["Test", "Live"], span: 24 },
+                  { key: "publishableKey", label: "Publishable Key", placeholder: "pk_test_xxxxxxxxxxxx" },
+                  { key: "secretKey", label: "Secret Key", placeholder: "••••••••••••", secret: true },
+                ],
+              })}
+
+              {renderPaymentMethodCard({
+                method: "paypal",
+                icon: <Landmark size={20} color="var(--accent-primary)" />,
+                description: "PayPal balance, cards, and Pay Later.",
+                fields: [
+                  { key: "mode", label: "Mode", type: "select", options: ["Sandbox", "Live"], span: 24 },
+                  { key: "clientId", label: "Client ID", placeholder: "AeA1QIZXiflr1_-13f..." },
+                  { key: "clientSecret", label: "Client Secret", placeholder: "••••••••••••", secret: true },
+                ],
+              })}
+
+              {renderPaymentMethodCard({
+                method: "cod",
+                icon: <Banknote size={20} color="var(--accent-primary)" />,
+                description: "Customer pays with cash when the order is delivered.",
+                fields: [
+                  { key: "instructions", label: "Instructions shown at checkout", type: "textarea", span: 24 },
+                  { key: "extraFee", label: "Extra COD fee", type: "number", span: 12 },
+                ],
+              })}
+            </>
+          )}
+        </div>
+      </motion.div>
+    );
+  };
+
+  const emailSectionTabs = [
+    { key: "smtp", label: "SMTP", icon: <Server size={15} /> },
+    { key: "templates", label: "Templates", icon: <FileText size={15} /> },
+    { key: "orderMail", label: "Order Mail", icon: <Package size={15} /> },
+    { key: "welcomeMail", label: "Welcome Mail", icon: <Gift size={15} /> },
+  ];
+
+  const renderEmailSectionNav = () => (
+    <div style={{ display: "flex", gap: 8, marginBottom: 28, flexWrap: "wrap" }}>
+      {emailSectionTabs.map((t) => (
+        <button
+          key={t.key}
+          onClick={() => setEmailSection(t.key)}
+          style={{
+            display: "flex", alignItems: "center", gap: 8, padding: "10px 18px", borderRadius: 10, fontWeight: 700, fontSize: 13,
+            cursor: "pointer", border: emailSection === t.key ? "1px solid var(--accent-primary)" : "1px solid var(--border-color)",
+            background: emailSection === t.key ? "rgba(59, 130, 246, 0.1)" : "var(--bg-secondary)",
+            color: emailSection === t.key ? "var(--accent-primary)" : "var(--text-secondary)",
+          }}
+        >
+          {t.icon} {t.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  const renderEmailSmtpSection = () => (
+    <>
+      <Card style={{ borderRadius: 16, border: "1px solid var(--border-color)", background: 'var(--bg-secondary)', marginBottom: 20 }} bodyStyle={{ padding: 32 }}>
+        <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 8, color: 'var(--text-primary)' }}>Sender identity</div>
+        <div style={{ color: "var(--text-secondary)", fontSize: 13, marginBottom: 24, fontWeight: 500, lineHeight: 1.6 }}>
+          Override the From name and address for emails sent by this store. Leave off to use your agency's default sender.
         </div>
 
-        <Card style={{ borderRadius: 16, border: "1px solid var(--border-color)", background: 'var(--bg-secondary)' }} bodyStyle={{ padding: 40 }}>
-          <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 24, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <CreditCard size={24} color="var(--text-tertiary)" /> Payment Configuration
+        <div style={{ marginBottom: 24, padding: '16px 20px', background: 'var(--bg-primary)', borderRadius: 12, border: '1px solid var(--border-color)' }}>
+          <Checkbox
+            checked={!!senderDraft.useCustomSender}
+            onChange={(e) => updateSenderDraft("useCustomSender", e.target.checked)}
+            style={{ color: "var(--text-primary)", fontWeight: 700, fontSize: 14 }}
+          >
+            Use custom sender for this store
+          </Checkbox>
+        </div>
+
+        <Row gutter={16}>
+          <Col span={12} style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>From name</div>
+            <Input size="large" style={{ borderRadius: 8 }} value={senderDraft.senderName || ""} onChange={(e) => updateSenderDraft("senderName", e.target.value)} placeholder={activeStore?.slug || activeStore?.name} />
+          </Col>
+          <Col span={12} style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>From email</div>
+            <Input size="large" style={{ borderRadius: 8 }} value={senderDraft.senderEmail || ""} onChange={(e) => updateSenderDraft("senderEmail", e.target.value)} placeholder="orders@yourstore.com" />
+          </Col>
+          <Col span={24} style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>Reply-to (optional)</div>
+            <Input size="large" style={{ borderRadius: 8 }} value={senderDraft.replyToEmail || ""} onChange={(e) => updateSenderDraft("replyToEmail", e.target.value)} placeholder="support@yourstore.com" />
+          </Col>
+        </Row>
+
+        <Button type="primary" loading={savingSender} style={{ background: "var(--accent-primary)", border: 'none', borderRadius: 8, fontWeight: 800, height: 44, padding: "0 32px", marginTop: 8 }} onClick={saveSender}>
+          Save sender identity
+        </Button>
+      </Card>
+
+      <Card style={{ borderRadius: 16, border: "1px solid var(--border-color)", background: 'var(--bg-secondary)' }} bodyStyle={{ padding: 32 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', display: "flex", alignItems: "center", gap: 10 }}>
+            <Server size={18} color="var(--text-tertiary)" /> SMTP connection
           </div>
+          <Switch checked={!!smtpDraft.isCustom} loading={savingSmtp} onChange={(checked) => saveSmtp({ isCustom: checked })} />
+        </div>
+        <div style={{ color: "var(--text-secondary)", fontSize: 13, marginBottom: smtpDraft.isCustom ? 24 : 0, fontWeight: 500, lineHeight: 1.6 }}>
+          Turn on to send this store's mail through your own SMTP server instead of the agency default.
+        </div>
 
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>Checkout gateway</div>
-          <Select defaultValue="workspace" size="large" style={{ width: "100%", marginBottom: 32 }}>
-            <Option value="workspace">— Use workspace default —</Option>
-          </Select>
+        {smtpDraft.isCustom && (
+          <>
+            <Row gutter={16}>
+              <Col span={16} style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>Host</div>
+                <Input size="large" style={{ borderRadius: 8 }} value={smtpDraft.host || ""} onChange={(e) => updateSmtpDraft("host", e.target.value)} placeholder="smtp.yourprovider.com" />
+              </Col>
+              <Col span={8} style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>Port</div>
+                <InputNumber size="large" style={{ width: "100%", borderRadius: 8 }} value={smtpDraft.port ?? 587} onChange={(v) => updateSmtpDraft("port", v)} />
+              </Col>
+              <Col span={12} style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>Username</div>
+                <Input size="large" style={{ borderRadius: 8 }} value={smtpDraft.username || ""} onChange={(e) => updateSmtpDraft("username", e.target.value)} />
+              </Col>
+              <Col span={12} style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>Password</div>
+                <Input type="password" size="large" style={{ borderRadius: 8 }} value={smtpDraft.password || ""} onChange={(e) => updateSmtpDraft("password", e.target.value)} placeholder="••••••••••••" />
+              </Col>
+            </Row>
+            <Checkbox checked={smtpDraft.useSSL !== false} onChange={(e) => updateSmtpDraft("useSSL", e.target.checked)} style={{ color: "var(--text-primary)", fontWeight: 600, marginBottom: 20 }}>
+              Use SSL/TLS
+            </Checkbox>
+            <br />
+            <Button type="primary" loading={savingSmtp} style={{ background: "var(--accent-success)", border: 'none', borderRadius: 8, fontWeight: 800, height: 44, padding: "0 32px" }} onClick={() => saveSmtp()}>
+              Save SMTP settings
+            </Button>
+          </>
+        )}
+      </Card>
+    </>
+  );
 
-          <div style={{ borderRadius: 12, padding: "16px 20px", display: "flex", alignItems: "center", marginBottom: 32, cursor: "pointer", background: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}>
-            <ArrowRight size={16} color="var(--text-tertiary)" style={{ marginRight: 12 }} />
-            <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>Stripe keys (store override)</span>
+  const renderEmailTemplateFields = (type, { autoExpanded = false } = {}) => {
+    const draft = templateDrafts[type] || {};
+    const isSaving = savingTemplate === type;
+    return (
+      <>
+        <Row gutter={16}>
+          <Col span={24} style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>Subject</div>
+            <Input size="large" style={{ borderRadius: 8 }} value={draft.subject || ""} onChange={(e) => updateTemplateDraft(type, "subject", e.target.value)} />
+          </Col>
+          <Col span={24} style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>Body</div>
+            <TextArea style={{ borderRadius: 8, minHeight: 160, fontFamily: "monospace", fontSize: 13 }} value={draft.body || ""} onChange={(e) => updateTemplateDraft(type, "body", e.target.value)} />
+          </Col>
+          <Col span={24} style={{ marginBottom: 20 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>{EMAIL_VARIABLE_HINT}</Text>
+          </Col>
+        </Row>
+        <Button type="primary" loading={isSaving} style={{ background: "var(--accent-success)", border: 'none', borderRadius: 8, fontWeight: 800, height: 44, padding: "0 32px" }} onClick={() => saveTemplate(type)}>
+          Save {EMAIL_TEMPLATE_META[type].label} template
+        </Button>
+      </>
+    );
+  };
+
+  const renderFocusedTemplateCard = (type, icon) => {
+    const draft = templateDrafts[type] || {};
+    const isEnabled = !!draft.enabled;
+    return (
+      <Card style={{ borderRadius: 16, border: "1px solid var(--border-color)", background: 'var(--bg-secondary)' }} bodyStyle={{ padding: 32 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24 }}>
+          <div style={{ display: "flex", gap: 14 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--bg-primary)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              {icon}
+            </div>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                {EMAIL_TEMPLATE_META[type].label}
+                {isEnabled && <Tag color="success" style={{ margin: 0, fontWeight: 700, borderRadius: 6 }}>Active</Tag>}
+              </div>
+              <div style={{ fontSize: 13, color: "var(--text-tertiary)", fontWeight: 500, marginTop: 2 }}>{EMAIL_TEMPLATE_META[type].description}</div>
+            </div>
           </div>
+          <Switch checked={isEnabled} loading={savingTemplate === type} onChange={(checked) => toggleTemplate(type, checked)} />
+        </div>
+        {renderEmailTemplateFields(type)}
+      </Card>
+    );
+  };
 
-          <Button type="primary" style={{ background: "var(--accent-success)", border: 'none', borderRadius: 8, fontWeight: 800, height: 48, padding: "0 40px", fontSize: 16 }}>
-            Save payments
-          </Button>
-        </Card>
+  const renderEmailTemplatesGallery = () => (
+    <div>
+      {EMAIL_TEMPLATE_TYPES.map((type) => {
+        const draft = templateDrafts[type] || {};
+        const isOpen = expandedTemplate === type;
+        return (
+          <Card key={type} style={{ borderRadius: 16, border: "1px solid var(--border-color)", background: 'var(--bg-secondary)', marginBottom: 16 }} bodyStyle={{ padding: 24 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }} onClick={() => setExpandedTemplate(isOpen ? null : type)}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                {isOpen ? <ChevronDown size={16} color="var(--text-tertiary)" /> : <ChevronRight size={16} color="var(--text-tertiary)" />}
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)', display: "flex", alignItems: "center", gap: 10 }}>
+                    {EMAIL_TEMPLATE_META[type].label}
+                    {draft.enabled && <Tag color="success" style={{ margin: 0, fontWeight: 700, borderRadius: 6 }}>Active</Tag>}
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 500, marginTop: 2 }}>{draft.subject || EMAIL_TEMPLATE_META[type].description}</div>
+                </div>
+              </div>
+              <Switch checked={!!draft.enabled} loading={savingTemplate === type} onClick={(checked, e) => e.stopPropagation()} onChange={(checked) => toggleTemplate(type, checked)} />
+            </div>
 
-      </div>
-    </motion.div>
+            {isOpen && (
+              <div style={{ marginTop: 20, paddingTop: 20, borderTop: "1px solid var(--border-color)" }}>
+                {renderEmailTemplateFields(type)}
+              </div>
+            )}
+          </Card>
+        );
+      })}
+    </div>
   );
 
   const renderEmail = () => (
     <motion.div variants={itemVariants} className="store-manage-content" style={{ display: "flex", justifyContent: "center" }}>
-      <div style={{ width: "100%", maxWidth: 600 }}>
-        <Card style={{ borderRadius: 16, border: "1px solid var(--border-color)", background: 'var(--bg-secondary)' }} bodyStyle={{ padding: 40 }}>
-          
-          <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 16, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Mail size={24} color="var(--text-tertiary)" /> Email Sender
+      <div style={{ width: "100%", maxWidth: 800 }}>
+
+        <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 4, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Mail size={22} color="var(--text-tertiary)" /> Email Sender
+        </div>
+        <div style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 24, fontWeight: 500, lineHeight: 1.6 }}>
+          Configure how this store sends mail, and customize what customers receive at each step.
+        </div>
+
+        {!storeId ? (
+          <div style={{ padding: "20px 24px", borderRadius: 12, fontSize: 14, fontWeight: 600, background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.2)', color: 'var(--accent-warning)', lineHeight: 1.6 }}>
+            This store isn't linked to a backend record, so email settings can't be managed yet. Create a new store to try the Email Sender module.
           </div>
-
-          <div style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 32, fontWeight: 500, lineHeight: 1.6 }}>
-            Override the From name and address for email campaigns linked to this store. SMTP still uses your agency email settings.
-          </div>
-
-          <div style={{ marginBottom: 32, padding: '20px', background: 'var(--bg-primary)', borderRadius: 12, border: '1px solid var(--border-color)' }}>
-            <Checkbox style={{ color: "var(--text-primary)", fontWeight: 700, fontSize: 15 }}>
-              Use custom sender for this store
-            </Checkbox>
-          </div>
-
-          <div style={{ marginBottom: 24 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>From email</div>
-            <Input size="large" style={{ borderRadius: 8 }} />
-          </div>
-
-          <div style={{ marginBottom: 24 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>From name</div>
-            <Input defaultValue={activeStore.slug} size="large" style={{ borderRadius: 8 }} />
-          </div>
-
-          <div style={{ marginBottom: 40 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>Reply-to (optional)</div>
-            <Input size="large" style={{ borderRadius: 8 }} />
-          </div>
-
-          <Button type="primary" style={{ background: "var(--accent-primary)", border: 'none', borderRadius: 8, fontWeight: 800, height: 48, padding: "0 40px", fontSize: 16 }}>
-            Save Sender Settings
-          </Button>
-
-        </Card>
+        ) : (
+          <>
+            {renderEmailSectionNav()}
+            {emailLoading ? (
+              <div style={{ textAlign: "center", padding: 60 }}><Spin /></div>
+            ) : (
+              <>
+                {emailSection === "smtp" && renderEmailSmtpSection()}
+                {emailSection === "templates" && renderEmailTemplatesGallery()}
+                {emailSection === "orderMail" && renderFocusedTemplateCard("orderConfirmation", <Package size={20} color="var(--accent-primary)" />)}
+                {emailSection === "welcomeMail" && renderFocusedTemplateCard("welcome", <Gift size={20} color="var(--accent-primary)" />)}
+              </>
+            )}
+          </>
+        )}
       </div>
     </motion.div>
   );
