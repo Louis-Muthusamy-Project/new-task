@@ -337,6 +337,7 @@ exports.createOrder = async (req, res) => {
     currency: products[0]?.currency || 'USD',
     paymentStatus: 'Pending',
     fulfillmentStatus: 'Unfulfilled',
+    status: 'Pending',
   });
 
   res.status(201).json({

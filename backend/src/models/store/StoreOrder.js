@@ -42,6 +42,18 @@ const StoreOrderSchema = new Schema(
       default: 'Unfulfilled',
       index: true,
     },
+    // Single merchant-facing order status shown in the Orders tab
+    // (StoresTab.jsx / orderController.js). Coarser than the
+    // paymentStatus/fulfillmentStatus pair above — those still get set by
+    // the checkout flow (storeStorefrontController.createOrder) and payment
+    // webhooks, while `status` is what a merchant actually clicks through
+    // as the order moves toward fulfillment.
+    status: {
+      type: String,
+      enum: ['Pending', 'Paid', 'Shipped', 'Delivered', 'Cancelled'],
+      default: 'Pending',
+      index: true,
+    },
     isDeleted: { type: Boolean, default: false, index: true },
   },
   { timestamps: true }
@@ -49,5 +61,6 @@ const StoreOrderSchema = new Schema(
 
 StoreOrderSchema.index({ storeId: 1, orderNumber: 1 }, { unique: true, sparse: true });
 StoreOrderSchema.index({ storeId: 1, paymentStatus: 1 });
+StoreOrderSchema.index({ storeId: 1, status: 1 });
 
 module.exports = mongoose.models.StoreOrder || mongoose.model('StoreOrder', StoreOrderSchema);

@@ -138,6 +138,130 @@ export const customerApi = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────
+// Shipping Module — admin config used by the Shipping tab in StoresTab.jsx.
+// One StoreShipping document per store: Shipping Zones (each with
+// Shipping Charges + Delivery Time per rate) plus a store-wide Free
+// Shipping threshold.
+// ─────────────────────────────────────────────────────────────────────────
+export const shippingApi = {
+  get: async (storeId) => {
+    const json = unwrap(await requestJson(`/store/${storeId}/admin/shipping`));
+    return json.data;
+  },
+
+  updateSettings: async (storeId, payload) => {
+    const json = unwrap(
+      await requestJson(`/store/${storeId}/admin/shipping`, { method: 'PATCH', body: payload })
+    );
+    return json.data;
+  },
+
+  createZone: async (storeId, payload) => {
+    const json = unwrap(
+      await requestJson(`/store/${storeId}/admin/shipping/zones`, { method: 'POST', body: payload })
+    );
+    return json.data;
+  },
+
+  updateZone: async (storeId, zoneId, payload) => {
+    const json = unwrap(
+      await requestJson(`/store/${storeId}/admin/shipping/zones/${zoneId}`, { method: 'PATCH', body: payload })
+    );
+    return json.data;
+  },
+
+  removeZone: async (storeId, zoneId) => {
+    const json = unwrap(
+      await requestJson(`/store/${storeId}/admin/shipping/zones/${zoneId}`, { method: 'DELETE' })
+    );
+    return json.data;
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────
+// Discounts Module — admin CRUD used by the Discounts tab in StoresTab.jsx.
+// Create / Edit / Delete a coupon (code, Percentage/Flat value, Expiry,
+// Minimum Order).
+// ─────────────────────────────────────────────────────────────────────────
+export const DISCOUNT_TYPES = ['Percentage', 'Flat', 'FreeShipping'];
+
+export const discountApi = {
+  list: async (storeId, { search } = {}) => {
+    const params = new URLSearchParams();
+    if (search) params.set('search', search);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const json = unwrap(await requestJson(`/store/${storeId}/admin/discounts${qs}`));
+    return json.data;
+  },
+
+  get: async (storeId, id) => {
+    const json = unwrap(await requestJson(`/store/${storeId}/admin/discounts/${id}`));
+    return json.data;
+  },
+
+  create: async (storeId, payload) => {
+    const json = unwrap(
+      await requestJson(`/store/${storeId}/admin/discounts`, { method: 'POST', body: payload })
+    );
+    return json.data;
+  },
+
+  update: async (storeId, id, payload) => {
+    const json = unwrap(
+      await requestJson(`/store/${storeId}/admin/discounts/${id}`, { method: 'PATCH', body: payload })
+    );
+    return json.data;
+  },
+
+  remove: async (storeId, id) => {
+    const json = unwrap(
+      await requestJson(`/store/${storeId}/admin/discounts/${id}`, { method: 'DELETE' })
+    );
+    return json.data;
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────
+// Orders Module — admin List / View / Update Status / Delete used by the
+// Orders tab in StoresTab.jsx. Orders themselves are created by the
+// storefront checkout flow, not here.
+// ─────────────────────────────────────────────────────────────────────────
+export const ORDER_STATUSES = ['Pending', 'Paid', 'Shipped', 'Delivered', 'Cancelled'];
+
+export const orderApi = {
+  list: async (storeId, { status, search } = {}) => {
+    const params = new URLSearchParams();
+    if (status) params.set('status', status);
+    if (search) params.set('search', search);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const json = unwrap(await requestJson(`/store/${storeId}/admin/orders${qs}`));
+    return json.data;
+  },
+
+  get: async (storeId, id) => {
+    const json = unwrap(await requestJson(`/store/${storeId}/admin/orders/${id}`));
+    return json.data;
+  },
+
+  updateStatus: async (storeId, id, status) => {
+    const json = unwrap(
+      await requestJson(`/store/${storeId}/admin/orders/${id}/status`, {
+        method: 'PATCH',
+        body: { status },
+      })
+    );
+    return json.data;
+  },
+
+  remove: async (storeId, id) => {
+    const json = unwrap(
+      await requestJson(`/store/${storeId}/admin/orders/${id}`, { method: 'DELETE' })
+    );
+    return json.data;
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────
 // Products Module — admin CRUD used by the Products tab in StoresTab.jsx.
 // Create / Edit / Delete, Images, Inventory, Price, SEO.
 // ─────────────────────────────────────────────────────────────────────────

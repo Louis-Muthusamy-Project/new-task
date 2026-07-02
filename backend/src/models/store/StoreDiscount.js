@@ -10,13 +10,16 @@ const StoreDiscountSchema = new Schema(
       index: true,
     },
     code: { type: String, trim: true, uppercase: true, index: true },
-    type: { type: String, enum: ['Percentage', 'Fixed', 'FreeShipping'], default: 'Percentage' },
+    type: { type: String, enum: ['Percentage', 'Flat', 'FreeShipping'], default: 'Percentage' },
     value: { type: Number, default: 0 },
+    // Order subtotal must reach this amount for the discount to apply.
+    minOrderAmount: { type: Number, default: 0 },
     appliesToCollectionIds: [{ type: Schema.Types.ObjectId, ref: 'StoreCollection' }],
     appliesToProductIds: [{ type: Schema.Types.ObjectId, ref: 'StoreProduct' }],
     usageLimit: { type: Number, default: null },
     usedCount: { type: Number, default: 0 },
     startsAt: { type: Date, default: null },
+    // Expiry date — discount can no longer be applied after this.
     endsAt: { type: Date, default: null },
     isActive: { type: Boolean, default: true, index: true },
     isDeleted: { type: Boolean, default: false, index: true },

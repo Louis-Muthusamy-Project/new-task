@@ -49,4 +49,16 @@ router.use('/store', require('./collectionRoutes'));
 // StoresTab.jsx.
 router.use('/store', require('./customerRoutes'));
 
+// Admin Orders (List/View/Update Status/Delete) used by the Orders tab in
+// StoresTab.jsx. Orders are created via storeStorefrontRoutes.js checkout.
+router.use('/store', require('./orderRoutes'));
+
+// Admin Discounts CRUD (Coupon/Percentage/Flat/Expiry/Minimum Order) used
+// by the Discounts tab in StoresTab.jsx.
+router.use('/store', require('./discountRoutes'));
+
+// Admin Shipping config (Zones/Charges/Free Shipping/Delivery Time) used
+// by the Shipping tab in StoresTab.jsx.
+router.use('/store', require('./shippingRoutes'));
+
 module.exports = router;

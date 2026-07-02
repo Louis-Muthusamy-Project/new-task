@@ -7,6 +7,10 @@ const StoreShippingRateSchema = new Schema(
     price: { type: Number, default: 0 },
     minOrderValue: { type: Number, default: null },
     maxOrderValue: { type: Number, default: null },
+    // Estimated transit time shown to the customer at checkout, e.g.
+    // "3-5 business days". Free-text rather than a structured range since
+    // carriers phrase this inconsistently.
+    deliveryTime: { type: String, trim: true, default: '' },
   },
   { _id: false }
 );
@@ -16,8 +20,10 @@ const StoreShippingZoneSchema = new Schema(
     name: { type: String, trim: true, default: '' },
     countries: { type: [String], default: [] },
     rates: { type: [StoreShippingRateSchema], default: [] },
-  },
-  { _id: false }
+  }
+  // Zones keep their auto-generated _id (unlike the rate subdocument
+  // above) so a single zone can be targeted directly by the admin API
+  // (PATCH/DELETE /:storeId/admin/shipping/zones/:zoneId).
 );
 
 /**

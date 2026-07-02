@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Button, Table, Typography, Space, Popconfirm, Select, Card, Input, Row, Col, Checkbox, Tag, message, Empty, Spin } from "antd";
+import { Button, Table, Typography, Space, Popconfirm, Select, Card, Input, InputNumber, Row, Col, Checkbox, Tag, message, Empty, Spin } from "antd";
 import { Plus, Trash2, Store, ShoppingBag, LayoutGrid, Users, Tag as TagIcon, LayoutTemplate, Truck, Settings, CreditCard, Mail, Search, ExternalLink, Activity, ArrowRight, Eye, Edit3, Image as ImageIcon } from "lucide-react";
 import { motion } from "framer-motion";
 import CreateStoreModal from "./CreateStoreModal";
@@ -7,7 +7,9 @@ import StoreTemplateLibraryModal from "./StoreTemplateLibraryModal";
 import ProductFormModal from "./ProductFormModal";
 import CollectionFormModal from "./CollectionFormModal";
 import CustomerFormModal from "./CustomerFormModal";
-import { productApi, storeApi, collectionApi, customerApi } from "../../../api/storeApi";
+import { productApi, storeApi, collectionApi, customerApi, orderApi, ORDER_STATUSES, discountApi, DISCOUNT_TYPES, shippingApi } from "../../../api/storeApi";
+import DiscountFormModal from "./DiscountFormModal";
+import ShippingZoneModal from "./ShippingZoneModal";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -70,6 +72,177 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
       loadProducts();
     } catch (err) {
       message.error(err.message || "Failed to delete product.");
+    }
+  };
+
+  // ── Orders Module state (List/View/Update Status/Delete) ──
+  const [orders, setOrders] = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [orderStatusFilter, setOrderStatusFilter] = useState(null);
+  const [updatingOrderId, setUpdatingOrderId] = useState(null);
+
+  const loadOrders = async () => {
+    if (!storeId) return;
+    setOrdersLoading(true);
+    try {
+      const data = await orderApi.list(storeId, { status: orderStatusFilter || undefined });
+      setOrders(data || []);
+    } catch (err) {
+      message.error(err.message || "Failed to load orders.");
+    } finally {
+      setOrdersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === "orders") {
+      loadOrders();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSubTab, storeId, orderStatusFilter]);
+
+  const handleOrderStatusChange = async (order, status) => {
+    setUpdatingOrderId(order._id);
+    try {
+      const updated = await orderApi.updateStatus(storeId, order._id, status);
+      setOrders((prev) => prev.map((o) => (o._id === order._id ? { ...o, ...updated } : o)));
+      message.success(`Order marked as ${status}.`);
+    } catch (err) {
+      message.error(err.message || "Failed to update order status.");
+    } finally {
+      setUpdatingOrderId(null);
+    }
+  };
+
+  const handleDeleteOrder = async (order) => {
+    try {
+      await orderApi.remove(storeId, order._id);
+      message.success("Order deleted.");
+      loadOrders();
+    } catch (err) {
+      message.error(err.message || "Failed to delete order.");
+    }
+  };
+
+  // ── Discounts Module state (Create/Edit/Delete) ──
+  const [discounts, setDiscounts] = useState([]);
+  const [discountsLoading, setDiscountsLoading] = useState(false);
+  const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
+  const [editingDiscount, setEditingDiscount] = useState(null);
+
+  const loadDiscounts = async () => {
+    if (!storeId) return;
+    setDiscountsLoading(true);
+    try {
+      const data = await discountApi.list(storeId);
+      setDiscounts(data || []);
+    } catch (err) {
+      message.error(err.message || "Failed to load discounts.");
+    } finally {
+      setDiscountsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === "discounts") {
+      loadDiscounts();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSubTab, storeId]);
+
+  const openCreateDiscount = () => {
+    setEditingDiscount(null);
+    setIsDiscountModalOpen(true);
+  };
+
+  const openEditDiscount = (discount) => {
+    setEditingDiscount(discount);
+    setIsDiscountModalOpen(true);
+  };
+
+  const handleDiscountSaved = () => {
+    setIsDiscountModalOpen(false);
+    setEditingDiscount(null);
+    loadDiscounts();
+  };
+
+  const handleDeleteDiscount = async (discount) => {
+    try {
+      await discountApi.remove(storeId, discount._id);
+      message.success("Discount deleted.");
+      loadDiscounts();
+    } catch (err) {
+      message.error(err.message || "Failed to delete discount.");
+    }
+  };
+
+  // ── Shipping Module state (Zones/Charges/Free Shipping/Delivery Time) ──
+  const [shippingConfig, setShippingConfig] = useState(null);
+  const [shippingLoading, setShippingLoading] = useState(false);
+  const [isZoneModalOpen, setIsZoneModalOpen] = useState(false);
+  const [editingZone, setEditingZone] = useState(null);
+  const [freeShippingInput, setFreeShippingInput] = useState(null);
+  const [savingFreeShipping, setSavingFreeShipping] = useState(false);
+
+  const loadShipping = async () => {
+    if (!storeId) return;
+    setShippingLoading(true);
+    try {
+      const data = await shippingApi.get(storeId);
+      setShippingConfig(data || null);
+      setFreeShippingInput(data?.freeShippingThreshold ?? null);
+    } catch (err) {
+      message.error(err.message || "Failed to load shipping settings.");
+    } finally {
+      setShippingLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === "shipping") {
+      loadShipping();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSubTab, storeId]);
+
+  const openCreateZone = () => {
+    setEditingZone(null);
+    setIsZoneModalOpen(true);
+  };
+
+  const openEditZone = (zone) => {
+    setEditingZone(zone);
+    setIsZoneModalOpen(true);
+  };
+
+  const handleZoneSaved = (updatedShipping) => {
+    setIsZoneModalOpen(false);
+    setEditingZone(null);
+    setShippingConfig(updatedShipping);
+  };
+
+  const handleDeleteZone = async (zone) => {
+    try {
+      const updated = await shippingApi.removeZone(storeId, zone._id);
+      setShippingConfig(updated);
+      message.success("Shipping zone deleted.");
+    } catch (err) {
+      message.error(err.message || "Failed to delete shipping zone.");
+    }
+  };
+
+  const handleSaveFreeShipping = async () => {
+    setSavingFreeShipping(true);
+    try {
+      const updated = await shippingApi.updateSettings(storeId, {
+        freeShippingThreshold: freeShippingInput === "" ? null : freeShippingInput,
+      });
+      setShippingConfig(updated);
+      message.success("Free shipping settings saved.");
+    } catch (err) {
+      message.error(err.message || "Failed to save free shipping settings.");
+    } finally {
+      setSavingFreeShipping(false);
     }
   };
 
@@ -459,7 +632,110 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
   };
 
   const renderShipping = () => (
-    <motion.div variants={itemVariants} className="store-manage-content" style={{ display: "flex", justifyContent: "center" }}>
+    <motion.div variants={itemVariants} className="store-manage-content" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 24 }}>
+      <Card style={{ width: "100%", maxWidth: 800, borderRadius: 16, border: "1px solid var(--border-color)", background: 'var(--bg-secondary)' }} bodyStyle={{ padding: 40 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)' }}>Shipping zones</div>
+          {storeId && (
+            <Button type="primary" icon={<Plus size={16} />} onClick={openCreateZone} style={{ background: "var(--accent-success)", border: 'none', borderRadius: 8, fontWeight: 700 }}>
+              Zone
+            </Button>
+          )}
+        </div>
+        <div style={{ color: "var(--text-secondary)", fontSize: 14, fontWeight: 500, marginBottom: 24 }}>
+          Group countries into zones, each with its own shipping charges and delivery time estimates.
+        </div>
+
+        {!storeId ? (
+          <Text type="secondary" style={{ fontSize: 14, fontWeight: 500 }}>
+            This store isn't linked to a backend record, so shipping zones can't be managed yet. Create a new store to try the Shipping module.
+          </Text>
+        ) : shippingLoading ? (
+          <div style={{ padding: 40, textAlign: "center" }}><Spin /></div>
+        ) : !shippingConfig?.zones?.length ? (
+          <div style={{ padding: "32px 0", textAlign: "center" }}>
+            <Empty description="No shipping zones yet" />
+            <Button type="primary" icon={<Plus size={16} />} onClick={openCreateZone} style={{ marginTop: 16, background: "var(--accent-success)", border: "none", borderRadius: 8, fontWeight: 700 }}>
+              Add your first zone
+            </Button>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {shippingConfig.zones.map((zone) => (
+              <div key={zone._id} style={{ border: "1px solid var(--border-color)", borderRadius: 12, padding: 20 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 16, color: "var(--text-primary)" }}>{zone.name}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 500, marginTop: 2 }}>
+                      {zone.countries?.length ? zone.countries.join(", ") : "No countries specified"}
+                    </div>
+                  </div>
+                  <Space>
+                    <Button icon={<Edit3 size={14} />} onClick={() => openEditZone(zone)} style={{ borderRadius: 8, fontWeight: 600, borderColor: "var(--border-color)", color: "var(--text-primary)", background: "var(--bg-secondary)" }}>
+                      Edit
+                    </Button>
+                    <Popconfirm title="Delete this zone?" onConfirm={() => handleDeleteZone(zone)} okText="Delete" okButtonProps={{ danger: true }}>
+                      <Button danger icon={<Trash2 size={14} />} style={{ borderRadius: 8, background: "rgba(239, 68, 68, 0.1)", border: "none" }} />
+                    </Popconfirm>
+                  </Space>
+                </div>
+
+                {zone.rates?.length ? (
+                  <Table
+                    size="small"
+                    pagination={false}
+                    dataSource={zone.rates.map((r, i) => ({ ...r, key: i }))}
+                    columns={[
+                      { title: "RATE", dataIndex: "name", key: "name", render: (t) => <span style={{ fontWeight: 600 }}>{t}</span> },
+                      { title: "SHIPPING CHARGE", key: "price", render: (_, r) => `${activeStore?.currency || "USD"} ${Number(r.price || 0).toFixed(2)}` },
+                      { title: "DELIVERY TIME", dataIndex: "deliveryTime", key: "deliveryTime", render: (t) => t || "—" },
+                    ]}
+                  />
+                ) : (
+                  <Text type="secondary" style={{ fontSize: 12 }}>No rates configured for this zone.</Text>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card style={{ width: "100%", maxWidth: 800, borderRadius: 16, border: "1px solid var(--border-color)", background: 'var(--bg-secondary)' }} bodyStyle={{ padding: 40 }}>
+        <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 4, color: 'var(--text-primary)' }}>Free shipping</div>
+        <div style={{ color: "var(--text-secondary)", fontSize: 14, fontWeight: 500, marginBottom: 24 }}>
+          Orders at or above this subtotal automatically qualify for free shipping at checkout. Leave blank to disable.
+        </div>
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <InputNumber
+            size="large"
+            min={0}
+            disabled={!storeId}
+            value={freeShippingInput}
+            onChange={setFreeShippingInput}
+            placeholder="e.g. 75"
+            style={{ width: 220, borderRadius: 8 }}
+            addonBefore={activeStore?.currency || "USD"}
+          />
+          <Button
+            type="primary"
+            loading={savingFreeShipping}
+            disabled={!storeId}
+            onClick={handleSaveFreeShipping}
+            style={{ background: "var(--accent-success)", border: 'none', borderRadius: 8, fontWeight: 700, height: 40 }}
+          >
+            Save
+          </Button>
+        </div>
+      </Card>
+
+      <ShippingZoneModal
+        open={isZoneModalOpen}
+        onCancel={() => { setIsZoneModalOpen(false); setEditingZone(null); }}
+        onSaved={handleZoneSaved}
+        storeId={storeId}
+        zone={editingZone}
+      />
+
       <Card style={{ width: "100%", maxWidth: 800, borderRadius: 16, border: "1px solid var(--border-color)", background: 'var(--bg-secondary)' }} bodyStyle={{ padding: 40 }}>
         <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 4, color: 'var(--text-primary)' }}>Tax & checkout</div>
         <div style={{ color: "var(--text-secondary)", fontSize: 14, fontWeight: 500, marginBottom: 32 }}>
@@ -541,20 +817,151 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
     </motion.div>
   );
 
+  const ORDER_STATUS_COLORS = {
+    Pending: { bg: "rgba(245, 158, 11, 0.12)", fg: "#b45309" },
+    Paid: { bg: "rgba(59, 130, 246, 0.12)", fg: "#1d4ed8" },
+    Shipped: { bg: "rgba(139, 92, 246, 0.12)", fg: "#6d28d9" },
+    Delivered: { bg: "rgba(16, 185, 129, 0.12)", fg: "var(--accent-success)" },
+    Cancelled: { bg: "rgba(239, 68, 68, 0.12)", fg: "#dc2626" },
+  };
+
   const renderOrders = () => {
     const columns = [
-      { title: "ORDER", key: "order" },
-      { title: "CUSTOMER", key: "customer" },
-      { title: "TOTAL", key: "total" },
-      { title: "PAYMENT", key: "payment" },
-      { title: "FULFILLMENT", key: "fulfillment" },
-      { title: "ACTIONS", key: "actions" },
+      {
+        title: "ORDER",
+        key: "order",
+        render: (_, r) => (
+          <div style={{ fontWeight: 700, color: "var(--text-primary)" }}>
+            {r.orderNumber || `#${String(r._id).slice(-6).toUpperCase()}`}
+          </div>
+        ),
+      },
+      {
+        title: "CUSTOMER",
+        key: "customer",
+        render: (_, r) => (
+          <div>
+            <div style={{ fontWeight: 600, color: "var(--text-primary)" }}>
+              {r.customer ? [r.customer.firstName, r.customer.lastName].filter(Boolean).join(" ") || "—" : "Guest"}
+            </div>
+            {r.customer?.email && (
+              <div style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 500 }}>{r.customer.email}</div>
+            )}
+          </div>
+        ),
+      },
+      {
+        title: "ITEMS",
+        key: "items",
+        render: (_, r) => (
+          <Text type="secondary" style={{ fontWeight: 600 }}>
+            {(r.items || []).reduce((sum, i) => sum + (i.quantity || 0), 0)}
+          </Text>
+        ),
+      },
+      {
+        title: "TOTAL",
+        key: "total",
+        render: (_, r) => (
+          <Text style={{ fontWeight: 700, color: "var(--text-primary)" }}>
+            {r.currency || "USD"} {Number(r.total || 0).toFixed(2)}
+          </Text>
+        ),
+      },
+      {
+        title: "STATUS",
+        key: "status",
+        render: (_, r) => {
+          const colors = ORDER_STATUS_COLORS[r.status] || ORDER_STATUS_COLORS.Pending;
+          return (
+            <Select
+              value={r.status || "Pending"}
+              onChange={(value) => handleOrderStatusChange(r, value)}
+              loading={updatingOrderId === r._id}
+              disabled={updatingOrderId === r._id}
+              variant="borderless"
+              style={{
+                minWidth: 130,
+                background: colors.bg,
+                borderRadius: 8,
+                fontWeight: 700,
+              }}
+              popupMatchSelectWidth={false}
+              options={ORDER_STATUSES.map((s) => ({
+                value: s,
+                label: (
+                  <span style={{ color: ORDER_STATUS_COLORS[s].fg, fontWeight: 700 }}>{s}</span>
+                ),
+              }))}
+              labelRender={() => <span style={{ color: colors.fg, fontWeight: 700 }}>{r.status || "Pending"}</span>}
+            />
+          );
+        },
+      },
+      {
+        title: "DATE",
+        key: "date",
+        render: (_, r) => (
+          <Text type="secondary" style={{ fontSize: 12, fontWeight: 500 }}>
+            {r.createdAt ? new Date(r.createdAt).toLocaleDateString() : "—"}
+          </Text>
+        ),
+      },
+      {
+        title: "ACTIONS",
+        key: "actions",
+        render: (_, r) => (
+          <Popconfirm title="Delete this order?" onConfirm={() => handleDeleteOrder(r)} okText="Delete" okButtonProps={{ danger: true }}>
+            <Button danger icon={<Trash2 size={14} />} style={{ borderRadius: 8, background: "rgba(239, 68, 68, 0.1)", border: "none" }} />
+          </Popconfirm>
+        ),
+      },
     ];
+
     return (
       <motion.div variants={itemVariants} className="store-manage-content">
-        <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, overflow: "hidden", border: "1px solid var(--border-color)", background: 'var(--bg-secondary)' }}>
-          <Table columns={columns} dataSource={[]} pagination={false} locale={{ emptyText: <div style={{ padding: "40px 0", color: "var(--text-secondary)", fontSize: 14, fontWeight: 600 }}>No orders yet.</div> }} />
-        </Card>
+        {!storeId ? (
+          <Card bodyStyle={{ padding: 48, textAlign: "center" }} style={{ borderRadius: 16, border: "1px solid var(--border-color)", background: "var(--bg-secondary)" }}>
+            <Text type="secondary" style={{ fontSize: 14, fontWeight: 500 }}>
+              This store isn't linked to a backend record, so orders can't be managed yet. Create a new store to try the Orders module.
+            </Text>
+          </Card>
+        ) : (
+          <>
+            <div style={{ marginBottom: 16, display: "flex", justifyContent: "flex-end" }}>
+              <Select
+                allowClear
+                placeholder="Filter by status"
+                value={orderStatusFilter || undefined}
+                onChange={(value) => setOrderStatusFilter(value || null)}
+                style={{ width: 200 }}
+                options={ORDER_STATUSES.map((s) => ({ value: s, label: s }))}
+              />
+            </div>
+            <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, overflow: "hidden", border: "1px solid var(--border-color)", background: "var(--bg-secondary)" }}>
+              {ordersLoading ? (
+                <div style={{ padding: 60, textAlign: "center" }}>
+                  <Spin />
+                </div>
+              ) : (
+                <Table
+                  columns={columns}
+                  dataSource={orders}
+                  rowKey="_id"
+                  pagination={false}
+                  size="middle"
+                  locale={{
+                    emptyText: (
+                      <div style={{ padding: "60px 0", textAlign: "center" }}>
+                        <Empty description="No orders yet" />
+                      </div>
+                    ),
+                  }}
+                />
+              )}
+            </Card>
+          </>
+        )}
       </motion.div>
     );
   };
@@ -765,27 +1172,119 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
   };
 
   const renderDiscounts = () => {
-    const discounts = [
-      { key: 1, code: "drive10", type: "Percent", value: "10.00%", uses: 0, active: "Yes" },
-    ];
     const columns = [
-      { title: "CODE", dataIndex: "code", key: "code", render: t => <Tag color="blue" style={{ fontWeight: 800, fontSize: 13, padding: '4px 8px', borderRadius: 6 }}>{t}</Tag> },
-      { title: "TYPE", dataIndex: "type", key: "type", render: t => <Text type="secondary" style={{ fontWeight: 600 }}>{t}</Text> },
-      { title: "VALUE", dataIndex: "value", key: "value", render: t => <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{t}</span> },
-      { title: "USES", dataIndex: "uses", key: "uses", render: t => <Text type="secondary" style={{ fontWeight: 500 }}>{t}</Text> },
-      { title: "ACTIVE", dataIndex: "active", key: "active", render: t => <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{t}</span> },
-      { title: "ACTIONS", key: "actions", render: () => (
-        <Space>
-          <Button icon={<Edit3 size={14}/>} style={{ borderRadius: 8, fontWeight: 600, borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'var(--bg-secondary)' }}>Edit</Button>
-          <Button danger icon={<Trash2 size={14}/>} style={{ borderRadius: 8, background: 'rgba(239, 68, 68, 0.1)', border: 'none' }} />
-        </Space>
-      ) },
+      {
+        title: "COUPON",
+        dataIndex: "code",
+        key: "code",
+        render: (t) => <Tag color="blue" style={{ fontWeight: 800, fontSize: 13, padding: "4px 8px", borderRadius: 6 }}>{t}</Tag>,
+      },
+      {
+        title: "TYPE",
+        key: "type",
+        render: (_, r) => <Text type="secondary" style={{ fontWeight: 600 }}>{r.type === "Flat" ? "Flat amount" : r.type === "FreeShipping" ? "Free shipping" : "Percentage"}</Text>,
+      },
+      {
+        title: "VALUE",
+        key: "value",
+        render: (_, r) => (
+          <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>
+            {r.type === "Percentage" ? `${r.value || 0}%` : r.type === "Flat" ? `${activeStore?.currency || "USD"} ${Number(r.value || 0).toFixed(2)}` : "—"}
+          </span>
+        ),
+      },
+      {
+        title: "MIN. ORDER",
+        key: "minOrderAmount",
+        render: (_, r) => (
+          <Text type="secondary" style={{ fontWeight: 600 }}>
+            {r.minOrderAmount ? `${activeStore?.currency || "USD"} ${Number(r.minOrderAmount).toFixed(2)}` : "—"}
+          </Text>
+        ),
+      },
+      {
+        title: "EXPIRY",
+        key: "endsAt",
+        render: (_, r) => (
+          <Text type="secondary" style={{ fontWeight: 600 }}>
+            {r.endsAt ? new Date(r.endsAt).toLocaleDateString() : "No expiry"}
+          </Text>
+        ),
+      },
+      {
+        title: "USES",
+        dataIndex: "usedCount",
+        key: "uses",
+        render: (t) => <Text type="secondary" style={{ fontWeight: 500 }}>{t ?? 0}</Text>,
+      },
+      {
+        title: "ACTIVE",
+        key: "active",
+        render: (_, r) => (
+          <Tag style={{ background: r.isActive ? "rgba(16, 185, 129, 0.1)" : "rgba(148, 163, 184, 0.15)", color: r.isActive ? "var(--accent-success)" : "var(--text-tertiary)", border: "none", fontWeight: 700, borderRadius: 6 }}>
+            {r.isActive ? "Yes" : "No"}
+          </Tag>
+        ),
+      },
+      {
+        title: "ACTIONS",
+        key: "actions",
+        render: (_, r) => (
+          <Space>
+            <Button icon={<Edit3 size={14} />} onClick={() => openEditDiscount(r)} style={{ borderRadius: 8, fontWeight: 600, borderColor: "var(--border-color)", color: "var(--text-primary)", background: "var(--bg-secondary)" }}>
+              Edit
+            </Button>
+            <Popconfirm title="Delete this discount?" onConfirm={() => handleDeleteDiscount(r)} okText="Delete" okButtonProps={{ danger: true }}>
+              <Button danger icon={<Trash2 size={14} />} style={{ borderRadius: 8, background: "rgba(239, 68, 68, 0.1)", border: "none" }} />
+            </Popconfirm>
+          </Space>
+        ),
+      },
     ];
+
     return (
       <motion.div variants={itemVariants} className="store-manage-content">
-        <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, overflow: "hidden", border: "1px solid var(--border-color)", background: 'var(--bg-secondary)' }}>
-          <Table columns={columns} dataSource={discounts} pagination={false} size="middle" />
-        </Card>
+        {!storeId ? (
+          <Card bodyStyle={{ padding: 48, textAlign: "center" }} style={{ borderRadius: 16, border: "1px solid var(--border-color)", background: "var(--bg-secondary)" }}>
+            <Text type="secondary" style={{ fontSize: 14, fontWeight: 500 }}>
+              This store isn't linked to a backend record, so discounts can't be managed yet. Create a new store to try the Discounts module.
+            </Text>
+          </Card>
+        ) : (
+          <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, overflow: "hidden", border: "1px solid var(--border-color)", background: "var(--bg-secondary)" }}>
+            {discountsLoading ? (
+              <div style={{ padding: 60, textAlign: "center" }}>
+                <Spin />
+              </div>
+            ) : (
+              <Table
+                columns={columns}
+                dataSource={discounts}
+                rowKey="_id"
+                pagination={false}
+                size="middle"
+                locale={{
+                  emptyText: (
+                    <div style={{ padding: "60px 0", textAlign: "center" }}>
+                      <Empty description="No discounts yet" />
+                      <Button type="primary" icon={<Plus size={16} />} onClick={openCreateDiscount} style={{ marginTop: 16, background: "var(--accent-success)", border: "none", borderRadius: 8, fontWeight: 700 }}>
+                        Add your first discount
+                      </Button>
+                    </div>
+                  ),
+                }}
+              />
+            )}
+          </Card>
+        )}
+
+        <DiscountFormModal
+          open={isDiscountModalOpen}
+          onCancel={() => { setIsDiscountModalOpen(false); setEditingDiscount(null); }}
+          onSaved={handleDiscountSaved}
+          storeId={storeId}
+          discount={editingDiscount}
+        />
       </motion.div>
     );
   };
@@ -1064,7 +1563,7 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
       case "products": return <Button type="primary" icon={<Plus size={16} />} onClick={openCreateProduct} style={{ background: "var(--accent-success)", border: 'none', borderRadius: 8, fontWeight: 700 }}>Product</Button>;
       case "collections": return <Button type="primary" icon={<Plus size={16} />} onClick={openCreateCollection} style={{ background: "var(--accent-success)", border: 'none', borderRadius: 8, fontWeight: 700 }}>Collection</Button>;
       case "customers": return <Button type="primary" icon={<Plus size={16} />} onClick={openCreateCustomer} style={{ background: "var(--accent-success)", border: 'none', borderRadius: 8, fontWeight: 700 }}>Customer</Button>;
-      case "discounts": return <Button type="primary" icon={<Plus size={16} />} style={{ background: "var(--accent-success)", border: 'none', borderRadius: 8, fontWeight: 700 }}>Discount</Button>;
+      case "discounts": return <Button type="primary" icon={<Plus size={16} />} onClick={openCreateDiscount} style={{ background: "var(--accent-success)", border: 'none', borderRadius: 8, fontWeight: 700 }}>Discount</Button>;
       default: return null;
     }
   };
