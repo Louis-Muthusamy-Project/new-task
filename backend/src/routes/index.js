@@ -22,11 +22,10 @@ router.use('/templates', require('./templatesRoutes'));
 // Website template ZIP upload used by websiteWizardCloudinaryApi.js
 router.use('/website', require('./websiteRoutesTemplates'));
 
+// Store templates endpoint used by StoreTemplateLibraryModal.jsx
+router.use('/store-templates', require('./storeTemplatesRoutes'));
+
+// Store template ZIP upload (same pipeline as website, separate collections)
+router.use('/store', require('./storeRoutesTemplates'));
+
 module.exports = router;
-
-
-
-
-
-
-

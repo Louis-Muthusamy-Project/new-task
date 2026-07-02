@@ -1,20 +1,87 @@
-import React, { useState } from "react";
-import { Modal, Input, Checkbox, Button, Typography, Space, Row, Col, Card, Tag } from "antd";
-import { Store, X as CloseIcon, Search as SearchIcon, CheckCircle } from "lucide-react";
+import React, { useState, useRef } from "react";
+import { Modal, Input, Checkbox, Button, Typography, Space, Row, Col, Card, Tag, message } from "antd";
+import { Store, X as CloseIcon, Search as SearchIcon, CheckCircle, UploadCloud } from "lucide-react";
+import { useAuth } from "../../../contexts/AuthContext";
 
 const { Title, Text } = Typography;
 
 const StoreTemplateLibraryModal = ({ open, onCancel, onCreate, initialStoreName }) => {
+  const { role } = useAuth();
+  // Only admins and super admins are allowed to upload store templates to the library
+  const canUploadTemplate = role === "admin" || role === "superadmin";
+
   const [storeName, setStoreName] = useState(initialStoreName || "");
   const [installDemo, setInstallDemo] = useState(true);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const fileInputRef = useRef(null);
 
-  const templates = [
+  const [templates, setTemplates] = useState([
     { id: 1, name: "AutoSphere", type: "Automotive", bg: "linear-gradient(135deg, #7f1d1d, #450a0a)" },
     { id: 2, name: "DriveNest", type: "Automotive", bg: "linear-gradient(135deg, #1f2937, #030712)" },
     { id: 3, name: "TurboKart", type: "Automotive", bg: "linear-gradient(135deg, #1d4ed8, #1e3a8a)" },
     { id: 4, name: "MotoCraft", type: "Automotive", bg: "linear-gradient(135deg, #374151, #111827)" },
-  ];
+  ]);
+
+  const handleUploadClick = () => {
+    if (!canUploadTemplate) return;
+    fileInputRef.current?.click();
+  };
+
+  const [uploading, setUploading] = useState(false);
+
+  const handleFileSelected = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !canUploadTemplate) return;
+
+    const displayName = file.name.replace(/\.[^/.]+$/, "");
+    const palette = [
+      "linear-gradient(135deg, #7f1d1d, #450a0a)",
+      "linear-gradient(135deg, #1f2937, #030712)",
+      "linear-gradient(135deg, #1d4ed8, #1e3a8a)",
+      "linear-gradient(135deg, #374151, #111827)",
+      "linear-gradient(135deg, #0d9488, #134e4a)",
+    ];
+
+    // Reflect the upload in the grid immediately for a snappy UI.
+    const newTemplate = {
+      id: `pending-${Date.now()}`,
+      name: displayName,
+      type: "Custom",
+      bg: palette[Math.floor(Math.random() * palette.length)],
+    };
+    setTemplates((prev) => [newTemplate, ...prev]);
+
+    // Persist to the backend store-template library (StoreTemplate collection),
+    // same import pipeline used by the website module, separate collections.
+    setUploading(true);
+    try {
+      const { storeTemplateApi } = await import("../../../api/storeTemplateApi");
+      const saved = await storeTemplateApi.createStoreTemplate({
+        file,
+        name: displayName,
+        category: "Other",
+        description: "",
+        pages: [],
+        uploadedByRole: role,
+      });
+
+      // Reconcile the placeholder card with the persisted StoreTemplate record.
+      setTemplates((prev) =>
+        prev.map((t) =>
+          t.id === newTemplate.id
+            ? { ...t, id: saved?._id || t.id, thumbnailUrl: saved?.thumbnailUrl }
+            : t
+        )
+      );
+      message.success(`"${file.name}" was uploaded to the store template library.`);
+    } catch (err) {
+      console.error("Failed to persist store template", err);
+      message.error(`Couldn't save "${file.name}" to the server. It's shown locally only.`);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleCreate = () => {
     onCreate({ 
@@ -72,7 +139,28 @@ const StoreTemplateLibraryModal = ({ open, onCancel, onCreate, initialStoreName 
                 <Title level={4} style={{ margin: 0, fontSize: 18, color: "var(--text-primary)" }}>Store templates</Title>
                 <Text type="secondary">Showing 275 of 275 template(s) — demo catalog adds sample products when enabled</Text>
               </div>
-              <Input placeholder="Search templates..." prefix={<SearchIcon size={16} color="var(--text-tertiary)" />} style={{ width: 250, borderRadius: 8, height: 40 }} />
+              <Space>
+                {canUploadTemplate && (
+                  <>
+                    <Button
+                      icon={<UploadCloud size={16} />}
+                      onClick={handleUploadClick}
+                      loading={uploading}
+                      style={{ borderRadius: 8, height: 40, fontWeight: 600, borderColor: "var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)" }}
+                    >
+                      Upload template
+                    </Button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".zip"
+                      onChange={handleFileSelected}
+                      style={{ display: "none" }}
+                    />
+                  </>
+                )}
+                <Input placeholder="Search templates..." prefix={<SearchIcon size={16} color="var(--text-tertiary)" />} style={{ width: 250, borderRadius: 8, height: 40 }} />
+              </Space>
             </div>
           </div>
 
