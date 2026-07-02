@@ -247,6 +247,17 @@ const AppRoutes = () => {
             path="websites/:websiteId/pages/:pageId"
             element={<BccBuilder />}
           />
+
+          {/*
+            Store-module counterpart of the routes above. Reuses the same
+            GrapesJS builder (BccBuilder) — only the data it loads/saves
+            differs (StorePage instead of WebsitePage), which BccBuilder
+            detects from the :storeId param.
+          */}
+          <Route
+            path="stores/:storeId/pages/:pageId"
+            element={<BccBuilder />}
+          />
         </Route>
 
 

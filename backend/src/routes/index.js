@@ -28,4 +28,8 @@ router.use('/store-templates', require('./storeTemplatesRoutes'));
 // Store template ZIP upload (same pipeline as website, separate collections)
 router.use('/store', require('./storeRoutesTemplates'));
 
+// Store page CRUD used by the GrapesJS builder (BccBuilder) when editing
+// StorePage documents — Store-module counterpart of pageRoutes.js.
+router.use('/store', require('./storePageRoutes'));
+
 module.exports = router;

@@ -13,6 +13,7 @@ import {
   Smartphone,
 } from "lucide-react";
 import { websiteWizardApi } from "../../../api/websiteWizardApi";
+import { storeWizardApi } from "../../../api/storeWizardApi";
 
 import GrapesPageEditor from "./GrapesPageEditor";
 import useUnsavedChangesWarning from "../utils/useUnsavedChangesWarning";
@@ -27,32 +28,38 @@ const { Option } = Select;
 /** True when a string looks like a 24-char MongoDB ObjectId */
 const isMongoId = (s) => typeof s === "string" && /^[a-f\d]{24}$/i.test(s);
 
-/** Persist the full page record to sessionStorage so refresh works */
-const STORAGE_KEY = (pageId) => `jeema_page_${pageId}`;
+/**
+ * Persist the full page record to sessionStorage so refresh works.
+ * Keyed by entity kind ("website" | "store") as well as pageId so a
+ * website page and a store page never collide, even if their ids matched.
+ */
+const STORAGE_KEY = (entityKind, pageId) => `jeema_page_${entityKind}_${pageId}`;
 
-function cachePage(pageId, data) {
+function cachePage(entityKind, pageId, data) {
   console.log('[CACHE WRITE]', {
+    entityKind,
     pageId,
     htmlLen: data?.content?.html?.length || 0,
     cssLen: data?.content?.css?.length || 0,
   });
   try {
-    sessionStorage.setItem(STORAGE_KEY(pageId), JSON.stringify(data));
+    sessionStorage.setItem(STORAGE_KEY(entityKind, pageId), JSON.stringify(data));
   } catch (_) { }
 }
 
-function getCachedPage(pageId) {
+function getCachedPage(entityKind, pageId) {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY(pageId));
+    const raw = sessionStorage.getItem(STORAGE_KEY(entityKind, pageId));
     const parsed = raw ? JSON.parse(raw) : null;
     console.log('[CACHE READ]', {
+      entityKind,
       pageId,
       htmlLen: parsed?.content?.html?.length || 0,
       cssLen: parsed?.content?.css?.length || 0,
     });
     return parsed;
   } catch (_) {
-    console.log('[CACHE READ]', { pageId, htmlLen: 0, cssLen: 0 });
+    console.log('[CACHE READ]', { entityKind, pageId, htmlLen: 0, cssLen: 0 });
     return null;
   }
 }
@@ -110,7 +117,17 @@ const StatusBadge = ({ status }) => {
 // ---------------------------------------------------------------------------
 
 const BccBuilder = () => {
-  const { websiteId, pageId } = useParams();
+  // Route params determine which entity this page belongs to:
+  //   /websites/:websiteId/pages/:pageId  → WebsitePage (default)
+  //   /stores/:storeId/pages/:pageId      → StorePage
+  // Only the data source (API + cache) changes based on this — the
+  // GrapesJS builder UI/logic below is shared as-is.
+  const { websiteId, storeId, pageId } = useParams();
+  const isStore = !!storeId;
+  const entityId = isStore ? storeId : websiteId;
+  const entityKind = isStore ? "store" : "website";
+  const pageApi = isStore ? storeWizardApi : websiteWizardApi;
+
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -145,7 +162,7 @@ const BccBuilder = () => {
       setLoading(true);
       setLoadError(null);
 
-      const cached = getCachedPage(pageId);
+      const cached = getCachedPage(entityKind, pageId);
       if (cached) {
         setPage(cached);
         setPageStatus(cached?.status || "Draft");
@@ -165,7 +182,7 @@ const BccBuilder = () => {
       if (!isMongoId(pageId)) {
         const synthetic = {
           _id: pageId,
-          websiteId,
+          [isStore ? "storeId" : "websiteId"]: entityId,
           name: routeState.pageName || "Page",
           slug: routeState.pageSlug || pageId,
           status: "Draft",
@@ -188,20 +205,20 @@ const BccBuilder = () => {
       }
 
       try {
-        const data = await websiteWizardApi.getPage(pageId);
+        const data = await pageApi.getPage(pageId);
 
 
         setPage(data);
         setPageStatus(data?.status || "Draft");
 
         const initial = safeGetInitialContent(data);
-        console.log('[HTML SET]', { source: 'websiteWizardApi.getPage', length: initial.html?.length || 0 });
+        console.log('[HTML SET]', { source: `${entityKind}WizardApi.getPage`, length: initial.html?.length || 0 });
         setHtml(initial.html);
-        console.log('[CSS SET]', { source: 'websiteWizardApi.getPage', length: initial.css?.length || 0 });
+        console.log('[CSS SET]', { source: `${entityKind}WizardApi.getPage`, length: initial.css?.length || 0 });
         setCss(initial.css);
         setHeadLinks(initial.headLinks);
 
-        cachePage(data._id || pageId, data);
+        cachePage(entityKind, data._id || pageId, data);
 
       } catch (err) {
         console.error("[BccBuilder] failed to load page:", err);
@@ -213,7 +230,7 @@ const BccBuilder = () => {
 
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [websiteId, pageId]);
+  }, [websiteId, storeId, pageId]);
 
   // -------------------------------------------------------------------------
   // Save
@@ -264,7 +281,7 @@ const BccBuilder = () => {
         ...(page?.seo && { seo: page.seo }),
       };
 
-      const updated = await websiteWizardApi.updatePage(pageId, payload);
+      const updated = await pageApi.updatePage(pageId, payload);
 
       // FIX: after a save we update metadata (page record, status, cache) but
       // do NOT call setHtml/setCss from the server response. The editor already
@@ -275,7 +292,7 @@ const BccBuilder = () => {
       setPage(updated);
       setPageStatus(updated?.status || "Draft");
 
-      cachePage(updated._id || pageId, {
+      cachePage(entityKind, updated._id || pageId, {
         ...updated,
         // Keep the content the editor has, not whatever the server returned,
         // so a subsequent refresh rehydrates exactly what is on the canvas.
@@ -300,7 +317,7 @@ const BccBuilder = () => {
     } finally {
       setSaving(false);
     }
-  }, [pageId, page, html, css, headLinks, pageStatus]);
+  }, [pageId, page, html, css, headLinks, pageStatus, pageApi, entityKind]);
 
   // Keyboard shortcut: Ctrl/Cmd + S
   useEffect(() => {
@@ -583,7 +600,7 @@ const BccBuilder = () => {
             }}
           >
             <span>
-              <b style={{ color: "var(--text-secondary)" }}>websiteId</b>: {websiteId}
+              <b style={{ color: "var(--text-secondary)" }}>{isStore ? "storeId" : "websiteId"}</b>: {entityId}
             </span>
             <span>
               <b style={{ color: "var(--text-secondary)" }}>pageId</b>: {pageId}
@@ -615,7 +632,7 @@ const BccBuilder = () => {
             <GrapesPageEditor
               height="100%"
               pageKey={pageId}
-              websiteId={websiteId}
+              websiteId={entityId}
               initialHtml={html}
               initialCss={css}
               initialHeadLinks={headLinks}

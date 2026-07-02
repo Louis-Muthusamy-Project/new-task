@@ -6,6 +6,7 @@
  */
 
 const WebsitePage = require('../models/WebsitePage');
+const StorePage = require('../models/store/StorePage');
 
 /**
  * Converts an arbitrary string to a URL-safe slug.
@@ -84,4 +85,45 @@ const generateUniqueSlug = async (baseSlug, websiteId, excludePageId = null) => 
   return `${baseSlug}-${n}`;
 };
 
-module.exports = { slugify, generateUniqueSlug };
+/**
+ * Store-module counterpart of generateUniqueSlug. Same algorithm, scoped to
+ * StorePage documents under a given storeId instead of WebsitePage
+ * documents under a websiteId.
+ *
+ * @param {string}              baseSlug      - Already-slugified base (e.g. "home")
+ * @param {ObjectId|string}     storeId
+ * @param {ObjectId|string|null} [excludePageId] - Own page id when called from
+ *   updateStorePage (skip itself when checking).
+ * @returns {Promise<string>}
+ */
+const generateUniqueStorePageSlug = async (baseSlug, storeId, excludePageId = null) => {
+  const escaped = baseSlug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`^${escaped}(-\\d+)?$`);
+
+  const filter = {
+    storeId,
+    slug: pattern,
+  };
+  if (excludePageId) {
+    filter._id = { $ne: excludePageId };
+  }
+
+  const existing = await StorePage.find(filter, { slug: 1 }).lean();
+
+  if (existing.length === 0) {
+    return baseSlug;
+  }
+
+  const taken = new Set();
+  for (const doc of existing) {
+    const match = doc.slug.match(/-(\d+)$/);
+    taken.add(match ? parseInt(match[1], 10) : 0);
+  }
+
+  let n = 1;
+  while (taken.has(n)) n++;
+
+  return `${baseSlug}-${n}`;
+};
+
+module.exports = { slugify, generateUniqueSlug, generateUniqueStorePageSlug };
