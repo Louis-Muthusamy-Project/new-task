@@ -17,6 +17,28 @@ const TemplatePageDefinitionSchema = new Schema(
   { _id: false }
 );
 
+// Theme = the design tokens applied across every page of the template
+// (colors, fonts, spacing, etc.) — separate from the raw builder project
+// data so the storefront renderer can read/override just the tokens
+// without touching the full GrapesJS project.
+const TemplateThemeSchema = new Schema(
+  {
+    colors: {
+      primary: { type: String, trim: true, default: '' },
+      secondary: { type: String, trim: true, default: '' },
+      background: { type: String, trim: true, default: '' },
+      text: { type: String, trim: true, default: '' },
+    },
+    fonts: {
+      heading: { type: String, trim: true, default: '' },
+      body: { type: String, trim: true, default: '' },
+    },
+    layout: { type: String, trim: true, default: '' },
+    custom: { type: Schema.Types.Mixed, default: {} },
+  },
+  { _id: false }
+);
+
 const StoreTemplateSchema = new Schema(
   {
     name: {
@@ -46,19 +68,43 @@ const StoreTemplateSchema = new Schema(
       trim: true,
       default: '',
     },
-    thumbnailUrl: {
+    // Live/rendered preview (e.g. a hosted HTML preview URL or screenshot
+    // used for the "Preview" action in the template library).
+    preview: {
       type: String,
       trim: true,
       default: '',
     },
-    templateZipCloudinaryUrl: {
+    thumbnail: {
       type: String,
       trim: true,
       default: '',
+    },
+    // Full builder project payload (GrapesJS getProjectData() output —
+    // components, styles, assets) needed to reopen the template in the
+    // editor. `pages` below stays a lightweight snapshot for fast library
+    // list rendering; `projectData` is the source of truth for editing.
+    projectData: {
+      type: Schema.Types.Mixed,
+      default: null,
     },
     pages: {
       type: [TemplatePageDefinitionSchema],
       default: [],
+    },
+    theme: {
+      type: TemplateThemeSchema,
+      default: () => ({}),
+    },
+    status: {
+      type: String,
+      enum: ['Draft', 'Published', 'Archived'],
+      default: 'Draft',
+      index: true,
+    },
+    version: {
+      type: Number,
+      default: 1,
     },
     // Which roles uploaded / own this library entry — kept for auditing since
     // uploads are restricted to admin / superadmin on the frontend.
@@ -72,16 +118,11 @@ const StoreTemplateSchema = new Schema(
       ref: 'User',
       default: null,
     },
-    isActive: {
-      type: Boolean,
-      default: true,
-      index: true,
-    },
   },
   { timestamps: true }
 );
 
-StoreTemplateSchema.index({ category: 1, isActive: 1 });
+StoreTemplateSchema.index({ category: 1, status: 1 });
 StoreTemplateSchema.index({ name: 'text', description: 'text' });
 
 module.exports =

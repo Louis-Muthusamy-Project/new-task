@@ -47,14 +47,30 @@ export const storeTemplateApi = {
 
   // POST /api/store-templates — add a ZIP to the store template library
   // (library catalogue entry only — mirrors websiteWizardApi.createTemplate).
-  createStoreTemplate: async ({ file, name, category, description, thumbnailUrl, pages, uploadedByRole } = {}) => {
+  createStoreTemplate: async ({
+    file,
+    name,
+    category,
+    description,
+    thumbnail,
+    preview,
+    pages,
+    theme,
+    status,
+    version,
+    uploadedByRole,
+  } = {}) => {
     const form = new FormData();
     if (file) form.append('file', file);
     if (name) form.append('name', name);
     if (category) form.append('category', category);
     if (description) form.append('description', description);
-    if (thumbnailUrl) form.append('thumbnailUrl', thumbnailUrl);
+    if (thumbnail) form.append('thumbnail', thumbnail);
+    if (preview) form.append('preview', preview);
     if (pages) form.append('pages', JSON.stringify(pages));
+    if (theme) form.append('theme', JSON.stringify(theme));
+    if (status) form.append('status', status);
+    if (version) form.append('version', version);
     if (uploadedByRole) form.append('uploadedByRole', uploadedByRole);
 
     const json = unwrap(await requestMultipart('/store-templates', form));

@@ -10,7 +10,7 @@ const { upload } = require('../controllers/storeTemplateController');
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const templates = await StoreTemplate.find({ isActive: true }).sort({ updatedAt: -1 });
+    const templates = await StoreTemplate.find({ status: 'Published' }).sort({ updatedAt: -1 });
     res.status(200).json({
       success: true,
       data: templates,
@@ -35,7 +35,19 @@ router.post(
       templateZipCloudinaryUrl = uploadResult.secure_url;
     }
 
-    const { name, category, description, thumbnailUrl, pages, uploadedByRole } = req.body;
+    const {
+      name,
+      category,
+      description,
+      thumbnail,
+      preview,
+      pages,
+      theme,
+      status,
+      version,
+      uploadedByRole,
+    } = req.body;
+
     let parsedPages = [];
     try {
       if (pages) parsedPages = JSON.parse(pages);
@@ -43,13 +55,26 @@ router.post(
       console.error('Failed to parse pages array:', e);
     }
 
+    let parsedTheme;
+    try {
+      if (theme) parsedTheme = JSON.parse(theme);
+    } catch (e) {
+      console.error('Failed to parse theme object:', e);
+    }
+
     const template = await StoreTemplate.create({
       name,
       category,
       description,
-      thumbnailUrl,
-      templateZipCloudinaryUrl,
+      thumbnail,
+      preview,
+      // The raw ZIP itself isn't part of the schema anymore — stash its
+      // Cloudinary URL inside projectData alongside the builder payload.
+      projectData: { zipCloudinaryUrl: templateZipCloudinaryUrl },
       pages: parsedPages,
+      theme: parsedTheme,
+      status: status || 'Draft',
+      version: version || 1,
       uploadedByRole,
       uploadedBy: req?.user?.id || req?.user?._id || null,
     });
