@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from "react";
-import { Button, Table, Typography, Space, Popconfirm, Select, Card, Input, Row, Col, Checkbox, Tag } from "antd";
+import { Button, Table, Typography, Space, Popconfirm, Select, Card, Input, Row, Col, Checkbox, Tag, message, Empty, Spin } from "antd";
 import { Plus, Trash2, Store, ShoppingBag, LayoutGrid, Users, Tag as TagIcon, LayoutTemplate, Truck, Settings, CreditCard, Mail, Search, ExternalLink, Activity, ArrowRight, Eye, Edit3, Image as ImageIcon } from "lucide-react";
 import { motion } from "framer-motion";
 import CreateStoreModal from "./CreateStoreModal";
 import StoreTemplateLibraryModal from "./StoreTemplateLibraryModal";
+import ProductFormModal from "./ProductFormModal";
+import CollectionFormModal from "./CollectionFormModal";
+import CustomerFormModal from "./CustomerFormModal";
+import { productApi, storeApi, collectionApi, customerApi } from "../../../api/storeApi";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -12,8 +16,170 @@ const { TextArea } = Input;
 const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
   const [activeSubTab, setActiveSubTab] = useState("home");
 
+  // Real storeId, when this store has a backing Store document (created via
+  // the template flow or the "start from scratch" flow). Stores created
+  // before this existed may only have a local mock `key`.
+  const storeId = activeStore?._id || activeStore?.id || null;
+
+  // ── Products Module state (Create/Edit/Delete + Images/Inventory/Price/SEO) ──
+  const [products, setProducts] = useState([]);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
+
+  const loadProducts = async () => {
+    if (!storeId) return;
+    setProductsLoading(true);
+    try {
+      const data = await productApi.list(storeId);
+      setProducts(data || []);
+    } catch (err) {
+      message.error(err.message || "Failed to load products.");
+    } finally {
+      setProductsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === "products") {
+      loadProducts();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSubTab, storeId]);
+
+  const openCreateProduct = () => {
+    setEditingProduct(null);
+    setIsProductModalOpen(true);
+  };
+
+  const openEditProduct = (product) => {
+    setEditingProduct(product);
+    setIsProductModalOpen(true);
+  };
+
+  const handleProductSaved = () => {
+    setIsProductModalOpen(false);
+    setEditingProduct(null);
+    loadProducts();
+  };
+
+  const handleDeleteProduct = async (product) => {
+    try {
+      await productApi.remove(storeId, product._id);
+      message.success("Product deleted.");
+      loadProducts();
+    } catch (err) {
+      message.error(err.message || "Failed to delete product.");
+    }
+  };
+
+  // ── Collections Module state (Create/Edit/Delete + Products link) ──
+  const [collections, setCollections] = useState([]);
+  const [collectionsLoading, setCollectionsLoading] = useState(false);
+  const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
+  const [editingCollection, setEditingCollection] = useState(null);
+
+  const loadCollections = async () => {
+    if (!storeId) return;
+    setCollectionsLoading(true);
+    try {
+      const data = await collectionApi.list(storeId);
+      setCollections(data || []);
+    } catch (err) {
+      message.error(err.message || "Failed to load collections.");
+    } finally {
+      setCollectionsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === "collections") {
+      loadCollections();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSubTab, storeId]);
+
+  const openCreateCollection = () => {
+    setEditingCollection(null);
+    setIsCollectionModalOpen(true);
+  };
+
+  const openEditCollection = (collection) => {
+    setEditingCollection(collection);
+    setIsCollectionModalOpen(true);
+  };
+
+  const handleCollectionSaved = () => {
+    setIsCollectionModalOpen(false);
+    setEditingCollection(null);
+    loadCollections();
+  };
+
+  const handleDeleteCollection = async (collection) => {
+    try {
+      await collectionApi.remove(storeId, collection._id);
+      message.success("Collection deleted.");
+      loadCollections();
+    } catch (err) {
+      message.error(err.message || "Failed to delete collection.");
+    }
+  };
+
+  // ── Customer Module state (Create/Edit/Delete) ──
+  const [customers, setCustomers] = useState([]);
+  const [customersLoading, setCustomersLoading] = useState(false);
+  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState(null);
+
+  const loadCustomers = async () => {
+    if (!storeId) return;
+    setCustomersLoading(true);
+    try {
+      const data = await customerApi.list(storeId);
+      setCustomers(data || []);
+    } catch (err) {
+      message.error(err.message || "Failed to load customers.");
+    } finally {
+      setCustomersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === "customers") {
+      loadCustomers();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSubTab, storeId]);
+
+  const openCreateCustomer = () => {
+    setEditingCustomer(null);
+    setIsCustomerModalOpen(true);
+  };
+
+  const openEditCustomer = (customer) => {
+    setEditingCustomer(customer);
+    setIsCustomerModalOpen(true);
+  };
+
+  const handleCustomerSaved = () => {
+    setIsCustomerModalOpen(false);
+    setEditingCustomer(null);
+    loadCustomers();
+  };
+
+  const handleDeleteCustomer = async (customer) => {
+    try {
+      await customerApi.remove(storeId, customer._id);
+      message.success("Customer deleted.");
+      loadCustomers();
+    } catch (err) {
+      message.error(err.message || "Failed to delete customer.");
+    }
+  };
+
   const renderHome = () => (
     <motion.div variants={itemVariants} className="store-manage-content">
+
       <Row gutter={[24, 24]}>
         {/* Left Column */}
         <Col span={8}>
@@ -114,32 +280,118 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
   );
 
   const renderProducts = () => {
-    const products = [
-      { key: 1, name: "Phone Mount Pro", price: "INR 24.00", stock: 50 },
-      { key: 2, name: "Ceramic Coating Kit", price: "INR 89.00", stock: 50 },
-      { key: 3, name: "All-Weather Mats", price: "INR 59.00", stock: 50 },
-      { key: 4, name: "Jump Starter Pack", price: "INR 119.00", stock: 50 },
-      { key: 5, name: "LED Work Light", price: "INR 35.00", stock: 50 },
-      { key: 6, name: "Memory Foam Seat Cushion", price: "INR 45.00", stock: 50 },
-    ];
-
     const columns = [
-      { title: "PRODUCT", dataIndex: "name", key: "name", render: t => <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{t}</span> },
-      { title: "PRICE", dataIndex: "price", key: "price", render: t => <Text type="secondary" style={{ fontWeight: 500 }}>{t}</Text> },
-      { title: "STOCK", dataIndex: "stock", key: "stock", render: t => <Text type="secondary" style={{ fontWeight: 500 }}>{t}</Text> },
-      { title: "ACTIONS", key: "actions", render: () => (
-        <Space>
-          <Button icon={<Edit3 size={14}/>} style={{ borderRadius: 8, fontWeight: 600, borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'var(--bg-secondary)' }}>Edit</Button>
-          <Button danger icon={<Trash2 size={14}/>} style={{ borderRadius: 8, background: 'rgba(239, 68, 68, 0.1)', border: 'none' }} />
-        </Space>
-      ) },
+      {
+        title: "PRODUCT",
+        key: "title",
+        render: (_, r) => (
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 8, overflow: "hidden", background: "var(--bg-primary)", border: "1px solid var(--border-color)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {r.images?.[0] ? (
+                <img src={r.images[0]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
+                <ImageIcon size={16} color="var(--text-tertiary)" />
+              )}
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, color: "var(--text-primary)" }}>{r.title}</div>
+              {r.sku ? <div style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 500 }}>SKU: {r.sku}</div> : null}
+            </div>
+          </div>
+        ),
+      },
+      {
+        title: "STATUS",
+        dataIndex: "status",
+        key: "status",
+        render: (t) => {
+          const color = t === "Active" ? "var(--accent-success)" : t === "Archived" ? "var(--text-tertiary)" : "var(--accent-warning)";
+          return <Tag style={{ background: `${color}1A`, color, border: "none", fontWeight: 700, borderRadius: 6 }}>{t}</Tag>;
+        },
+      },
+      {
+        title: "PRICE",
+        key: "price",
+        render: (_, r) => (
+          <Text style={{ fontWeight: 600, color: "var(--text-primary)" }}>
+            {r.currency} {Number(r.price || 0).toFixed(2)}
+            {r.compareAtPrice ? (
+              <span style={{ marginLeft: 6, textDecoration: "line-through", color: "var(--text-tertiary)", fontSize: 12 }}>
+                {r.currency} {Number(r.compareAtPrice).toFixed(2)}
+              </span>
+            ) : null}
+          </Text>
+        ),
+      },
+      {
+        title: "STOCK",
+        key: "stock",
+        render: (_, r) =>
+          r.trackInventory ? (
+            <Text type="secondary" style={{ fontWeight: 500 }}>{r.inventoryQuantity ?? 0}</Text>
+          ) : (
+            <Text type="secondary" style={{ fontWeight: 500 }}>Not tracked</Text>
+          ),
+      },
+      {
+        title: "ACTIONS",
+        key: "actions",
+        render: (_, r) => (
+          <Space>
+            <Button icon={<Edit3 size={14} />} onClick={() => openEditProduct(r)} style={{ borderRadius: 8, fontWeight: 600, borderColor: "var(--border-color)", color: "var(--text-primary)", background: "var(--bg-secondary)" }}>
+              Edit
+            </Button>
+            <Popconfirm title="Delete this product?" onConfirm={() => handleDeleteProduct(r)} okText="Delete" okButtonProps={{ danger: true }}>
+              <Button danger icon={<Trash2 size={14} />} style={{ borderRadius: 8, background: "rgba(239, 68, 68, 0.1)", border: "none" }} />
+            </Popconfirm>
+          </Space>
+        ),
+      },
     ];
 
     return (
       <motion.div variants={itemVariants} className="store-manage-content">
-        <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, overflow: "hidden", border: "1px solid var(--border-color)", background: 'var(--bg-secondary)' }}>
-          <Table columns={columns} dataSource={products} pagination={false} size="middle" />
-        </Card>
+        {!storeId ? (
+          <Card bodyStyle={{ padding: 48, textAlign: "center" }} style={{ borderRadius: 16, border: "1px solid var(--border-color)", background: "var(--bg-secondary)" }}>
+            <Text type="secondary" style={{ fontSize: 14, fontWeight: 500 }}>
+              This store isn't linked to a backend record, so products can't be managed yet. Create a new store to try the Products module.
+            </Text>
+          </Card>
+        ) : (
+          <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, overflow: "hidden", border: "1px solid var(--border-color)", background: "var(--bg-secondary)" }}>
+            {productsLoading ? (
+              <div style={{ padding: 60, textAlign: "center" }}>
+                <Spin />
+              </div>
+            ) : (
+              <Table
+                columns={columns}
+                dataSource={products}
+                rowKey="_id"
+                pagination={false}
+                size="middle"
+                locale={{
+                  emptyText: (
+                    <div style={{ padding: "60px 0", textAlign: "center" }}>
+                      <Empty description="No products yet" />
+                      <Button type="primary" icon={<Plus size={16} />} onClick={openCreateProduct} style={{ marginTop: 16, background: "var(--accent-success)", border: "none", borderRadius: 8, fontWeight: 700 }}>
+                        Add your first product
+                      </Button>
+                    </div>
+                  ),
+                }}
+              />
+            )}
+          </Card>
+        )}
+
+        <ProductFormModal
+          open={isProductModalOpen}
+          onCancel={() => { setIsProductModalOpen(false); setEditingProduct(null); }}
+          onSaved={handleProductSaved}
+          storeId={storeId}
+          product={editingProduct}
+        />
       </motion.div>
     );
   };
@@ -308,44 +560,206 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
   };
 
   const renderCollections = () => {
-    const collections = [
-      { key: 1, name: "Interior", slug: "interior", active: "Yes" },
-      { key: 2, name: "Exterior", slug: "exterior", active: "Yes" },
-      { key: 3, name: "Tools", slug: "tools", active: "Yes" },
-    ];
     const columns = [
-      { title: "NAME", dataIndex: "name", key: "name", render: t => <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{t}</span> },
-      { title: "SLUG", dataIndex: "slug", key: "slug", render: t => <Text type="secondary" style={{ fontWeight: 500 }}>{t}</Text> },
-      { title: "ACTIVE", dataIndex: "active", key: "active", render: t => <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{t}</span> },
-      { title: "ACTIONS", key: "actions", render: () => (
-        <Space>
-          <Button icon={<Edit3 size={14}/>} style={{ borderRadius: 8, fontWeight: 600, borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'var(--bg-secondary)' }}>Edit</Button>
-          <Button danger icon={<Trash2 size={14}/>} style={{ borderRadius: 8, background: 'rgba(239, 68, 68, 0.1)', border: 'none' }} />
-        </Space>
-      ) },
+      {
+        title: "COLLECTION",
+        key: "title",
+        render: (_, r) => (
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 8, overflow: "hidden", background: "var(--bg-primary)", border: "1px solid var(--border-color)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {r.imageUrl ? (
+                <img src={r.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
+                <LayoutGrid size={16} color="var(--text-tertiary)" />
+              )}
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, color: "var(--text-primary)" }}>{r.title}</div>
+              <div style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 500 }}>{r.slug}</div>
+            </div>
+          </div>
+        ),
+      },
+      {
+        title: "PRODUCTS",
+        key: "products",
+        render: (_, r) => (
+          <Text type="secondary" style={{ fontWeight: 600 }}>
+            {r.productCount ?? r.productIds?.length ?? 0} linked
+          </Text>
+        ),
+      },
+      {
+        title: "ACTIVE",
+        key: "active",
+        render: (_, r) => (
+          <Tag style={{ background: r.isActive ? "rgba(16, 185, 129, 0.1)" : "rgba(148, 163, 184, 0.15)", color: r.isActive ? "var(--accent-success)" : "var(--text-tertiary)", border: "none", fontWeight: 700, borderRadius: 6 }}>
+            {r.isActive ? "Yes" : "No"}
+          </Tag>
+        ),
+      },
+      {
+        title: "ACTIONS",
+        key: "actions",
+        render: (_, r) => (
+          <Space>
+            <Button icon={<Edit3 size={14} />} onClick={() => openEditCollection(r)} style={{ borderRadius: 8, fontWeight: 600, borderColor: "var(--border-color)", color: "var(--text-primary)", background: "var(--bg-secondary)" }}>
+              Edit
+            </Button>
+            <Popconfirm title="Delete this collection?" onConfirm={() => handleDeleteCollection(r)} okText="Delete" okButtonProps={{ danger: true }}>
+              <Button danger icon={<Trash2 size={14} />} style={{ borderRadius: 8, background: "rgba(239, 68, 68, 0.1)", border: "none" }} />
+            </Popconfirm>
+          </Space>
+        ),
+      },
     ];
+
     return (
       <motion.div variants={itemVariants} className="store-manage-content">
-        <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, overflow: "hidden", border: "1px solid var(--border-color)", background: 'var(--bg-secondary)' }}>
-          <Table columns={columns} dataSource={collections} pagination={false} size="middle" />
-        </Card>
+        {!storeId ? (
+          <Card bodyStyle={{ padding: 48, textAlign: "center" }} style={{ borderRadius: 16, border: "1px solid var(--border-color)", background: "var(--bg-secondary)" }}>
+            <Text type="secondary" style={{ fontSize: 14, fontWeight: 500 }}>
+              This store isn't linked to a backend record, so collections can't be managed yet. Create a new store to try the Collections module.
+            </Text>
+          </Card>
+        ) : (
+          <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, overflow: "hidden", border: "1px solid var(--border-color)", background: "var(--bg-secondary)" }}>
+            {collectionsLoading ? (
+              <div style={{ padding: 60, textAlign: "center" }}>
+                <Spin />
+              </div>
+            ) : (
+              <Table
+                columns={columns}
+                dataSource={collections}
+                rowKey="_id"
+                pagination={false}
+                size="middle"
+                locale={{
+                  emptyText: (
+                    <div style={{ padding: "60px 0", textAlign: "center" }}>
+                      <Empty description="No collections yet" />
+                      <Button type="primary" icon={<Plus size={16} />} onClick={openCreateCollection} style={{ marginTop: 16, background: "var(--accent-success)", border: "none", borderRadius: 8, fontWeight: 700 }}>
+                        Add your first collection
+                      </Button>
+                    </div>
+                  ),
+                }}
+              />
+            )}
+          </Card>
+        )}
+
+        <CollectionFormModal
+          open={isCollectionModalOpen}
+          onCancel={() => { setIsCollectionModalOpen(false); setEditingCollection(null); }}
+          onSaved={handleCollectionSaved}
+          storeId={storeId}
+          collection={editingCollection}
+        />
       </motion.div>
     );
   };
 
   const renderCustomers = () => {
     const columns = [
-      { title: "CUSTOMER", key: "customer" },
-      { title: "ORDERS", key: "orders" },
-      { title: "LIFETIME", key: "lifetime" },
-      { title: "LAST ORDER", key: "last_order" },
-      { title: "ACTIONS", key: "actions" },
+      {
+        title: "CUSTOMER",
+        key: "customer",
+        render: (_, r) => (
+          <div>
+            <div style={{ fontWeight: 700, color: "var(--text-primary)" }}>
+              {[r.firstName, r.lastName].filter(Boolean).join(" ") || "—"}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 500 }}>{r.email || "No email"}</div>
+          </div>
+        ),
+      },
+      {
+        title: "ORDERS",
+        dataIndex: "ordersCount",
+        key: "orders",
+        render: (t) => <Text type="secondary" style={{ fontWeight: 600 }}>{t ?? 0}</Text>,
+      },
+      {
+        title: "LIFETIME",
+        dataIndex: "totalSpent",
+        key: "lifetime",
+        render: (t) => <Text style={{ fontWeight: 700, color: "var(--text-primary)" }}>{Number(t || 0).toFixed(2)}</Text>,
+      },
+      {
+        title: "TAGS",
+        key: "tags",
+        render: (_, r) =>
+          r.tags?.length ? (
+            <Space size={4} wrap>
+              {r.tags.map((t) => (
+                <Tag key={t} style={{ borderRadius: 6, fontWeight: 600 }}>{t}</Tag>
+              ))}
+            </Space>
+          ) : (
+            <Text type="secondary" style={{ fontSize: 12 }}>—</Text>
+          ),
+      },
+      {
+        title: "ACTIONS",
+        key: "actions",
+        render: (_, r) => (
+          <Space>
+            <Button icon={<Edit3 size={14} />} onClick={() => openEditCustomer(r)} style={{ borderRadius: 8, fontWeight: 600, borderColor: "var(--border-color)", color: "var(--text-primary)", background: "var(--bg-secondary)" }}>
+              Edit
+            </Button>
+            <Popconfirm title="Delete this customer?" onConfirm={() => handleDeleteCustomer(r)} okText="Delete" okButtonProps={{ danger: true }}>
+              <Button danger icon={<Trash2 size={14} />} style={{ borderRadius: 8, background: "rgba(239, 68, 68, 0.1)", border: "none" }} />
+            </Popconfirm>
+          </Space>
+        ),
+      },
     ];
+
     return (
       <motion.div variants={itemVariants} className="store-manage-content">
-        <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, overflow: "hidden", border: "1px solid var(--border-color)", background: 'var(--bg-secondary)' }}>
-          <Table columns={columns} dataSource={[]} pagination={false} locale={{ emptyText: <div style={{ padding: "40px 0", color: "var(--text-secondary)", fontSize: 14, fontWeight: 600 }}>No customers yet.</div> }} />
-        </Card>
+        {!storeId ? (
+          <Card bodyStyle={{ padding: 48, textAlign: "center" }} style={{ borderRadius: 16, border: "1px solid var(--border-color)", background: "var(--bg-secondary)" }}>
+            <Text type="secondary" style={{ fontSize: 14, fontWeight: 500 }}>
+              This store isn't linked to a backend record, so customers can't be managed yet. Create a new store to try the Customer module.
+            </Text>
+          </Card>
+        ) : (
+          <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, overflow: "hidden", border: "1px solid var(--border-color)", background: "var(--bg-secondary)" }}>
+            {customersLoading ? (
+              <div style={{ padding: 60, textAlign: "center" }}>
+                <Spin />
+              </div>
+            ) : (
+              <Table
+                columns={columns}
+                dataSource={customers}
+                rowKey="_id"
+                pagination={false}
+                size="middle"
+                locale={{
+                  emptyText: (
+                    <div style={{ padding: "60px 0", textAlign: "center" }}>
+                      <Empty description="No customers yet" />
+                      <Button type="primary" icon={<Plus size={16} />} onClick={openCreateCustomer} style={{ marginTop: 16, background: "var(--accent-success)", border: "none", borderRadius: 8, fontWeight: 700 }}>
+                        Add your first customer
+                      </Button>
+                    </div>
+                  ),
+                }}
+              />
+            )}
+          </Card>
+        )}
+
+        <CustomerFormModal
+          open={isCustomerModalOpen}
+          onCancel={() => { setIsCustomerModalOpen(false); setEditingCustomer(null); }}
+          onSaved={handleCustomerSaved}
+          storeId={storeId}
+          customer={editingCustomer}
+        />
       </motion.div>
     );
   };
@@ -647,8 +1061,9 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
 
   const getActionBtn = () => {
     switch (activeSubTab) {
-      case "products": return <Button type="primary" icon={<Plus size={16} />} style={{ background: "var(--accent-success)", border: 'none', borderRadius: 8, fontWeight: 700 }}>Product</Button>;
-      case "collections": return <Button type="primary" icon={<Plus size={16} />} style={{ background: "var(--accent-success)", border: 'none', borderRadius: 8, fontWeight: 700 }}>Collection</Button>;
+      case "products": return <Button type="primary" icon={<Plus size={16} />} onClick={openCreateProduct} style={{ background: "var(--accent-success)", border: 'none', borderRadius: 8, fontWeight: 700 }}>Product</Button>;
+      case "collections": return <Button type="primary" icon={<Plus size={16} />} onClick={openCreateCollection} style={{ background: "var(--accent-success)", border: 'none', borderRadius: 8, fontWeight: 700 }}>Collection</Button>;
+      case "customers": return <Button type="primary" icon={<Plus size={16} />} onClick={openCreateCustomer} style={{ background: "var(--accent-success)", border: 'none', borderRadius: 8, fontWeight: 700 }}>Customer</Button>;
       case "discounts": return <Button type="primary" icon={<Plus size={16} />} style={{ background: "var(--accent-success)", border: 'none', borderRadius: 8, fontWeight: 700 }}>Discount</Button>;
       default: return null;
     }
@@ -801,28 +1216,40 @@ const StoresTab = ({ itemVariants }) => {
     },
   ];
 
-  const handleCreateContinue = (data) => {
+  const handleCreateContinue = async (data) => {
     setTempStoreData(data);
     setIsCreateModalOpen(false);
-    
+
     if (data.method === "templates") {
       setIsTemplateModalOpen(true);
     } else {
-      const newStore = {
-        key: Date.now().toString(),
-        store: data.storeName,
-        slug: data.storeName.toLowerCase().replace(/\s+/g, '-'),
-        status: data.status,
-        catalog: "Empty Catalog",
-        currency: data.currency
-      };
-      setStores([...stores, newStore]);
+      try {
+        const { store } = await storeApi.createStore({
+          storeName: data.storeName,
+          currency: data.currency,
+          status: data.status,
+        });
+        const newStore = {
+          key: store._id,
+          _id: store._id,
+          store: data.storeName,
+          slug: data.storeName.toLowerCase().replace(/\s+/g, '-'),
+          status: data.status,
+          catalog: "Empty Catalog",
+          currency: data.currency
+        };
+        setStores(prev => [...prev, newStore]);
+      } catch (err) {
+        message.error(err.message || "Failed to create store.");
+      }
     }
   };
 
   const handleTemplateCreate = (templateData) => {
+    const backendStoreId = templateData?.store?._id;
     const newStore = {
-      key: Date.now().toString(),
+      key: backendStoreId || Date.now().toString(),
+      _id: backendStoreId,
       store: templateData.storeName,
       slug: templateData.storeName.toLowerCase().replace(/\s+/g, '-'),
       status: tempStoreData?.status || "Draft",

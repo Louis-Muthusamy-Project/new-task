@@ -224,4 +224,33 @@ const createStoreFromTemplate = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { createStoreFromTemplate };
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/store — plain "start from scratch" create (no template)
+// Body: { storeName, currency, status, description }
+// ─────────────────────────────────────────────────────────────────────────────
+const createStore = asyncHandler(async (req, res) => {
+  const { storeName, name, currency, status, description, domain, category } = req.body || {};
+
+  const resolvedName = (storeName || name || '').trim();
+  if (!resolvedName) {
+    return res.status(400).json({ success: false, error: 'storeName is required.' });
+  }
+
+  const ownerId = req?.user?.id || req?.user?._id || null;
+
+  const store = await Store.create({
+    user: ownerId,
+    ownerId,
+    name: resolvedName,
+    storeName: resolvedName,
+    description: description || '',
+    status: status || 'Draft',
+    currency: currency || 'USD',
+    domain: domain || '',
+    category: category || 'Other',
+  });
+
+  return res.status(201).json({ success: true, data: { store } });
+});
+
+module.exports = { createStoreFromTemplate, createStore };

@@ -27,6 +27,11 @@ const StoreProductSchema = new Schema(
       default: 'Draft',
       index: true,
     },
+    // ── SEO ──────────────────────────────────────────────────────────────
+    seo: {
+      metaTitle: { type: String, trim: true, default: '' },
+      metaDescription: { type: String, trim: true, default: '' },
+    },
     isDeleted: { type: Boolean, default: false, index: true },
   },
   { timestamps: true }

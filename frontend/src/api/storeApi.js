@@ -25,6 +25,17 @@ function unwrap(json) {
 }
 
 export const storeApi = {
+  // POST /api/store — "start from scratch" (no template)
+  createStore: async ({ storeName, currency, status, description } = {}) => {
+    const json = unwrap(
+      await requestJson('/store', {
+        method: 'POST',
+        body: { storeName, currency, status, description },
+      })
+    );
+    return json.data; // { store }
+  },
+
   // POST /api/store/create-from-template
   // Flow: Choose Template -> Clone Template -> Create Store ->
   //       Create Default Pages -> Copy Demo Products -> Return Store
@@ -43,5 +54,145 @@ export const storeApi = {
       })
     );
     return json.data; // { store, pages, products, collections, discount }
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────
+// Collections Module — admin CRUD used by the Collections tab in
+// StoresTab.jsx. Create / Edit / Delete, plus a Products link.
+// ─────────────────────────────────────────────────────────────────────────
+export const collectionApi = {
+  list: async (storeId, { search } = {}) => {
+    const params = new URLSearchParams();
+    if (search) params.set('search', search);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const json = unwrap(await requestJson(`/store/${storeId}/admin/collections${qs}`));
+    return json.data;
+  },
+
+  get: async (storeId, id) => {
+    const json = unwrap(await requestJson(`/store/${storeId}/admin/collections/${id}`));
+    return json.data;
+  },
+
+  create: async (storeId, payload) => {
+    const json = unwrap(
+      await requestJson(`/store/${storeId}/admin/collections`, { method: 'POST', body: payload })
+    );
+    return json.data;
+  },
+
+  update: async (storeId, id, payload) => {
+    const json = unwrap(
+      await requestJson(`/store/${storeId}/admin/collections/${id}`, { method: 'PATCH', body: payload })
+    );
+    return json.data;
+  },
+
+  remove: async (storeId, id) => {
+    const json = unwrap(
+      await requestJson(`/store/${storeId}/admin/collections/${id}`, { method: 'DELETE' })
+    );
+    return json.data;
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────
+// Customer Module — admin CRUD used by the Customers tab in StoresTab.jsx.
+// Create / Edit / Delete.
+// ─────────────────────────────────────────────────────────────────────────
+export const customerApi = {
+  list: async (storeId, { search } = {}) => {
+    const params = new URLSearchParams();
+    if (search) params.set('search', search);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const json = unwrap(await requestJson(`/store/${storeId}/admin/customers${qs}`));
+    return json.data;
+  },
+
+  get: async (storeId, id) => {
+    const json = unwrap(await requestJson(`/store/${storeId}/admin/customers/${id}`));
+    return json.data;
+  },
+
+  create: async (storeId, payload) => {
+    const json = unwrap(
+      await requestJson(`/store/${storeId}/admin/customers`, { method: 'POST', body: payload })
+    );
+    return json.data;
+  },
+
+  update: async (storeId, id, payload) => {
+    const json = unwrap(
+      await requestJson(`/store/${storeId}/admin/customers/${id}`, { method: 'PATCH', body: payload })
+    );
+    return json.data;
+  },
+
+  remove: async (storeId, id) => {
+    const json = unwrap(
+      await requestJson(`/store/${storeId}/admin/customers/${id}`, { method: 'DELETE' })
+    );
+    return json.data;
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────
+// Products Module — admin CRUD used by the Products tab in StoresTab.jsx.
+// Create / Edit / Delete, Images, Inventory, Price, SEO.
+// ─────────────────────────────────────────────────────────────────────────
+export const productApi = {
+  list: async (storeId, { status, search } = {}) => {
+    const params = new URLSearchParams();
+    if (status) params.set('status', status);
+    if (search) params.set('search', search);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const json = unwrap(await requestJson(`/store/${storeId}/admin/products${qs}`));
+    return json.data;
+  },
+
+  get: async (storeId, id) => {
+    const json = unwrap(await requestJson(`/store/${storeId}/admin/products/${id}`));
+    return json.data;
+  },
+
+  create: async (storeId, payload) => {
+    const json = unwrap(
+      await requestJson(`/store/${storeId}/admin/products`, { method: 'POST', body: payload })
+    );
+    return json.data;
+  },
+
+  update: async (storeId, id, payload) => {
+    const json = unwrap(
+      await requestJson(`/store/${storeId}/admin/products/${id}`, { method: 'PATCH', body: payload })
+    );
+    return json.data;
+  },
+
+  remove: async (storeId, id) => {
+    const json = unwrap(
+      await requestJson(`/store/${storeId}/admin/products/${id}`, { method: 'DELETE' })
+    );
+    return json.data;
+  },
+
+  // Uploads a single product image via the shared media library endpoint
+  // (same Cloudinary pipeline the page builder's asset manager uses) and
+  // returns the resulting hosted URL.
+  uploadImage: async (file) => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${API_BASE}/website-builder/media/upload`, {
+      method: 'POST',
+      body: form,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Image upload failed: ${res.status} ${text}`);
+    }
+    const json = await res.json();
+    if (!json?.success) throw new Error(json?.error || 'Image upload failed');
+    return json.data; // { src, name, width, height, id }
   },
 };

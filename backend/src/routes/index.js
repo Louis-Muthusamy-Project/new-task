@@ -37,4 +37,16 @@ router.use('/store', require('./storePageRoutes'));
 // this is new surface area for rendering real data inside store blocks.
 router.use('/store', require('./storeStorefrontRoutes'));
 
+// Admin Products CRUD (Create/Edit/Delete, Images, Inventory, Price, SEO)
+// used by the Products tab in StoresTab.jsx.
+router.use('/store', require('./productRoutes'));
+
+// Admin Collections CRUD (Create/Edit/Delete + Products link) used by the
+// Collections tab in StoresTab.jsx.
+router.use('/store', require('./collectionRoutes'));
+
+// Admin Customers CRUD (Create/Edit/Delete) used by the Customers tab in
+// StoresTab.jsx.
+router.use('/store', require('./customerRoutes'));
+
 module.exports = router;
