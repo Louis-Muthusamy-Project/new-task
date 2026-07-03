@@ -144,6 +144,25 @@ const StoreTemplateSchema = new Schema(
       ref: 'User',
       default: null,
     },
+    // Additive, backward-compatible provenance fields (see
+    // services/wordpressImport/). Every template created before these
+    // existed has no `source` set and simply reads as the default
+    // 'manual' — no migration needed, no existing query/index affected.
+    source: {
+      type: String,
+      enum: ['manual', 'wordpress-import'],
+      default: 'manual',
+      index: true,
+    },
+    // Free-form provenance metadata for imported templates (e.g. the
+    // WordPress Import Pipeline's ValidationReport.meta — detected WP
+    // asset paths, html/asset counts, external form actions found).
+    // Stored as Schema.Types.Mixed, same convention already used by
+    // `projectData` above, so no schema migration risk.
+    sourceMeta: {
+      type: Schema.Types.Mixed,
+      default: null,
+    },
   },
   { timestamps: true }
 );

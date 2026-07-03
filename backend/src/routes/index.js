@@ -28,6 +28,12 @@ router.use('/store-templates', require('./storeTemplatesRoutes'));
 // Store template ZIP upload (same pipeline as website, separate collections)
 router.use('/store', require('./storeRoutesTemplates'));
 
+// WordPress (Simply Static export) import pipeline — validates + imports a
+// WordPress static export straight into the Store Template Library, reusing
+// the same StoreTemplate collection/engine as storeTemplatesRoutes.js.
+// Used by ImportWordPressTemplateModal.jsx.
+router.use('/wordpress-import', require('./wordpressImportRoutes'));
+
 // Store page CRUD used by the GrapesJS builder (BccBuilder) when editing
 // StorePage documents — Store-module counterpart of pageRoutes.js.
 router.use('/store', require('./storePageRoutes'));

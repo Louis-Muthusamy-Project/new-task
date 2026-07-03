@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { Modal, Input, Checkbox, Button, Typography, Space, Row, Col, Card, Tag, Empty, message } from "antd";
-import { Store, X as CloseIcon, Search as SearchIcon, CheckCircle, UploadCloud, Eye, History, Copy, RotateCcw } from "lucide-react";
+import { Store, X as CloseIcon, Search as SearchIcon, CheckCircle, UploadCloud, Eye, History, Copy, RotateCcw, Globe } from "lucide-react";
 import { useAuth } from "../../../contexts/AuthContext";
 import { storeTemplateApi } from "../../../api/storeTemplateApi";
 import { storeApi } from "../../../api/storeApi";
+import ImportWordPressTemplateModal from "./ImportWordPressTemplateModal";
 
 const { Title, Text } = Typography;
 
@@ -59,40 +60,77 @@ const StoreTemplateLibraryModal = ({ open, onCancel, onCreate, initialStoreName 
   const [rollingBack, setRollingBack] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
 
-  // Pull the real library from the backend (StoreTemplate collection) each
-  // time the modal opens. Falls back to the local demo set on error so the
-  // modal still works if the API isn't reachable.
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    setLoadingTemplates(true);
+  // ── WordPress Template Import ───────────────────────────────────────────
+  const [importModalOpen, setImportModalOpen] = useState(false);
 
-    storeTemplateApi
+  // Pull the real library from the backend (StoreTemplate collection). Used
+  // both on modal open and to refresh the grid after a WordPress import
+  // completes, so the two entry points (manual "Upload template" and
+  // "Import WordPress Template") share one source of truth instead of each
+  // patching local state differently. Falls back to the local demo set on
+  // error so the modal still works if the API isn't reachable.
+  const refreshTemplates = useCallback(({ silent } = {}) => {
+    if (!silent) setLoadingTemplates(true);
+    return storeTemplateApi
       .getAllStoreTemplates()
       .then((data) => {
-        if (cancelled || !Array.isArray(data) || data.length === 0) return;
-        setTemplates(
-          data.map((t, i) => ({
-            id: t._id || t.id,
-            name: t.name,
-            type: t.category || "Other",
-            thumbnail: t.thumbnail || "",
-            preview: t.preview || "",
-            bg: PALETTE[i % PALETTE.length],
-          }))
-        );
+        if (!Array.isArray(data) || data.length === 0) return null;
+        const mapped = data.map((t, i) => ({
+          id: t._id || t.id,
+          name: t.name,
+          type: t.category || "Other",
+          thumbnail: t.thumbnail || "",
+          preview: t.preview || "",
+          bg: PALETTE[i % PALETTE.length],
+        }));
+        setTemplates(mapped);
+        return mapped;
       })
       .catch((err) => {
         console.error("Failed to load store template library", err);
+        return null;
       })
       .finally(() => {
-        if (!cancelled) setLoadingTemplates(false);
+        if (!silent) setLoadingTemplates(false);
       });
+  }, []);
 
+  // Fires once ImportWordPressTemplateModal's POST /api/wordpress-import/upload
+  // succeeds. Refreshes the library from the server (so the grid reflects
+  // exactly what's persisted, same as every other template mutation in this
+  // file) and selects the new template so it's visibly highlighted —
+  // "Show the imported template" — without touching the existing
+  // Upload-template / Duplicate / Rollback code paths.
+  const handleWordPressImported = useCallback(
+    async (template) => {
+      await refreshTemplates();
+      const newId = template?._id || template?.id;
+      if (newId) setSelectedTemplate(newId);
+    },
+    [refreshTemplates]
+  );
+
+  // "Create store from this template" inside the import modal's success
+  // screen — closes the import modal and hands control back to this
+  // modal's existing, unmodified Create Store flow (the Store name field +
+  // "Create store" button at the bottom of the grid) instead of duplicating
+  // that logic.
+  const handleUseImportedTemplate = useCallback((template) => {
+    const newId = template?._id || template?.id;
+    if (newId) setSelectedTemplate(newId);
+    setImportModalOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    refreshTemplates().then(() => {
+      if (cancelled) return;
+    });
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, refreshTemplates]);
 
   // ── Search + category filter ──────────────────────────────────────────
   const filteredTemplates = useMemo(() => {
@@ -401,6 +439,16 @@ const StoreTemplateLibraryModal = ({ open, onCancel, onCreate, initialStoreName 
                       onChange={handleFileSelected}
                       style={{ display: "none" }}
                     />
+                    {/* Import WordPress Template — Simply Static ZIP -> WordPress
+                        Import Pipeline -> StoreTemplate, surfaced in this same
+                        toolbar/permission gate as the manual upload above. */}
+                    <Button
+                      icon={<Globe size={16} />}
+                      onClick={() => setImportModalOpen(true)}
+                      style={{ borderRadius: 8, height: 40, fontWeight: 600, borderColor: "var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)" }}
+                    >
+                      Import WordPress Template
+                    </Button>
                   </>
                 )}
                 {/* Search */}
@@ -608,6 +656,16 @@ const StoreTemplateLibraryModal = ({ open, onCancel, onCreate, initialStoreName 
           </div>
         )}
       </Modal>
+
+      {/* Import WordPress Template — separate modal (Requirement 2), reuses
+          this modal's own template grid / selection / Create Store flow
+          rather than introducing a parallel one. */}
+      <ImportWordPressTemplateModal
+        open={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        onImported={handleWordPressImported}
+        onUseTemplate={handleUseImportedTemplate}
+      />
     </Modal>
   );
 };
