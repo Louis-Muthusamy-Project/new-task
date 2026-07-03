@@ -1,6 +1,7 @@
 const Store = require('../models/store/Store');
 const StorePage = require('../models/store/StorePage');
 const StorePublishHistory = require('../models/store/StorePublishHistory');
+const { minifyCss } = require('../utils/minifyCss');
 
 const buildOwnershipFilter = (req) => {
   const ownerId = req?.user?.id || req?.user?._id || null;
@@ -48,7 +49,12 @@ const buildStoreSnapshot = (store, pages) => ({
     slug: page.slug,
     isHome: page.isHome,
     seo: page.seo,
-    content: page.content,
+    // Re-minify at publish time (not just at import time) so CSS edited
+    // in the builder after import still ships minified to the live site.
+    content:
+      page.content && typeof page.content === 'object'
+        ? { ...page.content, css: minifyCss(page.content.css) }
+        : page.content,
   })),
 });
 

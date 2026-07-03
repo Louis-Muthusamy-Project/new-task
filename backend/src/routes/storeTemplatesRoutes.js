@@ -116,4 +116,145 @@ router.post(
   })
 );
 
+// GET /api/store-templates/:id/versions — list version history (v1, v2, ...)
+// for the version-switcher UI (StoreTemplateLibraryModal's v1/v2 tabs).
+router.get(
+  '/:id/versions',
+  asyncHandler(async (req, res) => {
+    const template = await StoreTemplate.findById(req.params.id).select('name version versions');
+    if (!template) {
+      return res.status(404).json({ success: false, error: 'Template not found' });
+    }
+    res.status(200).json({
+      success: true,
+      data: {
+        currentVersion: template.version,
+        versions: template.versions,
+      },
+    });
+  })
+);
+
+// POST /api/store-templates/:id/versions — snapshot the template's current
+// projectData/pages/theme as a new version (e.g. after editing v1, save it
+// as v2 while keeping v1 in history).
+router.post(
+  '/:id/versions',
+  asyncHandler(async (req, res) => {
+    const template = await StoreTemplate.findById(req.params.id);
+    if (!template) {
+      return res.status(404).json({ success: false, error: 'Template not found' });
+    }
+
+    const { label } = req.body || {};
+    const nextVersion = (template.versions?.length
+      ? Math.max(...template.versions.map((v) => v.version))
+      : template.version || 0) + 1;
+
+    template.versions.push({
+      version: nextVersion,
+      projectData: template.projectData,
+      pages: template.pages,
+      theme: template.theme,
+      thumbnail: template.thumbnail,
+      preview: template.preview,
+      label: label || `Version ${nextVersion}`,
+      createdBy: req?.user?.id || req?.user?._id || null,
+      createdAt: new Date(),
+    });
+    template.version = nextVersion;
+
+    await template.save();
+
+    res.status(201).json({
+      success: true,
+      data: template,
+    });
+  })
+);
+
+// POST /api/store-templates/:id/rollback/:version — restore the template's
+// live projectData/pages/theme/thumbnail/preview to a prior version's
+// snapshot. The rollback itself is recorded as a new version entry (rather
+// than deleting anything after the target) so history is never destroyed —
+// rolling back from v3 to v1 produces a v4 that mirrors v1's content.
+router.post(
+  '/:id/rollback/:version',
+  asyncHandler(async (req, res) => {
+    const template = await StoreTemplate.findById(req.params.id);
+    if (!template) {
+      return res.status(404).json({ success: false, error: 'Template not found' });
+    }
+
+    const targetVersion = Number(req.params.version);
+    const target = template.versions.find((v) => v.version === targetVersion);
+    if (!target) {
+      return res.status(404).json({ success: false, error: `Version ${req.params.version} not found` });
+    }
+
+    template.projectData = target.projectData;
+    template.pages = target.pages;
+    template.theme = target.theme;
+    template.thumbnail = target.thumbnail;
+    template.preview = target.preview;
+
+    const nextVersion = Math.max(...template.versions.map((v) => v.version)) + 1;
+    template.versions.push({
+      version: nextVersion,
+      projectData: target.projectData,
+      pages: target.pages,
+      theme: target.theme,
+      thumbnail: target.thumbnail,
+      preview: target.preview,
+      label: `Rollback to v${targetVersion}`,
+      createdBy: req?.user?.id || req?.user?._id || null,
+      createdAt: new Date(),
+    });
+    template.version = nextVersion;
+
+    await template.save();
+
+    res.status(200).json({
+      success: true,
+      data: template,
+    });
+  })
+);
+
+// POST /api/store-templates/:id/duplicate — clone a library entry into a
+// brand-new StoreTemplate document (fresh _id, version reset to 1, history
+// reset to just that seed version) so it can be edited independently
+// without touching the original ("Duplicate Template" action).
+router.post(
+  '/:id/duplicate',
+  asyncHandler(async (req, res) => {
+    const source = await StoreTemplate.findById(req.params.id);
+    if (!source) {
+      return res.status(404).json({ success: false, error: 'Template not found' });
+    }
+
+    const { name } = req.body || {};
+
+    const duplicate = await StoreTemplate.create({
+      name: name || `${source.name} (Copy)`,
+      category: source.category,
+      description: source.description,
+      preview: source.preview,
+      thumbnail: source.thumbnail,
+      projectData: source.projectData,
+      pages: source.pages,
+      theme: source.theme,
+      status: 'Draft',
+      version: 1,
+      uploadedByRole: req?.user?.role || source.uploadedByRole,
+      uploadedBy: req?.user?.id || req?.user?._id || null,
+    });
+
+    res.status(201).json({
+      success: true,
+      data: duplicate,
+    });
+  })
+);
+
 module.exports = router;

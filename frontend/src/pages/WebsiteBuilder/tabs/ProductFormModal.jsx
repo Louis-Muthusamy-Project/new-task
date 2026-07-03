@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Modal, Input, Select, Button, Typography, Row, Col, Switch, Upload, message, Tabs } from "antd";
 import { Package, Plus, X } from "lucide-react";
 import { productApi } from "../../../api/storeApi";
+import { optimizeStoreImageUrl } from "../utils/storeImageCdn";
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -215,7 +216,13 @@ const ProductFormModal = ({ open, onCancel, onSaved, storeId, product }) => {
               border: "1px solid var(--border-color)",
             }}
           >
-            <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            <img
+              src={optimizeStoreImageUrl(src, "thumbnail")}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
             <div
               onClick={() => removeImage(idx)}
               style={{

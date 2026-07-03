@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Modal, Input, Button, Typography, Switch, Upload, message, Select, Spin } from "antd";
 import { LayoutGrid, Plus, X } from "lucide-react";
 import { collectionApi, productApi } from "../../../api/storeApi";
+import { optimizeStoreImageUrl } from "../utils/storeImageCdn";
 
 const { TextArea } = Input;
 
@@ -154,7 +155,13 @@ const CollectionFormModal = ({ open, onCancel, onSaved, storeId, collection }) =
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {form.imageUrl ? (
               <div style={{ width: 72, height: 72, borderRadius: 10, overflow: "hidden", border: "1px solid var(--border-color)", position: "relative" }}>
-                <img src={form.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                <img
+                  src={optimizeStoreImageUrl(form.imageUrl, "thumbnail")}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
                 <div
                   onClick={() => set("imageUrl")("")}
                   style={{ position: "absolute", top: 4, right: 4, background: "rgba(0,0,0,0.6)", borderRadius: "50%", width: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}

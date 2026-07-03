@@ -27,6 +27,8 @@ const asyncHandler = require('../utils/asyncHandler');
 const Store        = require('../models/store/Store');
 const StorePage    = require('../models/store/StorePage');
 const { uploadBufferToCloudinary } = require('../config/cloudinary');
+const { minifyCss } = require('../utils/minifyCss');
+const { optimizeImageUrl } = require('../utils/storeImageOptimizer');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Multer — in-memory, 50 MB
@@ -371,7 +373,12 @@ const rewriteHtmlAssets = async (html, htmlPath, index, lcIndex, getUrl) => {
 
   const cdnFor = async (href) => {
     const key = resolve(href);
-    return key ? getUrl(key) : null;
+    if (!key) return null;
+    const url = await getUrl(key);
+    // Image Optimization + Asset CDN: request an auto-format/auto-quality,
+    // width-capped derivative from Cloudinary instead of the raw upload —
+    // Cloudinary caches the derivative at the CDN edge after first request.
+    return url ? optimizeImageUrl(url, 'f_auto,q_auto,w_1600,c_limit') : null;
   };
 
   let out = html;
@@ -381,7 +388,15 @@ const rewriteHtmlAssets = async (html, htmlPath, index, lcIndex, getUrl) => {
     const m = /\bsrc=["']([^"']+)["']/i.exec(tag);
     if (!m) return tag;
     const cdnUrl = await cdnFor(m[1]);
-    return cdnUrl ? replaceAttrValue(tag, 'src', m[1], cdnUrl) : tag;
+    let rewritten = cdnUrl ? replaceAttrValue(tag, 'src', m[1], cdnUrl) : tag;
+    // Lazy Loading: native browser lazy-load for every storefront <img>
+    // that doesn't already declare a loading attribute. (Uniform across
+    // the page rather than special-casing the first/hero image — simple,
+    // dependency-free, and matches what most page-builder exports do.)
+    if (!/\bloading=/i.test(rewritten)) {
+      rewritten = rewritten.replace(/^<img\b/i, '<img loading="lazy" decoding="async"');
+    }
+    return rewritten;
   });
 
   // img[srcset]
@@ -710,7 +725,10 @@ const parseStoreTemplateZip = async (zipBuffer, { cloudinaryFolder }) => {
       isHome,
       content: {
         html:       bodyHtml,
-        css:        extractedCss,
+        // Minified once at import time so every downstream consumer
+        // (template library preview, store creation, publish snapshot)
+        // ships the smaller payload — see utils/minifyCss.js.
+        css:        minifyCss(extractedCss),
         headLinks,
         sourcePath: zipPath,
       },

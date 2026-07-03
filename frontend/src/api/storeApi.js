@@ -3,18 +3,61 @@
 // which manages the StoreTemplate library).
 const API_BASE = import.meta.env.VITE_WEBSITE_WIZARD_API_BASE || 'http://localhost:5500/api';
 
-async function requestJson(path, { method = 'GET', body } = {}) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+// ── Caching ────────────────────────────────────────────────────────────
+// Admin screens (Products/Collections/Customers/Orders tables, Analytics)
+// tend to re-fetch the same GET endpoints repeatedly as a merchant switches
+// tabs. A short-TTL in-memory cache avoids re-hitting the network for
+// identical GETs within that window, while any mutating call (POST/PATCH/
+// PUT/DELETE) clears the whole cache so the next read is always fresh —
+// simpler and safer than trying to track per-resource dependencies for a
+// cache this short-lived.
+const GET_CACHE_TTL_MS = 30 * 1000;
+const getCache = new Map(); // url -> { expiresAt, promise }
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`API ${method} ${path} failed: ${res.status} ${text}`);
+function invalidateGetCache() {
+  getCache.clear();
+}
+
+async function requestJson(path, { method = 'GET', body } = {}) {
+  const url = `${API_BASE}${path}`;
+
+  if (method === 'GET') {
+    const cached = getCache.get(url);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.promise.then((json) => json);
+    }
   }
-  return res.json();
+
+  const fetchPromise = (async () => {
+    const res = await fetch(url, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`API ${method} ${path} failed: ${res.status} ${text}`);
+    }
+    return res.json();
+  })();
+
+  if (method === 'GET') {
+    getCache.set(url, { expiresAt: Date.now() + GET_CACHE_TTL_MS, promise: fetchPromise });
+    try {
+      return await fetchPromise;
+    } catch (err) {
+      getCache.delete(url); // don't cache failures
+      throw err;
+    }
+  }
+
+  // Any mutation invalidates cached reads so the next GET reflects it.
+  try {
+    return await fetchPromise;
+  } finally {
+    invalidateGetCache();
+  }
 }
 
 function unwrap(json) {

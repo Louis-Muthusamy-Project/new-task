@@ -77,6 +77,40 @@ export const storeTemplateApi = {
     return json.data;
   },
 
+  // GET /api/store-templates/:id/versions — version history for the v1/v2/…
+  // tab switcher in StoreTemplateLibraryModal.
+  getTemplateVersions: async (templateId) => {
+    const json = unwrap(await requestJson(`/store-templates/${templateId}/versions`, { method: 'GET' }));
+    return json.data;
+  },
+
+  // POST /api/store-templates/:id/versions — snapshot the template's current
+  // content as a new version (e.g. v1 -> v2).
+  createTemplateVersion: async (templateId, { label } = {}) => {
+    const json = unwrap(
+      await requestJson(`/store-templates/${templateId}/versions`, { method: 'POST', body: { label } })
+    );
+    return json.data;
+  },
+
+  // POST /api/store-templates/:id/rollback/:version — restore the template
+  // to a prior version's snapshot (recorded as a new version, history kept).
+  rollbackTemplateVersion: async (templateId, version) => {
+    const json = unwrap(
+      await requestJson(`/store-templates/${templateId}/rollback/${version}`, { method: 'POST' })
+    );
+    return json.data;
+  },
+
+  // POST /api/store-templates/:id/duplicate — clone a library entry into a
+  // brand-new, independently-editable template ("Duplicate Template").
+  duplicateStoreTemplate: async (templateId, { name } = {}) => {
+    const json = unwrap(
+      await requestJson(`/store-templates/${templateId}/duplicate`, { method: 'POST', body: { name } })
+    );
+    return json.data;
+  },
+
   // POST /api/store/upload-template — full ZIP-parse pipeline that creates a
   // Store + its StorePage documents (Store-module counterpart of
   // websiteWizardCloudinaryApi.uploadTemplateZipToCloudinary).

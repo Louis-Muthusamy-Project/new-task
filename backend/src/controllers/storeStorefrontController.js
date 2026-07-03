@@ -4,6 +4,7 @@ const StoreProduct = require('../models/store/StoreProduct');
 const StoreCollection = require('../models/store/StoreCollection');
 const StoreTestimonial = require('../models/store/StoreTestimonial');
 const StoreOrder = require('../models/store/StoreOrder');
+const { optimizeImageUrl, optimizeImageList } = require('../utils/storeImageOptimizer');
 
 /**
  * storeStorefrontController.js
@@ -43,8 +44,8 @@ const toPublicProduct = (p) => ({
   title: p.title,
   slug: p.slug,
   description: p.description,
-  images: p.images || [],
-  image: (p.images && p.images[0]) || '',
+  images: optimizeImageList(p.images, 'card'),
+  image: optimizeImageUrl((p.images && p.images[0]) || '', 'card'),
   price: p.price,
   compareAtPrice: p.compareAtPrice,
   currency: p.currency || 'USD',
@@ -58,7 +59,7 @@ const toPublicCollection = (c) => ({
   title: c.title,
   slug: c.slug,
   description: c.description,
-  imageUrl: c.imageUrl || '',
+  imageUrl: optimizeImageUrl(c.imageUrl || '', 'card'),
   productCount: Array.isArray(c.productIds) ? c.productIds.length : 0,
 });
 
@@ -66,7 +67,7 @@ const toPublicTestimonial = (t) => ({
   id: t._id,
   customerName: t.customerName,
   customerTitle: t.customerTitle || '',
-  avatarUrl: t.avatarUrl || '',
+  avatarUrl: optimizeImageUrl(t.avatarUrl || '', 'avatar'),
   quote: t.quote,
   rating: t.rating || 5,
 });
@@ -91,7 +92,7 @@ exports.getStoreInfo = async (req, res) => {
       name: store.storeName || store.name,
       description: store.description || '',
       currency: store.currency || 'USD',
-      logoUrl: store.faviconUrl || '',
+      logoUrl: optimizeImageUrl(store.faviconUrl || '', 'avatar'),
       domain: store.domain || '',
     },
   });

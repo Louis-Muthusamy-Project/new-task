@@ -39,6 +39,24 @@ const TemplateThemeSchema = new Schema(
   { _id: false }
 );
 
+// Snapshot of a template's editable payload at a point in time. Pushed onto
+// `versions` whenever a new version is saved so older revisions can be
+// rolled back to without losing history.
+const TemplateVersionSchema = new Schema(
+  {
+    version: { type: Number, required: true },
+    projectData: { type: Schema.Types.Mixed, default: null },
+    pages: { type: [TemplatePageDefinitionSchema], default: [] },
+    theme: { type: TemplateThemeSchema, default: () => ({}) },
+    thumbnail: { type: String, trim: true, default: '' },
+    preview: { type: String, trim: true, default: '' },
+    label: { type: String, trim: true, default: '' },
+    createdBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 const StoreTemplateSchema = new Schema(
   {
     name: {
@@ -102,9 +120,17 @@ const StoreTemplateSchema = new Schema(
       default: 'Draft',
       index: true,
     },
+    // Current/latest version number — mirrors versions[versions.length - 1].version.
     version: {
       type: Number,
       default: 1,
+    },
+    // Full history of saved versions (v1, v2, ...), each a self-contained
+    // snapshot of projectData/pages/theme so Rollback can restore any prior
+    // state and Duplicate Template can clone from a specific point in time.
+    versions: {
+      type: [TemplateVersionSchema],
+      default: [],
     },
     // Which roles uploaded / own this library entry — kept for auditing since
     // uploads are restricted to admin / superadmin on the frontend.
@@ -124,6 +150,28 @@ const StoreTemplateSchema = new Schema(
 
 StoreTemplateSchema.index({ category: 1, status: 1 });
 StoreTemplateSchema.index({ name: 'text', description: 'text' });
+
+// Seed versions[0] (v1) from the initial payload on first save so every
+// template has a real history entry from the moment it's created, instead
+// of only gaining one the first time someone explicitly saves a new version.
+StoreTemplateSchema.pre('save', function seedInitialVersion(next) {
+  if (this.isNew && (!this.versions || this.versions.length === 0)) {
+    this.versions = [
+      {
+        version: this.version || 1,
+        projectData: this.projectData,
+        pages: this.pages,
+        theme: this.theme,
+        thumbnail: this.thumbnail,
+        preview: this.preview,
+        label: 'Initial version',
+        createdBy: this.uploadedBy || null,
+        createdAt: this.createdAt || new Date(),
+      },
+    ];
+  }
+  next();
+});
 
 module.exports =
   mongoose.models.StoreTemplate || mongoose.model('StoreTemplate', StoreTemplateSchema);

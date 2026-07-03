@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import { Modal, Input, Checkbox, Button, Typography, Space, Row, Col, Card, Tag, Empty, message } from "antd";
-import { Store, X as CloseIcon, Search as SearchIcon, CheckCircle, UploadCloud, Eye } from "lucide-react";
+import { Store, X as CloseIcon, Search as SearchIcon, CheckCircle, UploadCloud, Eye, History, Copy, RotateCcw } from "lucide-react";
 import { useAuth } from "../../../contexts/AuthContext";
 import { storeTemplateApi } from "../../../api/storeTemplateApi";
 import { storeApi } from "../../../api/storeApi";
@@ -51,6 +51,13 @@ const StoreTemplateLibraryModal = ({ open, onCancel, onCreate, initialStoreName 
 
   const [templates, setTemplates] = useState(FALLBACK_TEMPLATES);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
+
+  // ── Template Versioning (v1/v2/… tabs, Rollback, Duplicate Template) ───
+  const [versionHistory, setVersionHistory] = useState([]); // [{ version, label, createdAt, ... }]
+  const [loadingVersions, setLoadingVersions] = useState(false);
+  const [activeVersion, setActiveVersion] = useState(null);
+  const [rollingBack, setRollingBack] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
 
   // Pull the real library from the backend (StoreTemplate collection) each
   // time the modal opens. Falls back to the local demo set on error so the
@@ -199,6 +206,105 @@ const StoreTemplateLibraryModal = ({ open, onCancel, onCreate, initialStoreName 
   const useTemplateFromPreview = () => {
     if (previewTemplate) setSelectedTemplate(previewTemplate.id);
     setPreviewTemplate(null);
+  };
+
+  // Load version history (v1, v2, …) whenever a template preview opens.
+  // Fallback templates / not-yet-persisted templates (pending-*) have no
+  // server record yet, so just show a single implicit v1 for those.
+  useEffect(() => {
+    if (!previewTemplate) {
+      setVersionHistory([]);
+      setActiveVersion(null);
+      return;
+    }
+    const id = previewTemplate.id;
+    if (!id || String(id).startsWith("pending-")) {
+      setVersionHistory([{ version: 1, label: "Initial version" }]);
+      setActiveVersion(1);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingVersions(true);
+    storeTemplateApi
+      .getTemplateVersions(id)
+      .then(({ versions, currentVersion }) => {
+        if (cancelled) return;
+        const list = versions?.length ? versions : [{ version: currentVersion || 1, label: "Initial version" }];
+        setVersionHistory(list);
+        setActiveVersion(currentVersion || list[list.length - 1]?.version || 1);
+      })
+      .catch((err) => {
+        console.error("Failed to load template version history", err);
+        if (!cancelled) {
+          setVersionHistory([{ version: 1, label: "Initial version" }]);
+          setActiveVersion(1);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingVersions(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [previewTemplate]);
+
+  // Rollback the previewed template to the selected version tab. The
+  // backend records this as a brand-new version (e.g. rolling back to v1
+  // from v3 produces v4 with v1's content), so history is never destroyed.
+  const handleRollback = async () => {
+    if (!previewTemplate || activeVersion == null) return;
+    setRollingBack(true);
+    try {
+      const updated = await storeTemplateApi.rollbackTemplateVersion(previewTemplate.id, activeVersion);
+      message.success(`Rolled back to v${activeVersion}.`);
+      setTemplates((prev) =>
+        prev.map((t) =>
+          t.id === previewTemplate.id
+            ? { ...t, thumbnail: updated?.thumbnail ?? t.thumbnail, preview: updated?.preview ?? t.preview }
+            : t
+        )
+      );
+      const { versions, currentVersion } = await storeTemplateApi.getTemplateVersions(previewTemplate.id);
+      setVersionHistory(versions || []);
+      setActiveVersion(currentVersion);
+    } catch (err) {
+      console.error("Failed to roll back template version", err);
+      message.error(`Couldn't roll back: ${err.message || "unknown error"}`);
+    } finally {
+      setRollingBack(false);
+    }
+  };
+
+  // Clone the previewed template into a brand-new, independently-editable
+  // library entry ("Duplicate Template").
+  const handleDuplicateTemplate = async () => {
+    if (!previewTemplate) return;
+    setDuplicating(true);
+    try {
+      const duplicate = await storeTemplateApi.duplicateStoreTemplate(previewTemplate.id, {
+        name: `${previewTemplate.name} (Copy)`,
+      });
+      message.success(`"${duplicate?.name || previewTemplate.name}" duplicated.`);
+      setTemplates((prev) => [
+        {
+          id: duplicate?._id,
+          name: duplicate?.name,
+          type: duplicate?.category || "Other",
+          thumbnail: duplicate?.thumbnail || "",
+          preview: duplicate?.preview || "",
+          bg: PALETTE[prev.length % PALETTE.length],
+        },
+        ...prev,
+      ]);
+      setPreviewTemplate(null);
+    } catch (err) {
+      console.error("Failed to duplicate template", err);
+      message.error(`Couldn't duplicate the template: ${err.message || "unknown error"}`);
+    } finally {
+      setDuplicating(false);
+    }
   };
 
   return (
@@ -413,6 +519,46 @@ const StoreTemplateLibraryModal = ({ open, onCancel, onCreate, initialStoreName 
       >
         {previewTemplate && (
           <div>
+            {/* Template Versioning — v1 / v2 / … tabs */}
+            {canUploadTemplate && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <History size={14} color="var(--text-tertiary)" />
+                  <Text type="secondary" style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}>
+                    VERSION HISTORY
+                  </Text>
+                </div>
+                <Space wrap>
+                  {loadingVersions ? (
+                    <Text type="secondary" style={{ fontSize: 13 }}>Loading versions…</Text>
+                  ) : (
+                    versionHistory
+                      .slice()
+                      .sort((a, b) => a.version - b.version)
+                      .map((v) => (
+                        <Tag
+                          key={v.version}
+                          onClick={() => setActiveVersion(v.version)}
+                          style={{
+                            cursor: "pointer",
+                            padding: "4px 12px",
+                            borderRadius: 6,
+                            fontWeight: 700,
+                            fontSize: 13,
+                            border: activeVersion === v.version ? "1px solid var(--accent-success)" : "1px solid var(--border-color)",
+                            background: activeVersion === v.version ? "rgba(16, 185, 129, 0.12)" : "var(--bg-primary)",
+                            color: activeVersion === v.version ? "var(--accent-success)" : "var(--text-primary)",
+                          }}
+                          title={v.label || `Version ${v.version}`}
+                        >
+                          v{v.version}
+                        </Tag>
+                      ))
+                  )}
+                </Space>
+              </div>
+            )}
+
             {previewTemplate.preview ? (
               <iframe
                 title={`${previewTemplate.name} preview`}
@@ -426,9 +572,38 @@ const StoreTemplateLibraryModal = ({ open, onCancel, onCreate, initialStoreName 
             )}
             <div style={{ marginTop: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <Text type="secondary">{previewTemplate.type} template</Text>
-              <Button type="primary" onClick={useTemplateFromPreview} style={{ backgroundColor: "var(--accent-success)", border: "none", borderRadius: 8, fontWeight: 700 }}>
-                Use this template
-              </Button>
+              <Space>
+                {canUploadTemplate && (
+                  <>
+                    {/* Rollback — restore the template to the selected version tab */}
+                    <Button
+                      icon={<RotateCcw size={14} />}
+                      onClick={handleRollback}
+                      loading={rollingBack}
+                      disabled={
+                        loadingVersions ||
+                        activeVersion == null ||
+                        activeVersion === versionHistory[versionHistory.length - 1]?.version
+                      }
+                      style={{ borderRadius: 8, fontWeight: 600, borderColor: "var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)" }}
+                    >
+                      Rollback
+                    </Button>
+                    {/* Duplicate Template — clone into a new, independently-editable entry */}
+                    <Button
+                      icon={<Copy size={14} />}
+                      onClick={handleDuplicateTemplate}
+                      loading={duplicating}
+                      style={{ borderRadius: 8, fontWeight: 600, borderColor: "var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)" }}
+                    >
+                      Duplicate Template
+                    </Button>
+                  </>
+                )}
+                <Button type="primary" onClick={useTemplateFromPreview} style={{ backgroundColor: "var(--accent-success)", border: "none", borderRadius: 8, fontWeight: 700 }}>
+                  Use this template
+                </Button>
+              </Space>
             </div>
           </div>
         )}

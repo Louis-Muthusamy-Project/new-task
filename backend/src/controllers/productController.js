@@ -17,6 +17,7 @@
 const mongoose = require('mongoose');
 const StoreProduct = require('../models/store/StoreProduct');
 const Store = require('../models/store/Store');
+const { invalidateStoreCache } = require('../middlewares/storeCache');
 
 const notFoundError = (message) => {
   const err = new Error(message);
@@ -180,6 +181,7 @@ exports.createProduct = async (req, res) => {
     ...updates,
   });
 
+  invalidateStoreCache(storeId);
   res.status(201).json({ success: true, data: product });
 };
 
@@ -211,6 +213,7 @@ exports.updateProduct = async (req, res) => {
   }
   await product.save();
 
+  invalidateStoreCache(storeId);
   res.status(200).json({ success: true, data: product });
 };
 
@@ -230,5 +233,6 @@ exports.deleteProduct = async (req, res) => {
   );
   if (!product) throw notFoundError('Product not found.');
 
+  invalidateStoreCache(storeId);
   res.status(200).json({ success: true, data: { id: product._id, deleted: true } });
 };

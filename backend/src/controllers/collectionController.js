@@ -18,6 +18,7 @@ const mongoose = require('mongoose');
 const StoreCollection = require('../models/store/StoreCollection');
 const StoreProduct = require('../models/store/StoreProduct');
 const Store = require('../models/store/Store');
+const { invalidateStoreCache } = require('../middlewares/storeCache');
 
 const notFoundError = (message) => {
   const err = new Error(message);
@@ -162,6 +163,7 @@ exports.createCollection = async (req, res) => {
     productIds: productIds ?? [],
   });
 
+  invalidateStoreCache(storeId);
   res.status(201).json({ success: true, data: collection });
 };
 
@@ -191,6 +193,7 @@ exports.updateCollection = async (req, res) => {
   Object.assign(collection, updates);
   await collection.save();
 
+  invalidateStoreCache(storeId);
   res.status(200).json({ success: true, data: collection });
 };
 
@@ -210,5 +213,6 @@ exports.deleteCollection = async (req, res) => {
   );
   if (!collection) throw notFoundError('Collection not found.');
 
+  invalidateStoreCache(storeId);
   res.status(200).json({ success: true, data: { id: collection._id, deleted: true } });
 };

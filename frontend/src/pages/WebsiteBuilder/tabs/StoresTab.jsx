@@ -12,6 +12,7 @@ import CustomerFormModal from "./CustomerFormModal";
 import { productApi, storeApi, collectionApi, customerApi, orderApi, ORDER_STATUSES, discountApi, DISCOUNT_TYPES, shippingApi, paymentApi, PAYMENT_METHODS, emailApi, EMAIL_TEMPLATE_TYPES, analyticsApi } from "../../../api/storeApi";
 import DiscountFormModal from "./DiscountFormModal";
 import ShippingZoneModal from "./ShippingZoneModal";
+import { optimizeStoreImageUrl } from "../utils/storeImageCdn";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -674,7 +675,13 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div style={{ width: 40, height: 40, borderRadius: 8, overflow: "hidden", background: "var(--bg-primary)", border: "1px solid var(--border-color)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
               {r.images?.[0] ? (
-                <img src={r.images[0]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                <img
+                  src={optimizeStoreImageUrl(r.images[0], "thumbnail")}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
               ) : (
                 <ImageIcon size={16} color="var(--text-tertiary)" />
               )}
@@ -1214,7 +1221,13 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div style={{ width: 40, height: 40, borderRadius: 8, overflow: "hidden", background: "var(--bg-primary)", border: "1px solid var(--border-color)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
               {r.imageUrl ? (
-                <img src={r.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                <img
+                  src={optimizeStoreImageUrl(r.imageUrl, "thumbnail")}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
               ) : (
                 <LayoutGrid size={16} color="var(--text-tertiary)" />
               )}
