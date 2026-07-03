@@ -31,6 +31,48 @@ async function requestMultipart(path, formData) {
   return res.json();
 }
 
+// XHR-based multipart POST — used instead of fetch() only where callers need
+// real upload-progress events (fetch has no progress API). Kept separate
+// from requestMultipart above so every existing caller (createStoreTemplate,
+// uploadTemplateZipToCloudinary) is completely unaffected by this addition.
+function requestMultipartWithProgress(path, formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_BASE}${path}`);
+
+    xhr.upload.onprogress = (e) => {
+      if (typeof onProgress === 'function' && e.lengthComputable) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+
+    xhr.onload = () => {
+      let json = null;
+      try {
+        json = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+      } catch (_) {
+        // non-JSON response — fall through, handled below
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(json);
+      } else {
+        const message =
+          (json && (json.error || (Array.isArray(json.errors) && json.errors.join(' ')))) ||
+          `Request failed (${xhr.status})`;
+        const err = new Error(message);
+        err.status = xhr.status;
+        err.payload = json;
+        reject(err);
+      }
+    };
+
+    xhr.onerror = () => reject(new Error('Network error while uploading the file.'));
+    xhr.onabort = () => reject(new Error('Upload cancelled.'));
+
+    xhr.send(formData);
+  });
+}
+
 function unwrap(json) {
   if (!json || json.success === false) {
     throw new Error(json?.error || 'Unknown API error');
@@ -109,6 +151,35 @@ export const storeTemplateApi = {
       await requestJson(`/store-templates/${templateId}/duplicate`, { method: 'POST', body: { name } })
     );
     return json.data;
+  },
+
+  // POST /api/wordpress-import/upload — WordPress (Simply Static) import
+  // pipeline: Extract -> Validate Structure -> Upload Assets -> Rewrite
+  // Asset URLs -> Create StoreTemplate (see the WordPress Import Pipeline
+  // architecture doc). Reuses the same StoreTemplate collection/shape as
+  // createStoreTemplate() above — the only difference is the source ZIP is
+  // validated as a Simply Static export first. Returns
+  // { template, warnings } on success; throws with `.errors` (validation
+  // failures from Stage 3) or `.payload` set when available.
+  importWordPressTemplate: async ({ file, name, category, description, status, onProgress } = {}) => {
+    const form = new FormData();
+    if (file) form.append('file', file);
+    if (name) form.append('name', name);
+    if (category) form.append('category', category);
+    if (description) form.append('description', description);
+    if (status) form.append('status', status);
+
+    const json = await requestMultipartWithProgress('/wordpress-import/upload', form, onProgress);
+    if (!json || json.success === false) {
+      const err = new Error(
+        (json && (json.error || (Array.isArray(json.errors) && json.errors.join(' ')))) ||
+          'WordPress import failed.'
+      );
+      err.errors = json?.errors;
+      err.warnings = json?.warnings;
+      throw err;
+    }
+    return { template: json.data, warnings: json.warnings || [] };
   },
 
   // POST /api/store/upload-template — full ZIP-parse pipeline that creates a
