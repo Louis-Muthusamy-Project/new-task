@@ -2202,29 +2202,49 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
   );
 };
 
+// Maps a raw Store document (as returned by GET /api/store) into the row
+// shape the "All stores" table renders.
+const mapStoreToRow = (store) => ({
+  key: store._id,
+  _id: store._id,
+  store: store.storeName || store.name,
+  slug: store.domain || (store.storeName || store.name || "").toLowerCase().replace(/\s+/g, "-"),
+  status: store.status || "Draft",
+  catalog: store.productCount ? `${store.productCount} product${store.productCount === 1 ? "" : "s"}` : "Empty Catalog",
+  currency: store.currency || "USD",
+});
+
 const StoresTab = ({ itemVariants }) => {
   const [view, setView] = useState("list");
   const [stores, setStores] = useState([]);
+  const [storesLoading, setStoresLoading] = useState(false);
   const [activeStore, setActiveStore] = useState(null);
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [tempStoreData, setTempStoreData] = useState(null);
 
-  useEffect(() => {
-    const savedStores = localStorage.getItem("tunepath_stores");
-    if (savedStores) {
-      try {
-        setStores(JSON.parse(savedStores));
-      } catch (e) {}
+  // Fetches every store from the backend (GET /api/store) and populates
+  // the "All stores" table — replaces the old localStorage-only list so
+  // stores created from any device/session show up here.
+  const loadStores = async () => {
+    setStoresLoading(true);
+    try {
+      const data = await storeApi.list();
+      setStores((data || []).map(mapStoreToRow));
+    } catch (err) {
+      message.error(err.message || "Failed to load stores.");
+    } finally {
+      setStoresLoading(false);
     }
+  };
+
+  useEffect(() => {
+    loadStores();
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem("tunepath_stores", JSON.stringify(stores));
-  }, [stores]);
-
   const handleDelete = (key) => {
+    // No backend delete endpoint exists yet for stores — remove locally only.
     setStores(stores.filter(store => store.key !== key));
   };
 
@@ -2297,28 +2317,19 @@ const StoresTab = ({ itemVariants }) => {
       setIsTemplateModalOpen(true);
     } else {
       try {
-        const { store } = await storeApi.createStore({
+        await storeApi.createStore({
           storeName: data.storeName,
           currency: data.currency,
           status: data.status,
         });
-        const newStore = {
-          key: store._id,
-          _id: store._id,
-          store: data.storeName,
-          slug: data.storeName.toLowerCase().replace(/\s+/g, '-'),
-          status: data.status,
-          catalog: "Empty Catalog",
-          currency: data.currency
-        };
-        setStores(prev => [...prev, newStore]);
+        await loadStores();
       } catch (err) {
         message.error(err.message || "Failed to create store.");
       }
     }
   };
 
-  const handleTemplateCreate = (templateData) => {
+  const handleTemplateCreate = async (templateData) => {
     const backendStoreId = templateData?.store?._id;
     const newStore = {
       key: backendStoreId || Date.now().toString(),
@@ -2329,11 +2340,13 @@ const StoresTab = ({ itemVariants }) => {
       catalog: templateData.template ? `Template: ${templateData.template}` : "Demo Catalog",
       currency: tempStoreData?.currency || "INR"
     };
-    
-    setStores([...stores, newStore]);
+
     setIsTemplateModalOpen(false);
     setTempStoreData(null);
 
+    // Refresh the full list from the backend so the new store's real
+    // productCount/status/slug show up, then jump straight into managing it.
+    await loadStores();
     setActiveStore(newStore);
     setView("manage");
   };
@@ -2368,6 +2381,7 @@ const StoresTab = ({ itemVariants }) => {
       <Table
         columns={columns}
         dataSource={stores}
+        loading={storesLoading}
         pagination={false}
         size="middle"
         rowKey="key"

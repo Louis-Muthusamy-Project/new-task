@@ -226,6 +226,40 @@ const createStoreFromTemplate = asyncHandler(async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/store — list all stores (StoresTab.jsx "All stores" table)
+// Query: { search, status }
+// Returns every non-deleted store, newest first, with a lightweight
+// products count so the table's CATALOG column doesn't need a second round
+// trip per row.
+// ─────────────────────────────────────────────────────────────────────────────
+const listStores = asyncHandler(async (req, res) => {
+  const { search, status } = req.query || {};
+
+  const query = { isDeleted: { $ne: true } };
+  if (status) query.status = status;
+  if (search) query.$text = { $search: search };
+
+  const ownerId = req?.user?.id || req?.user?._id || null;
+  if (ownerId) query.ownerId = ownerId;
+
+  const stores = await Store.find(query).sort({ createdAt: -1 }).lean();
+
+  const storeIds = stores.map((s) => s._id);
+  const productCounts = await StoreProduct.aggregate([
+    { $match: { storeId: { $in: storeIds }, isDeleted: { $ne: true } } },
+    { $group: { _id: '$storeId', count: { $sum: 1 } } },
+  ]);
+  const countByStoreId = new Map(productCounts.map((c) => [String(c._id), c.count]));
+
+  const data = stores.map((s) => ({
+    ...s,
+    productCount: countByStoreId.get(String(s._id)) || 0,
+  }));
+
+  return res.status(200).json({ success: true, data });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/store — plain "start from scratch" create (no template)
 // Body: { storeName, currency, status, description }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -300,4 +334,4 @@ const previewStore = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { createStoreFromTemplate, createStore, previewStore };
+module.exports = { createStoreFromTemplate, createStore, listStores, previewStore };

@@ -68,6 +68,17 @@ function unwrap(json) {
 }
 
 export const storeApi = {
+  // GET /api/store — list all stores (StoresTab.jsx "All stores" table).
+  // Each row includes a `productCount` computed on the backend.
+  list: async ({ search, status } = {}) => {
+    const params = new URLSearchParams();
+    if (search) params.set('search', search);
+    if (status) params.set('status', status);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const json = unwrap(await requestJson(`/store${qs}`));
+    return json.data; // Store[]
+  },
+
   // POST /api/store — "start from scratch" (no template)
   createStore: async ({ storeName, currency, status, description } = {}) => {
     const json = unwrap(

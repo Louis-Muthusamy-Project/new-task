@@ -1,9 +1,14 @@
 const express = require('express');
 const router = express.Router();
 
-const { createStoreFromTemplate, createStore, previewStore } = require('../controllers/storeController');
+const { createStoreFromTemplate, createStore, listStores, previewStore } = require('../controllers/storeController');
 const storePublishController = require('../controllers/storePublishController');
 const asyncHandler = require('../utils/asyncHandler');
+
+// GET /api/store  (Query: { search, status })
+// Lists every store (newest first) with a productCount per row, for the
+// "All stores" table in StoresTab.jsx.
+router.get('/', asyncHandler(listStores));
 
 // POST /api/store  (Body: { storeName, currency, status, description })
 // "Start from scratch" flow — plain Store record, no template/pages/products.
