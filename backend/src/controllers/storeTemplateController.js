@@ -603,6 +603,129 @@ const slugifySegment = (s) =>
     .replace(/-+/g, '-').replace(/^-|-$/g, '');
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Shared parse pipeline — Extract -> Read HTML -> Read CSS -> Upload Images ->
+// Generate ProjectData (page docs), independent of *what* the caller does
+// with the result (create a live Store + StorePages, or save straight onto
+// a StoreTemplate library entry). Both call sites below share this so the
+// "Save StoreTemplate" pipeline can no longer skip Extract/Read/Upload.
+//
+// @param {Buffer} zipBuffer
+// @param {string}  cloudinaryFolder - e.g. `store-templates/${id}/assets`
+// @returns {Promise<{ pages: Array, assetMap: Object }>}
+//   pages[i] = { name, slug, isHome, content: { html, css, headLinks, sourcePath } }
+// ─────────────────────────────────────────────────────────────────────────────
+const parseStoreTemplateZip = async (zipBuffer, { cloudinaryFolder }) => {
+  // 1. Open ZIP
+  const zip = await JSZip.loadAsync(zipBuffer);
+
+  // 2. Catalogue entries
+  const htmlEntries = [];
+  const cssEntries  = new Map();
+
+  zip.forEach((rawPath, entry) => {
+    if (!entry || entry.dir) return;
+    const zipPath = normZip(rawPath);
+    const ext     = (zipPath.split('.').pop() || '').toLowerCase();
+
+    if (ext === 'html' || ext === 'htm') {
+      htmlEntries.push({ zipPath, entry });
+      return;
+    }
+    if (SKIP_EXTS.has(ext)) return;
+    if (ext === 'css') cssEntries.set(zipPath, { entry });
+  });
+
+  if (!htmlEntries.some(({ zipPath }) => /(^|\/)index\.html?$/i.test(zipPath))) {
+    const error = new Error('ZIP must contain index.html.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // 3. Build assetIndex
+  const { index, lcIndex } = buildAssetIndex(zip);
+  cssEntries.forEach((_, zipPath) => {
+    if (!index[zipPath]) {
+      index[zipPath]  = { entry: cssEntries.get(zipPath).entry, ext: 'css', mime: 'text/css', secureUrl: null };
+      lcIndex[zipPath.toLowerCase()] = zipPath;
+    }
+  });
+
+  // getUrl — upload-once helper ("Upload Images", plus fonts/JS/etc.)
+  const getUrl = async (key) => {
+    const hit = index[key];
+    if (!hit) return null;
+    if (hit.secureUrl) return hit.secureUrl;
+
+    try {
+      const buffer       = await hit.entry.async('nodebuffer');
+      const resourceType = cloudinaryResType(hit.mime);
+      const result       = await withSlot(() =>
+        uploadBufferToCloudinary(buffer, { folder: cloudinaryFolder, resourceType, mime: hit.mime })
+      );
+      hit.secureUrl = result.secure_url;
+      hit.publicId  = result.public_id;
+      return hit.secureUrl;
+    } catch (err) {
+      console.error(`[store-import-engine] upload failed: "${key}":`, err.message || err);
+      return null;
+    }
+  };
+
+  // Process HTML files ("Read HTML" + "Read CSS" + "Generate ProjectData")
+  htmlEntries.sort((a, b) => {
+    const ai = /(^|\/)index\.html?$/i.test(a.zipPath);
+    const bi = /(^|\/)index\.html?$/i.test(b.zipPath);
+    return ai === bi ? a.zipPath.localeCompare(b.zipPath) : ai ? -1 : 1;
+  });
+
+  const pages = [];
+
+  for (const { zipPath, entry } of htmlEntries) {
+    const rawHtml = await entry.async('string');
+    if (!rawHtml?.trim()) continue;
+
+    const fileName = zipPath.split('/').pop();
+    const base     = fileName.replace(/\.html?$/i, '');
+    const isHome   = base.toLowerCase() === 'index';
+    const pageName = isHome ? 'Home' : normalizeName(base);
+    const pageSlug = isHome ? 'home' : slugifySegment(base);
+
+    const headLinks = extractHeadLinks(rawHtml);
+
+    const htmlWithInlinedCss = await inlineCssIntoHtml(
+      rawHtml, zipPath, cssEntries, index, lcIndex, getUrl
+    );
+
+    const htmlWithRewrittenAssets = await rewriteHtmlAssets(
+      htmlWithInlinedCss, zipPath, index, lcIndex, getUrl
+    );
+
+    const { css: extractedCss, htmlWithoutStyles } = extractCssFromHtml(htmlWithRewrittenAssets);
+
+    const bodyHtml = extractBody(htmlWithoutStyles);
+
+    pages.push({
+      name: pageName,
+      slug: pageSlug,
+      isHome,
+      content: {
+        html:       bodyHtml,
+        css:        extractedCss,
+        headLinks,
+        sourcePath: zipPath,
+      },
+    });
+  }
+
+  const assetMap = {};
+  for (const [k, v] of Object.entries(index)) {
+    if (v.secureUrl) assetMap[k] = v.secureUrl;
+  }
+
+  return { pages, assetMap };
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main controller — Store counterpart of uploadTemplateZipToCloudinary
 // Persists to Store + StorePage instead of Website + WebsitePage.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -617,40 +740,6 @@ const uploadStoreTemplateZipToCloudinary = asyncHandler(async (req, res) => {
       return res.status(400).json({ success: false, error: 'No file. Send ZIP under "file" field.' });
 
     const { name, storeName, description, status, installDemo } = req.body || {};
-
-    // 1. Open ZIP
-    const zip = await JSZip.loadAsync(req.file.buffer);
-
-    // 2. Catalogue entries
-    const htmlEntries = [];
-    const cssEntries  = new Map();
-
-    zip.forEach((rawPath, entry) => {
-      if (!entry || entry.dir) return;
-      const zipPath = normZip(rawPath);
-      const ext     = (zipPath.split('.').pop() || '').toLowerCase();
-
-      if (ext === 'html' || ext === 'htm') {
-        htmlEntries.push({ zipPath, entry });
-        return;
-      }
-      if (SKIP_EXTS.has(ext)) return;
-      if (ext === 'css') cssEntries.set(zipPath, { entry });
-    });
-
-    if (!htmlEntries.some(({ zipPath }) => /(^|\/)index\.html?$/i.test(zipPath)))
-      return res.status(400).json({ success: false, error: 'ZIP must contain index.html.' });
-
-    // 3. Build assetIndex
-    const { index, lcIndex } = buildAssetIndex(zip);
-    cssEntries.forEach((_, zipPath) => {
-      if (!index[zipPath]) {
-        index[zipPath]  = { entry: cssEntries.get(zipPath).entry, ext: 'css', mime: 'text/css', secureUrl: null };
-        lcIndex[zipPath.toLowerCase()] = zipPath;
-      }
-    });
-
-    console.log(`[store-import-engine] assets catalogued: ${Object.keys(index).length}`);
 
     // 4. Create Store document
     const resolvedName = (storeName || name || req.file.originalname || 'Imported Store').toString();
@@ -669,81 +758,23 @@ const uploadStoreTemplateZipToCloudinary = asyncHandler(async (req, res) => {
 
     const cloudinaryFolder = `store-templates/${store._id}/assets`;
 
-    // 5. getUrl — upload-once helper
-    const getUrl = async (key) => {
-      const hit = index[key];
-      if (!hit) return null;
-      if (hit.secureUrl) return hit.secureUrl;
+    // 1-3, 5-6. Extract -> Read HTML/CSS -> Upload Images -> Generate ProjectData
+    const { pages: parsedPages, assetMap } = await parseStoreTemplateZip(req.file.buffer, { cloudinaryFolder });
 
-      try {
-        const buffer       = await hit.entry.async('nodebuffer');
-        const resourceType = cloudinaryResType(hit.mime);
-        const result       = await withSlot(() =>
-          uploadBufferToCloudinary(buffer, { folder: cloudinaryFolder, resourceType, mime: hit.mime })
-        );
-        hit.secureUrl = result.secure_url;
-        hit.publicId  = result.public_id;
-        return hit.secureUrl;
-      } catch (err) {
-        console.error(`[store-import-engine] upload failed: "${key}":`, err.message || err);
-        return null;
-      }
-    };
+    console.log(`[store-import-engine] assets uploaded: ${Object.keys(assetMap).length}`);
 
-    // 6. Process HTML files
-    htmlEntries.sort((a, b) => {
-      const ai = /(^|\/)index\.html?$/i.test(a.zipPath);
-      const bi = /(^|\/)index\.html?$/i.test(b.zipPath);
-      return ai === bi ? a.zipPath.localeCompare(b.zipPath) : ai ? -1 : 1;
-    });
-
-    const pages = [];
-
-    for (const { zipPath, entry } of htmlEntries) {
-      const rawHtml = await entry.async('string');
-      if (!rawHtml?.trim()) continue;
-
-      const fileName = zipPath.split('/').pop();
-      const base     = fileName.replace(/\.html?$/i, '');
-      const isHome   = base.toLowerCase() === 'index';
-      const pageName = isHome ? 'Home' : normalizeName(base);
-      const pageSlug = isHome ? 'home' : slugifySegment(base);
-
-      const headLinks = extractHeadLinks(rawHtml);
-
-      const htmlWithInlinedCss = await inlineCssIntoHtml(
-        rawHtml, zipPath, cssEntries, index, lcIndex, getUrl
-      );
-
-      const htmlWithRewrittenAssets = await rewriteHtmlAssets(
-        htmlWithInlinedCss, zipPath, index, lcIndex, getUrl
-      );
-
-      const { css: extractedCss, htmlWithoutStyles } = extractCssFromHtml(htmlWithRewrittenAssets);
-
-      const bodyHtml = extractBody(htmlWithoutStyles);
-
-      const page = await StorePage.create({
-        storeId: store._id,
-        name:    pageName,
-        slug:    pageSlug,
-        isHome,
-        status:  'Draft',
-        content: {
-          html:       bodyHtml,
-          css:        extractedCss,
-          headLinks,
-          sourcePath: zipPath,
-        },
-      });
-
-      pages.push(page);
-    }
-
-    const assetMap = {};
-    for (const [k, v] of Object.entries(index)) {
-      if (v.secureUrl) assetMap[k] = v.secureUrl;
-    }
+    const pages = await Promise.all(
+      parsedPages.map((p) =>
+        StorePage.create({
+          storeId: store._id,
+          name:    p.name,
+          slug:    p.slug,
+          isHome:  p.isHome,
+          status:  'Draft',
+          content: p.content,
+        })
+      )
+    );
 
     console.log(`[store-import-engine] DONE — store: ${store._id}  pages: ${pages.length}  assets uploaded: ${Object.keys(assetMap).length}`);
 
@@ -751,7 +782,7 @@ const uploadStoreTemplateZipToCloudinary = asyncHandler(async (req, res) => {
 
   } catch (err) {
     console.error('[store-import-engine] fatal:', err);
-    return res.status(500).json({
+    return res.status(err?.statusCode || 500).json({
       success: false,
       error:   err?.message || 'Internal Server Error',
       stack:   process.env.NODE_ENV === 'development' ? err?.stack : undefined,
@@ -760,4 +791,4 @@ const uploadStoreTemplateZipToCloudinary = asyncHandler(async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-module.exports = { upload, uploadStoreTemplateZipToCloudinary };
+module.exports = { upload, uploadStoreTemplateZipToCloudinary, parseStoreTemplateZip };

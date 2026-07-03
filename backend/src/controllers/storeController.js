@@ -24,6 +24,7 @@
  * StoreTemplate library entry (by _id) — no file I/O, just document cloning.
  */
 
+const mongoose = require('mongoose');
 const asyncHandler = require('../utils/asyncHandler');
 const Store           = require('../models/store/Store');
 const StoreTemplate   = require('../models/store/StoreTemplate');
@@ -253,4 +254,50 @@ const createStore = asyncHandler(async (req, res) => {
   return res.status(201).json({ success: true, data: { store } });
 });
 
-module.exports = { createStoreFromTemplate, createStore };
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/store/:id/preview
+// Store-module counterpart of websiteController.previewWebsite — returns the
+// store record plus all non-deleted StorePages (home page first), so the
+// Store Preview module (Desktop/Tablet/Mobile) in StoresTab.jsx's Home tab
+// can render the live storefront inline without a popup.
+//
+// Errors handled:
+//   400 – invalid ObjectId
+//   404 – store not found or soft-deleted
+// ─────────────────────────────────────────────────────────────────────────────
+const previewStore = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    const error = new Error('Invalid store id.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const store = await Store.findOne({ _id: id, isDeleted: { $ne: true } });
+  if (!store) {
+    const error = new Error('Store not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const pages = await StorePage.find({
+    storeId: store._id,
+    isDeleted: { $ne: true },
+  })
+    .sort({ isHome: -1, createdAt: 1 })
+    .lean();
+
+  return res.status(200).json({
+    success: true,
+    data: {
+      store,
+      pages,
+      meta: {
+        pageCount: pages.length,
+        hasHomePage: pages.some((p) => p.isHome),
+      },
+    },
+  });
+});
+
+module.exports = { createStoreFromTemplate, createStore, previewStore };

@@ -55,6 +55,22 @@ export const storeApi = {
     );
     return json.data; // { store, pages, products, collections, discount }
   },
+
+  // GET /api/store/:id/preview — store metadata + all non-deleted pages
+  // (home page first). Used by the Store Preview module (Desktop/Tablet/
+  // Mobile) on the Home tab.
+  previewStore: async (id) => {
+    const json = unwrap(await requestJson(`/store/${id}/preview`));
+    return json.data; // { store, pages, meta }
+  },
+
+  // POST /api/store/:id/publish — runs the Publish pipeline (Generate
+  // Build -> Upload Assets -> Save -> Live URL) and returns the resulting
+  // publishUrl. Used by the Publish module on the Home tab.
+  publishStore: async (id) => {
+    const json = unwrap(await requestJson(`/store/${id}/publish`, { method: 'POST' }));
+    return json.publishUrl;
+  },
 };
 
 // ─────────────────────────────────────────────────────────────────────────

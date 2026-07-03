@@ -3,6 +3,8 @@ import { Button, Table, Typography, Space, Popconfirm, Select, Card, Input, Inpu
 import { Plus, Trash2, Store, ShoppingBag, LayoutGrid, Users, Tag as TagIcon, LayoutTemplate, Truck, Settings, CreditCard, Mail, Search, ExternalLink, Activity, ArrowRight, Eye, Edit3, Image as ImageIcon, Wallet, Banknote, Landmark, Server, FileText, Package, Gift, ChevronDown, ChevronRight, TrendingUp, Percent, DollarSign } from "lucide-react";
 import { motion } from "framer-motion";
 import CreateStoreModal from "./CreateStoreModal";
+import StorePreviewModal from "./StorePreviewModal";
+import StorePublishModal from "./StorePublishModal";
 import StoreTemplateLibraryModal from "./StoreTemplateLibraryModal";
 import ProductFormModal from "./ProductFormModal";
 import CollectionFormModal from "./CollectionFormModal";
@@ -43,6 +45,12 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
   // the template flow or the "start from scratch" flow). Stores created
   // before this existed may only have a local mock `key`.
   const storeId = activeStore?._id || activeStore?.id || null;
+
+  // ── Store Preview module (Desktop/Tablet/Mobile) ──────────────────────────
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
+  // ── Store Publish module (Generate Build -> Upload Assets -> Save -> Live URL) ──
+  const [isPublishOpen, setIsPublishOpen] = useState(false);
 
   // ── Products Module state (Create/Edit/Delete + Images/Inventory/Price/SEO) ──
   const [products, setProducts] = useState([]);
@@ -646,7 +654,8 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
                 <Space direction="vertical" style={{ width: "100%", marginTop: "auto" }}>
                   <Button block style={{ borderRadius: 8, fontSize: 13, fontWeight: 700, height: 40, borderColor: "var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)" }}>Manage design</Button>
                   <Button block style={{ borderRadius: 8, fontSize: 13, fontWeight: 700, height: 40, borderColor: "var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)" }}>Pages in Builder</Button>
-                  <Button type="primary" block style={{ background: "var(--accent-success)", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, height: 40 }}>Preview live <ArrowRight size={14} style={{ marginLeft: 4 }} /></Button>
+                  <Button type="primary" block style={{ background: "var(--accent-primary)", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, height: 40 }} onClick={() => setIsPublishOpen(true)}>Publish</Button>
+                  <Button type="primary" block style={{ background: "var(--accent-success)", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, height: 40 }} onClick={() => setIsPreviewOpen(true)}>Preview live <ArrowRight size={14} style={{ marginLeft: 4 }} /></Button>
                 </Space>
               </Card>
             </Col>
@@ -2162,6 +2171,20 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
 
         {renderManageContent()}
       </div>
+
+      <StorePreviewModal
+        open={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+        storeId={storeId}
+        storeSlug={activeStore.slug}
+      />
+
+      <StorePublishModal
+        open={isPublishOpen}
+        onClose={() => setIsPublishOpen(false)}
+        storeId={storeId}
+        storeSlug={activeStore.slug}
+      />
     </motion.div>
   );
 };
