@@ -36,6 +36,27 @@ const STAGES = [
 
 const STAGE_MIN_MS = 500;
 
+// Mirrors backend/src/utils/storeBlockTemplates.js's COMPONENT_LABELS /
+// MANUAL_MAPPING_TYPES so the summary below reads the same language a
+// human sees in the pipeline's warnings[] — kept as a small display-only
+// duplicate rather than an import, since this is a frontend bundle and
+// that file is backend-only CommonJS.
+const COMPONENT_LABELS = {
+  header: "Header",
+  footer: "Footer",
+  navigation: "Navigation",
+  hero: "Hero",
+  "product-grid": "Product Grid",
+  "category-grid": "Category Grid",
+  "contact-form": "Contact Form",
+  newsletter: "Newsletter",
+  "blog-list": "Blog List",
+  search: "Search Box",
+  "cart-button": "Cart Button",
+  "checkout-button": "Checkout Button",
+};
+const MANUAL_MAPPING_TYPES = new Set(["contact-form", "newsletter", "blog-list"]);
+
 /**
  * Dedicated import modal for "Import WordPress Template" (Simply Static
  * exports). Reuses the same StoreTemplate library the manual "Upload
@@ -64,6 +85,7 @@ const ImportWordPressTemplateModal = ({ open, onClose, onImported, onUseTemplate
   const [errorMessage, setErrorMessage] = useState("");
   const [validationErrors, setValidationErrors] = useState([]);
   const [warnings, setWarnings] = useState([]);
+  const [componentSummary, setComponentSummary] = useState(null);
   const [result, setResult] = useState(null); // created StoreTemplate
 
   const runId = useRef(0);
@@ -81,6 +103,7 @@ const ImportWordPressTemplateModal = ({ open, onClose, onImported, onUseTemplate
     setErrorMessage("");
     setValidationErrors([]);
     setWarnings([]);
+    setComponentSummary(null);
     setResult(null);
   }, [open]);
 
@@ -155,12 +178,13 @@ const ImportWordPressTemplateModal = ({ open, onClose, onImported, onUseTemplate
 
       if (runId.current !== thisRun) return;
       setStageIndex(STAGES.length - 1);
-      const { template, warnings: importWarnings } = await apiCall;
+      const { template, warnings: importWarnings, componentSummary: summary } = await apiCall;
       await sleep(STAGE_MIN_MS);
 
       if (runId.current !== thisRun) return;
       setResult(template);
       setWarnings(importWarnings || []);
+      setComponentSummary(summary || null);
       setPhase("success");
       message.success(`"${template?.name || displayName}" imported.`);
       onImported?.(template, importWarnings || []);
@@ -185,6 +209,7 @@ const ImportWordPressTemplateModal = ({ open, onClose, onImported, onUseTemplate
     setValidationErrors([]);
     setStageIndex(-1);
     setUploadPercent(0);
+    setComponentSummary(null);
   };
 
   const footer = (() => {
@@ -396,6 +421,29 @@ const ImportWordPressTemplateModal = ({ open, onClose, onImported, onUseTemplate
               Imported from WordPress
             </Tag>
           </div>
+
+          {componentSummary && componentSummary.totalDetected > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <Text strong style={{ fontSize: 12.5, display: "block", marginBottom: 8, color: "var(--text-primary)" }}>
+                Detected components
+              </Text>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {Object.entries(componentSummary.byType || {}).map(([type, count]) => {
+                  const needsManual = MANUAL_MAPPING_TYPES.has(type);
+                  return (
+                    <Tag
+                      key={type}
+                      color={needsManual ? "orange" : "green"}
+                      style={{ borderRadius: 12, padding: "2px 10px", margin: 0 }}
+                    >
+                      {COMPONENT_LABELS[type] || type} × {count}
+                      {needsManual ? " — Needs Manual Mapping" : ""}
+                    </Tag>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {warnings.length > 0 && (
             <Alert

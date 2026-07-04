@@ -33,6 +33,7 @@ const StoreProduct    = require('../models/store/StoreProduct');
 const StoreCollection = require('../models/store/StoreCollection');
 const StoreDiscount   = require('../models/store/StoreDiscount');
 const { DEFAULT_STORE_PAGES } = require('../config/defaultStorePages');
+const { resolveStoreBlockPlaceholders } = require('../utils/storeBlockTemplates');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Utilities
@@ -144,9 +145,18 @@ const createStoreFromTemplate = asyncHandler(async (req, res) => {
     seenSlugs.add(uniqueSlug);
 
     // Each page persists: slug, seo, and content { projectData, html, css }.
+    // `resolveStoreBlockPlaceholders` is a no-op unless the WordPress
+    // Import Pipeline's component detector (storeComponentDetector.js)
+    // converted a region into a live block on this template — those embed
+    // a `{{STORE_ID}}` token since no Store existed yet at import time,
+    // and this create-from-template flow is the first place one does.
     const content =
       p.content && typeof p.content === 'object'
-        ? { projectData: p.content.projectData ?? null, html: p.content.html ?? '', css: p.content.css ?? '' }
+        ? {
+            projectData: p.content.projectData ?? null,
+            html: resolveStoreBlockPlaceholders(p.content.html ?? '', store._id),
+            css: p.content.css ?? '',
+          }
         : { projectData: null, html: '', css: '' };
 
     return {

@@ -14,11 +14,12 @@
  *   6. Upload all assets to
  *      Cloudinary                 -> uploadAssets.js
  *   7. Replace local asset URLs   -> uploadAssets.js (rewrite) + rewriteAssets.js (QA sweep)
- *   8. Generate StorePage
+ *   8. Detect reusable components -> detectComponents.js (-> storeComponentDetector.js)
+ *   9. Generate StorePage
  *      documents                  -> createStorePages.js
- *   9. Generate StoreTemplate
+ *  10. Generate StoreTemplate
  *      document                   -> createStoreTemplate.js
- *  10. Return Template ID         -> this function's return value
+ *  11. Return Template ID         -> this function's return value
  *
  * This is a pre-processing + validation wrapper around the existing Store
  * import engine (`parseStoreTemplateZip` in storeTemplateController.js) —
@@ -33,6 +34,7 @@ const { extractZip } = require('./extractZip');
 const { validateWordPressStructure } = require('./validateTemplate');
 const { uploadAndRewriteAssets } = require('./uploadAssets');
 const { findUnrewrittenLocalReferences } = require('./rewriteAssets');
+const { detectStoreComponents } = require('./detectComponents');
 const { buildPageDefinitions, createLiveStorePages } = require('./createStorePages');
 const { generatePreview } = require('./previewGenerator');
 const { createStoreTemplateDocument } = require('./createStoreTemplate');
@@ -109,16 +111,24 @@ async function importWordPressZip(zipBuffer, meta = {}) {
   // Post-hoc QA sweep over the rewritten output — non-blocking warnings only.
   const leftoverWarnings = findUnrewrittenLocalReferences(parsedPages);
 
-  // Stage 8 — Generate StorePage documents (embedded snapshot for the
+  // Stage 8 — Detect reusable components (Header/Footer/Navigation/Hero/
+  // Product Grid/Category Grid/Contact Form/Newsletter/Blog List/Search
+  // Box/Cart Button/Checkout Button). Converts what it safely can into the
+  // data-store-block="..." markup contract; flags the rest
+  // data-store-mapping="needs-manual-mapping". Never removes HTML — see
+  // storeComponentDetector.js.
+  const { pages: componentizedPages, summary: componentSummary } = detectStoreComponents(parsedPages);
+
+  // Stage 9 — Generate StorePage documents (embedded snapshot for the
   // Template Library; see createStorePages.js for the live-Store variant).
-  const pageDefinitions = buildPageDefinitions(parsedPages);
+  const pageDefinitions = buildPageDefinitions(componentizedPages);
 
   // Auto-derive a thumbnail/preview unless the operator supplied one.
-  const derivedPreview = generatePreview({ pages: parsedPages, assetMap });
+  const derivedPreview = generatePreview({ pages: componentizedPages, assetMap });
   const thumbnail = meta.thumbnail || derivedPreview.thumbnail;
   const preview = meta.preview || derivedPreview.preview;
 
-  // Stage 9 — Generate StoreTemplate document.
+  // Stage 10 — Generate StoreTemplate document.
   const template = await createStoreTemplateDocument({
     templateId,
     name: meta.name,
@@ -132,18 +142,27 @@ async function importWordPressZip(zipBuffer, meta = {}) {
     status: meta.status,
     uploadedByRole: meta.uploadedByRole,
     uploadedBy: meta.uploadedBy,
-    sourceMeta: report.meta,
+    sourceMeta: { ...report.meta, componentSummary },
   });
 
   // "Appear in Template Library" needs zero new code here — GET
   // /api/store-templates already returns every StoreTemplate with
   // status: 'Published', sorted by updatedAt.
 
-  // Stage 10 — Return Template ID (alongside the full document and any
+  const manualMappingWarnings = componentSummary.needsManualMapping
+    ? [
+        `${componentSummary.needsManualMapping} component(s) (${componentSummary.manualMappingTypes.join(
+          ', '
+        )}) couldn't be auto-converted and are flagged "Needs Manual Mapping" — their original HTML is unchanged.`,
+      ]
+    : [];
+
+  // Stage 11 — Return Template ID (alongside the full document and any
   // non-blocking warnings collected along the way).
   return {
     template,
-    warnings: [...report.warnings, ...leftoverWarnings],
+    warnings: [...report.warnings, ...leftoverWarnings, ...manualMappingWarnings],
+    componentSummary,
     templateId: String(template._id),
   };
 }

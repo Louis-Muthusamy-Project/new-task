@@ -27,6 +27,7 @@
  */
 
 const StorePage = require('../../models/store/StorePage');
+const { resolveStoreBlockPlaceholders } = require('../../utils/storeBlockTemplates');
 
 /**
  * @param {Array} parsedPages  output of uploadAssets.uploadAndRewriteAssets().pages
@@ -46,7 +47,11 @@ function buildPageDefinitions(parsedPages = []) {
 /**
  * Persists real StorePage documents for a live Store. Same shape/behavior
  * as `uploadStoreTemplateZipToCloudinary`'s inner `Promise.all` in
- * storeTemplateController.js, reused here rather than reimplemented.
+ * storeTemplateController.js, reused here rather than reimplemented, plus
+ * one additive step: any `{{STORE_ID}}` token the component detector left
+ * in a converted block's hydration script (storeComponentDetector.js /
+ * storeBlockTemplates.js) is resolved to this real `storeId` now that one
+ * finally exists. A no-op for pages with no detected/converted blocks.
  *
  * @param {import('mongoose').Types.ObjectId|string} storeId
  * @param {Array} parsedPages
@@ -61,7 +66,10 @@ async function createLiveStorePages(storeId, parsedPages = []) {
         slug: p.slug,
         isHome: !!p.isHome,
         status: 'Draft',
-        content: p.content,
+        content: {
+          ...p.content,
+          html: resolveStoreBlockPlaceholders(p.content?.html, storeId),
+        },
       })
     )
   );
