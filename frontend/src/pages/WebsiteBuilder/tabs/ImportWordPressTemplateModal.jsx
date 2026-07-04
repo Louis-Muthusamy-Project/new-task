@@ -18,9 +18,9 @@ const { Dragger } = Upload;
 const { Text } = Typography;
 
 // Mirrors the backend's own multer limit in storeTemplateController.js
-// (50 MB) so a too-large ZIP is rejected instantly, client-side, instead of
+// (200 MB) so a too-large ZIP is rejected instantly, client-side, instead of
 // only after a slow upload.
-const MAX_FILE_MB = 50;
+const MAX_FILE_MB = 200;
 
 // Visual stages — line up with the WordPress Import Pipeline architecture
 // doc's 8 stages, condensed to what's observable from the browser: real

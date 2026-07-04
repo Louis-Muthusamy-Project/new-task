@@ -14,7 +14,7 @@
  * Known, accepted trade-off (see architecture doc §7): because
  * `parseStoreTemplateZip()` re-opens the same buffer with its own
  * `JSZip.loadAsync` call, the ZIP is parsed twice. That's in-memory CPU
- * work, not disk I/O, and bounded by the existing 50 MB multer limit — the
+ * work, not disk I/O, and bounded by the existing 200 MB multer limit — the
  * alternative (changing `parseStoreTemplateZip`'s signature to accept a
  * pre-loaded `JSZip` instead of a `Buffer`) would touch a function every
  * existing call site depends on, which is explicitly out of scope here.

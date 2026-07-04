@@ -10,10 +10,19 @@
  * Two categories of checks, per the architecture doc:
  *
  *  A. Safety checks (hard rejects, non-negotiable):
- *     - executable/server-side file types (.php, .cgi, .py, .sh, ...)
  *     - server config files (.htaccess, .htpasswd)
  *     - path traversal ("../" segments)
  *     - zip-bomb / size sanity (uncompressed total, compression ratio)
+ *
+ *  A2. Safety — skip-and-warn (not a hard reject):
+ *     - executable/server-side file types (.php, .cgi, .py, .sh, ...).
+ *       These are never opened, executed, or uploaded by this pipeline —
+ *       parseStoreTemplateZip only ever reads .html/.htm files and the
+ *       explicit UPLOADABLE_EXTS asset whitelist (storeTemplateController.js)
+ *       — so a stray theme/plugin file like "twentytwentyone/404.php"
+ *       bundled alongside a real Simply Static export is inert dead weight,
+ *       not a risk. It's excluded from the import and reported as a
+ *       warning instead of aborting the whole upload.
  *
  *  B. Shape/recognition checks (confirms "this looks like a Simply Static
  *     export", informational + gating):
@@ -24,8 +33,10 @@
  *     - external <form action="..."> pointing at the original WP domain
  *       — non-blocking warning only
  *
- * A failed safety or shape check aborts the entire import before any
- * Cloudinary upload or Mongo write happens — nothing partially imports.
+ * A failed Category-A safety or shape check aborts the entire import before
+ * any Cloudinary upload or Mongo write happens — nothing partially imports.
+ * Category-A2 hits never abort the import — the offending file is just
+ * skipped.
  */
 
 const { listEntries, discoverHtmlPages } = require('./discoverPages');
@@ -39,7 +50,7 @@ const BLOCKED_FILENAMES = new Set(['.htaccess', '.htpasswd']);
 
 const WORDPRESS_MARKERS = ['wp-content/', 'wp-includes/', 'wp-json/'];
 
-// Uncompressed-total ceiling. Bounded well above the existing 50 MB multer
+// Uncompressed-total ceiling. Bounded well above the existing 200 MB multer
 // (compressed) limit so it only ever fires on a genuinely anomalous archive.
 const MAX_UNCOMPRESSED_BYTES = 500 * 1024 * 1024;
 
@@ -48,6 +59,71 @@ const MAX_UNCOMPRESSED_BYTES = 500 * 1024 * 1024;
 const MAX_COMPRESSION_RATIO = 200;
 
 const FORM_ACTION_RE = /<form\b[^>]*\baction=["'](https?:\/\/[^"']+)["'][^>]*>/gi;
+
+// WordPress themes self-identify via a standard header comment block at
+// the top of their root style.css — this is the actual spec WordPress
+// itself reads (see https://developer.wordpress.org/themes/basics/main-stylesheet-style-css/),
+// not a heuristic. Finding it is a precise, positive signal that a ZIP is
+// theme *source* — as opposed to guessing from "contains some .php files",
+// which also matches plugins, raw WP-core dumps, or a Simply Static export
+// that happens to still have a stray .php file mixed in (see the A2 skip
+// logic below).
+const THEME_HEADER_RE = /\/\*[\s\S]*?\*\//;
+const THEME_NAME_RE = /Theme Name:\s*(.+)/i;
+const THEME_VERSION_RE = /Version:\s*(.+)/i;
+
+// Plugins self-identify the same way, but in their main PHP file's header
+// comment instead of style.css.
+const PLUGIN_NAME_RE = /Plugin Name:\s*(.+)/i;
+
+/**
+ * Scans style.css entries for the WordPress theme header block. Reads
+ * only the first comment (a few hundred bytes in practice), so this stays
+ * cheap even though it's the one place in Stage 3 that reads file content
+ * ahead of the main parse.
+ *
+ * @param {Array} entries  from listEntries(zip)
+ * @returns {Promise<{ name: string, version: string, path: string } | null>}
+ */
+async function detectThemePackage(entries) {
+  const styleEntries = entries.filter(
+    ({ zipPath }) => zipPath.toLowerCase().split('/').pop() === 'style.css'
+  );
+  for (const { zipPath, entry } of styleEntries) {
+    const content = await entry.async('string');
+    const headerBlock = THEME_HEADER_RE.exec(content)?.[0] || content.slice(0, 1000);
+    const nameMatch = THEME_NAME_RE.exec(headerBlock);
+    if (nameMatch) {
+      const versionMatch = THEME_VERSION_RE.exec(headerBlock);
+      return {
+        name: nameMatch[1].trim(),
+        version: versionMatch ? versionMatch[1].trim() : '',
+        path: zipPath,
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Scans .php entries' first ~2KB for the WordPress plugin header block
+ * (only checked when no theme was already detected, since a ZIP is
+ * realistically one or the other for this pipeline's purposes).
+ *
+ * @param {Array} entries  from listEntries(zip)
+ * @returns {Promise<{ name: string, path: string } | null>}
+ */
+async function detectPluginPackage(entries) {
+  const phpEntries = entries.filter(({ ext }) => ext === 'php');
+  for (const { zipPath, entry } of phpEntries) {
+    const content = await entry.async('string');
+    const nameMatch = PLUGIN_NAME_RE.exec(content.slice(0, 2000));
+    if (nameMatch) {
+      return { name: nameMatch[1].trim(), path: zipPath };
+    }
+  }
+  return null;
+}
 
 const hasPathTraversal = (rawPath) => {
   // Check the *raw* entry name, not the normZip'd zipPath: normZip's
@@ -70,7 +146,10 @@ const hasPathTraversal = (rawPath) => {
  *     htmlFileCount: number,
  *     assetFileCount: number,
  *     totalUncompressedBytes: number,
- *     externalFormActionsFound: string[]
+ *     externalFormActionsFound: string[],
+ *     skippedExecutableFiles: string[],
+ *     detectedThemePackage: { name: string, version: string, path: string } | null,
+ *     detectedPluginPackage: { name: string, path: string } | null
  *   }
  * }>}
  */
@@ -82,6 +161,7 @@ async function validateWordPressStructure(zip) {
   let totalUncompressedBytes = 0;
   let detectedAsWordPress = false;
   let assetFileCount = 0;
+  const skippedExecutableFiles = [];
 
   for (const { zipPath, rawPath, ext, uncompressedSize, compressedSize } of entries) {
     // ── Safety: path traversal (defense in depth — parseStoreTemplateZip's
@@ -94,9 +174,15 @@ async function validateWordPressStructure(zip) {
 
     const baseName = zipPath.toLowerCase().split('/').pop();
 
-    // ── Safety: executable / server-side file types ────────────────────
-    if (FORBIDDEN_EXTS.has(ext)) {
-      errors.push(`Executable/server-side file type not allowed: "${zipPath}".`);
+    // ── Safety: executable / server-side file types — skipped, not a
+    // hard reject (see the A2 note in the file header). The pipeline
+    // never reads these, so importing continues with the file excluded.
+    // Still falls through to the size/zip-bomb accounting below — a
+    // skipped file is still counted for those, since that protection
+    // must hold regardless of file type. ──────────────────────────────
+    const isSkippedExecutable = FORBIDDEN_EXTS.has(ext);
+    if (isSkippedExecutable) {
+      skippedExecutableFiles.push(zipPath);
     }
 
     // ── Safety: server config files ─────────────────────────────────────
@@ -118,7 +204,7 @@ async function validateWordPressStructure(zip) {
       errors.push(`Suspicious compression ratio on "${zipPath}" — rejected as a possible decompression bomb.`);
     }
 
-    if (ext && ext !== 'html' && ext !== 'htm') assetFileCount++;
+    if (!isSkippedExecutable && ext && ext !== 'html' && ext !== 'htm') assetFileCount++;
   }
 
   // ── Safety: zip-bomb / size sanity (aggregate) ────────────────────────
@@ -131,9 +217,68 @@ async function validateWordPressStructure(zip) {
   // ── Shape: HTML presence ───────────────────────────────────────────────
   const htmlPages = discoverHtmlPages(zip);
   const htmlFileCount = htmlPages.length;
+  let detectedThemePackage = null;
+  let detectedPluginPackage = null;
 
   if (htmlFileCount === 0) {
-    errors.push('No HTML pages found in this export.');
+    // Diagnostic tally so the error explains *why* — a raw WordPress
+    // install/theme export (wp-content/, .php templates, no pre-rendered
+    // output) is the most common reason this fires, and looks very
+    // different from a genuinely broken/empty ZIP.
+    const extCounts = {};
+    for (const { ext } of entries) {
+      const key = ext || '(no extension)';
+      extCounts[key] = (extCounts[key] || 0) + 1;
+    }
+    const topExts = Object.entries(extCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([ext, count]) => `${count} .${ext}`)
+      .join(', ');
+
+    // Positive identification first (style.css "Theme Name:" / plugin
+    // header "Plugin Name:"), falling back to the generic "has some .php"
+    // heuristic only when neither actually matches.
+    detectedThemePackage = await detectThemePackage(entries);
+    detectedPluginPackage = detectedThemePackage ? null : await detectPluginPackage(entries);
+
+    let message = `No HTML pages found in this export. This ZIP contains ${entries.length} file(s)${topExts ? ` (${topExts})` : ''} but no .html/.htm file.`;
+
+    if (detectedThemePackage) {
+      message +=
+        ` This is a WordPress theme's *source code* — "${detectedThemePackage.name}"` +
+        (detectedThemePackage.version ? ` v${detectedThemePackage.version}` : '') +
+        ` (identified from the "Theme Name:" header in ${detectedThemePackage.path}) —` +
+        ' not a pre-rendered export. Its templates (get_header(), the_content(), ' +
+        'the_post() and similar) only produce HTML once WordPress renders them ' +
+        'against a live database; the theme files by themselves contain no HTML ' +
+        'to import. Install this theme on a running WordPress site with real ' +
+        'content, export it with a static-export tool (e.g. the Simply Static ' +
+        'plugin, or `wget --mirror`), and ZIP *that* generated output instead.';
+    } else if (detectedPluginPackage) {
+      message +=
+        ` This is a WordPress plugin's source code — "${detectedPluginPackage.name}"` +
+        ` (identified from the "Plugin Name:" header in ${detectedPluginPackage.path}) —` +
+        ' plugins have no pages of their own to import; they extend the ' +
+        'behavior of a WordPress site rendered elsewhere. Export the site ' +
+        'that has this plugin *installed and active* with a static-export ' +
+        'tool instead.';
+    } else {
+      const phpLikeCount = skippedExecutableFiles.length;
+      const looksLikeRawWpInstall = phpLikeCount > 0 || detectedAsWordPress;
+      if (looksLikeRawWpInstall) {
+        message +=
+          ' This looks like a raw WordPress install or theme/plugin export' +
+          (phpLikeCount ? ` (${phpLikeCount} .php file(s) found)` : '') +
+          ' rather than a pre-rendered static export — WordPress renders ' +
+          '.php templates into HTML at request time, so no .html files exist ' +
+          'until that rendering actually happens. Run a static-export tool ' +
+          '(e.g. the Simply Static plugin, or `wget --mirror`) against the ' +
+          'live site first, then ZIP *that* generated output — not the theme ' +
+          'or wp-content folder.';
+      }
+    }
+    errors.push(message);
   } else if (!htmlPages.some((p) => p.isHome)) {
     errors.push("This doesn't look like a Simply Static export — no index.html found.");
   }
@@ -160,6 +305,16 @@ async function validateWordPressStructure(zip) {
     );
   }
 
+  // ── Executable/server-side files — skipped, reported as one rolled-up
+  // warning rather than one line per file (an exported WordPress theme
+  // folder can easily contain a dozen+ .php templates). ──────────────────
+  if (skippedExecutableFiles.length) {
+    const sample = skippedExecutableFiles.slice(0, 3).join(', ');
+    warnings.push(
+      `${skippedExecutableFiles.length} executable/server-side file(s) were skipped and not imported (never executed or served): ${sample}${skippedExecutableFiles.length > 3 ? ', …' : ''}`
+    );
+  }
+
   return {
     ok: errors.length === 0,
     errors,
@@ -170,6 +325,9 @@ async function validateWordPressStructure(zip) {
       assetFileCount,
       totalUncompressedBytes,
       externalFormActionsFound: [...externalFormActionsFound],
+      skippedExecutableFiles,
+      detectedThemePackage,
+      detectedPluginPackage,
     },
   };
 }

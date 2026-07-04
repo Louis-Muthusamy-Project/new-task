@@ -31,11 +31,45 @@ const { minifyCss } = require('../utils/minifyCss');
 const { optimizeImageUrl } = require('../utils/storeImageOptimizer');
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Multer — in-memory, 50 MB
-// ─────────────────────────────────────────────────────────────────────────────
+// Multer — in-memory, 200 MB, ZIP-only
+//
+// Shared by both upload entry points that ultimately call
+// parseStoreTemplateZip: the manual "Upload template" flow
+// (storeTemplatesRoutes.js) and the WordPress Import Pipeline
+// (wordpressImportRoutes.js re-exports this exact `upload`) — see the
+// comment there for why the two intentionally stay in sync.
+//
+// Limit was previously 50 MB, which real-world WordPress/Simply Static
+// exports (many full-resolution images, fonts, multiple pages) routinely
+// exceed. Raised to 200 MB. validateTemplate.js's own uncompressed-size
+// ceiling (500 MB) is unaffected and still guards against zip-bombs
+// regardless of this compressed-upload limit.
+//
+// `fileFilter` rejects anything that isn't a .zip up front (by extension
+// and, when the client sends one, MIME type) so a non-ZIP upload fails
+// fast with a clear 400 instead of reaching JSZip.loadAsync and failing
+// there with a generic/confusing error.
+const MAX_UPLOAD_BYTES = 200 * 1024 * 1024; // 200 MB
+
+// Extension is the authoritative check — `file.mimetype` is a client-supplied
+// header and unreliable (browsers/OSes send everything from
+// "application/zip" to a generic "application/octet-stream" for the exact
+// same .zip file), so it isn't trustworthy enough to gate on by itself.
+const zipFileFilter = (req, file, cb) => {
+  const isZipExt = /\.zip$/i.test(file.originalname || '');
+
+  if (!isZipExt) {
+    const err = new Error('Only .zip files are accepted.');
+    err.statusCode = 400;
+    return cb(err);
+  }
+  cb(null, true);
+};
+
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits:  { fileSize: 50 * 1024 * 1024 },
+  limits:  { fileSize: MAX_UPLOAD_BYTES },
+  fileFilter: zipFileFilter,
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

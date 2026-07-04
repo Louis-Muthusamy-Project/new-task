@@ -22,9 +22,9 @@ const router = express.Router();
 
 const asyncHandler = require('../utils/asyncHandler');
 // Reuse the exact multer config already defined for the Store template
-// import engine (memoryStorage, 50 MB limit, single "file" field) rather
-// than declaring a second one, so the two upload paths' limits stay in
-// sync by construction.
+// import engine (memoryStorage, 200 MB limit, ZIP-only, single "file"
+// field) rather than declaring a second one, so the two upload paths'
+// limits and accepted file types stay in sync by construction.
 const { upload } = require('../controllers/storeTemplateController');
 const { importWordPressZip, WordPressImportValidationError } = require('../services/wordpressImport');
 
