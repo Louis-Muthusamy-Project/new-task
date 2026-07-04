@@ -442,13 +442,13 @@ const StoreTemplateLibraryModal = ({ open, onCancel, onCreate, initialStoreName 
                     {/* Import WordPress Template — Simply Static ZIP -> WordPress
                         Import Pipeline -> StoreTemplate, surfaced in this same
                         toolbar/permission gate as the manual upload above. */}
-                    <Button
+                    {/* <Button
                       icon={<Globe size={16} />}
                       onClick={() => setImportModalOpen(true)}
                       style={{ borderRadius: 8, height: 40, fontWeight: 600, borderColor: "var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)" }}
                     >
                       Import WordPress Template
-                    </Button>
+                    </Button> */}
                   </>
                 )}
                 {/* Search */}

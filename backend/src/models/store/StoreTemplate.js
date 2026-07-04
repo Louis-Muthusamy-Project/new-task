@@ -188,8 +188,7 @@ StoreTemplateSchema.pre('save', function seedInitialVersion(next) {
         createdAt: this.createdAt || new Date(),
       },
     ];
-  }
-  next();
+  };
 });
 
 module.exports =

@@ -49,7 +49,7 @@ const { optimizeImageUrl } = require('../utils/storeImageOptimizer');
 // and, when the client sends one, MIME type) so a non-ZIP upload fails
 // fast with a clear 400 instead of reaching JSZip.loadAsync and failing
 // there with a generic/confusing error.
-const MAX_UPLOAD_BYTES = 200 * 1024 * 1024; // 200 MB
+const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // 200 MB
 
 // Extension is the authoritative check — `file.mimetype` is a client-supplied
 // header and unreliable (browsers/OSes send everything from

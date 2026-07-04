@@ -13,6 +13,7 @@ import {
   Store,
 } from "lucide-react";
 import { storeTemplateApi } from "../../../api/storeTemplateApi";
+import { precheckWordPressZip } from "../utils/wordpressZipPrecheck";
 
 const { Dragger } = Upload;
 const { Text } = Typography;
@@ -20,7 +21,7 @@ const { Text } = Typography;
 // Mirrors the backend's own multer limit in storeTemplateController.js
 // (200 MB) so a too-large ZIP is rejected instantly, client-side, instead of
 // only after a slow upload.
-const MAX_FILE_MB = 200;
+const MAX_FILE_MB = 500;
 
 // Visual stages — line up with the WordPress Import Pipeline architecture
 // doc's 8 stages, condensed to what's observable from the browser: real
@@ -77,6 +78,7 @@ const MANUAL_MAPPING_TYPES = new Set(["contact-form", "newsletter", "blog-list"]
 const ImportWordPressTemplateModal = ({ open, onClose, onImported, onUseTemplate }) => {
   const [file, setFile] = useState(null);
   const [fileError, setFileError] = useState("");
+  const [checkingFile, setCheckingFile] = useState(false);
 
   // phase: 'select' | 'importing' | 'success' | 'error'
   const [phase, setPhase] = useState("select");
@@ -89,14 +91,17 @@ const ImportWordPressTemplateModal = ({ open, onClose, onImported, onUseTemplate
   const [result, setResult] = useState(null); // created StoreTemplate
 
   const runId = useRef(0);
+  const pickId = useRef(0);
 
   // Reset all state whenever the modal is (re)opened, so a previous
   // import's success/error doesn't linger if it's reopened for another file.
   useEffect(() => {
     if (!open) return;
     runId.current++;
+    pickId.current++;
     setFile(null);
     setFileError("");
+    setCheckingFile(false);
     setPhase("select");
     setUploadPercent(0);
     setStageIndex(-1);
@@ -129,6 +134,27 @@ const ImportWordPressTemplateModal = ({ open, onClose, onImported, onUseTemplate
     const err = validateFile(candidate);
     setFile(candidate);
     setFileError(err);
+
+    // ── Client-side shape precheck (theme/plugin source vs. rendered
+    // export) — only worth running once the cheap sync checks above have
+    // already passed, and only meaningful for an actual ZIP. ─────────────
+    if (!err && candidate) {
+      const thisPick = ++pickId.current;
+      setCheckingFile(true);
+      precheckWordPressZip(candidate)
+        .then((result) => {
+          if (pickId.current !== thisPick) return; // a newer file was picked meanwhile
+          if (!result.ok) setFileError(result.message);
+        })
+        .finally(() => {
+          if (pickId.current !== thisPick) return;
+          setCheckingFile(false);
+        });
+    } else {
+      pickId.current++; // invalidate any in-flight precheck from a prior pick
+      setCheckingFile(false);
+    }
+
     return false; // prevent antd's Upload from auto-uploading
   };
 
@@ -225,12 +251,12 @@ const ImportWordPressTemplateModal = ({ open, onClose, onImported, onUseTemplate
         <Button
           key="start"
           type="primary"
-          icon={<UploadCloud size={14} />}
+          icon={checkingFile ? <Loader2 size={14} className="spin" /> : <UploadCloud size={14} />}
           onClick={startImport}
-          disabled={!file || !!fileError}
+          disabled={!file || !!fileError || checkingFile}
           style={{ background: "var(--accent-success)", border: "none", borderRadius: 8, fontWeight: 700 }}
         >
-          Start import
+          {checkingFile ? "Scanning archive…" : "Start import"}
         </Button>,
       ];
     }
@@ -291,6 +317,13 @@ const ImportWordPressTemplateModal = ({ open, onClose, onImported, onUseTemplate
       footer={footer}
       width={520}
     >
+      {/* Always mounted (not just during "importing") so the scanning
+          spinner in the "select" phase footer button can use it too. */}
+      <style>{`
+        .spin { animation: wp-import-spin 0.9s linear infinite; }
+        @keyframes wp-import-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      `}</style>
+
       {phase === "select" && (
         <div>
           <Text type="secondary" style={{ fontSize: 13, display: "block", marginBottom: 16 }}>
@@ -305,8 +338,10 @@ const ImportWordPressTemplateModal = ({ open, onClose, onImported, onUseTemplate
             fileList={file ? [{ uid: "1", name: file.name, status: fileError ? "error" : "done" }] : []}
             beforeUpload={handlePick}
             onRemove={() => {
+              pickId.current++; // invalidate any in-flight precheck
               setFile(null);
               setFileError("");
+              setCheckingFile(false);
             }}
             style={{
               background: "var(--bg-secondary)",
@@ -324,6 +359,22 @@ const ImportWordPressTemplateModal = ({ open, onClose, onImported, onUseTemplate
               .zip only, up to {MAX_FILE_MB} MB — must contain index.html
             </p>
           </Dragger>
+
+          {checkingFile && !fileError && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                marginTop: 12,
+                fontSize: 12.5,
+                color: "var(--text-tertiary)",
+              }}
+            >
+              <Loader2 size={13} className="spin" />
+              Scanning archive contents for a valid export…
+            </div>
+          )}
 
           {fileError && (
             <Alert
@@ -393,11 +444,6 @@ const ImportWordPressTemplateModal = ({ open, onClose, onImported, onUseTemplate
               );
             })}
           </div>
-
-          <style>{`
-            .spin { animation: wp-import-spin 0.9s linear infinite; }
-            @keyframes wp-import-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-          `}</style>
         </div>
       )}
 
