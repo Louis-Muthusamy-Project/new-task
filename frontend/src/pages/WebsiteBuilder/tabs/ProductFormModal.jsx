@@ -18,7 +18,7 @@ const emptyForm = {
   inventoryQuantity: "",
   trackInventory: true,
   tags: [],
-  status: "Draft",
+  status: "Active",
   metaTitle: "",
   metaDescription: "",
 };

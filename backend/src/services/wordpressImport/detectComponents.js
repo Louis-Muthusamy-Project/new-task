@@ -40,7 +40,12 @@ function detectStoreComponents(parsedPages = []) {
 
   const pages = parsedPages.map((page) => {
     const bodyHtml = page?.content?.html || '';
-    const { html: componentizedHtml, detected } = detectAndReplaceComponents(bodyHtml);
+    const pageMetadata = {
+      isHome: !!page.isHome,
+      slug: page.slug || '',
+      name: page.name || '',
+    };
+    const { html: componentizedHtml, detected } = detectAndReplaceComponents(bodyHtml, pageMetadata);
 
     detected.forEach((d) => {
       byType[d.type] = (byType[d.type] || 0) + 1;

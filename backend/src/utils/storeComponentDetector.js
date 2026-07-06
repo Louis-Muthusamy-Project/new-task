@@ -41,6 +41,44 @@ const textOf = ($, el) => $(el).text().trim();
 const classOf = ($, el) => $(el).attr('class') || '';
 
 /**
+ * Detects if an element looks like a container of product items (for homepage
+ * product sections that may not have a strict repeating-sibling grid structure).
+ * Used only on homepage pages for fallback detection.
+ *
+ * Checks if element contains multiple children with product-like patterns:
+ * - Image + heading/link + price
+ * - or image + heading/link + "Add to cart" button
+ * Returns true only if confident enough (≥2 items with clear product signals).
+ */
+function looksLikeProductContainer($, el) {
+  const children = $(el).children().toArray();
+  if (children.length < 2) return false;
+
+  let productLikeCount = 0;
+  for (const child of children) {
+    const $child = $(child);
+    const hasImage = $child.find('img').length > 0;
+    const hasHeading = $child.find('h1,h2,h3,h4,a').length > 0;
+    const hasPrice = PRICE_RE.test($child.text());
+    const hasAddToCart = /add\s+to\s+cart|buy|shop/i.test($child.text());
+
+    // A product-like item: image + (heading) + (price OR add-to-cart button)
+    if (hasImage && hasHeading && (hasPrice || hasAddToCart)) {
+      productLikeCount++;
+    }
+  }
+
+  // High confidence if ≥3 product-like items, moderate if 2 and elem looks
+  // intentional (class hint of "products" or "featured")
+  if (productLikeCount >= 3) return true;
+  if (productLikeCount === 2 && /\b(product|featured|item)\b/i.test($(el).attr('class') || '')) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Repeating-sibling helper shared by Product Grid / Category Grid / Blog
  * List: finds the most common tag+class "signature" among an element's
  * direct children and returns the matching children if there are enough of
@@ -195,12 +233,13 @@ function classify($, el) {
 /**
  * @param {string} html  body-only HTML from parseStoreTemplateZip's
  *   page.content.html
+ * @param {object} pageMetadata  optional { isHome: boolean, slug: string, name: string }
  * @returns {{
  *   html: string,
  *   detected: Array<{ type: string, label: string, score: number, mapping: 'converted'|'needs-manual-mapping' }>
  * }}
  */
-function detectAndReplaceComponents(html) {
+function detectAndReplaceComponents(html, pageMetadata = {}) {
   if (!html || typeof html !== 'string') return { html: html || '', detected: [] };
 
   const $ = cheerio.load(html, { decodeEntities: false });
@@ -240,6 +279,48 @@ function detectAndReplaceComponents(html) {
     $el.attr('data-store-mapping', 'needs-manual-mapping');
     detected.push({ type, label, score, mapping: 'needs-manual-mapping' });
   });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // HOMEPAGE-ONLY SECOND PASS: detect product containers on homepage pages
+  // that may not have been caught by the standard repeating-grid detection.
+  //
+  // Homepages often feature products in non-grid layouts (featured product
+  // sections, carousels, etc.). This pass looks for containers with multiple
+  // product-like items even if they're not a strict repeating grid.
+  // Skips already-claimed elements and only fires if isHome is true.
+  // ─────────────────────────────────────────────────────────────────────
+  if (pageMetadata?.isHome === true) {
+    $('section, .section, div[class*="product"], div[class*="featured"], div[class*="item"], article').each((_, el) => {
+      if (claimed.has(el)) return;
+      if ($(el).parents().toArray().some((p) => claimed.has(p))) return;
+
+      const $el = $(el);
+
+      // Skip if already has a marker or mapping flag
+      if ($el.attr('data-store-block') || $el.attr('data-store-mapping') || $el.attr('data-store-component')) {
+        return;
+      }
+
+      // Check if this looks like a product container (≥2 product-like items)
+      if (looksLikeProductContainer($, el)) {
+        claimed.add(el);
+
+        // Tag as product-grid, preserving existing classes for theme styling
+        const existingClass = $el.attr('class') || '';
+        $el.attr('data-store-block', 'product-grid');
+        $el.attr('class', `store-block store-block-product-grid ${existingClass}`.trim());
+
+        const label = COMPONENT_LABELS['product-grid'] || 'product-grid';
+        detected.push({
+          type: 'product-grid',
+          label,
+          score: 0.7,
+          mapping: 'converted',
+          source: 'homepage-fallback',
+        });
+      }
+    });
+  }
 
   return { html: $('body').html() || $.html(), detected };
 }

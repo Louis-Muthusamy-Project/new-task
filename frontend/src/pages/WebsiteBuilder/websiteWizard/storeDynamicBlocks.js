@@ -30,8 +30,7 @@ const esc = (s) =>
 
 /**
  * Shared runtime helpers injected once per block script: money formatting,
- * a tiny fetch-JSON wrapper, and a localStorage cart the Product Grid,
- * Featured Product, Cart, and Checkout blocks all read/write.
+ * a tiny fetch-JSON wrapper, localStorage cart, and result caching.
  * Duplicated (not imported) into every block since each block's `content`
  * is an independent, self-contained HTML/JS string.
  */
@@ -39,14 +38,35 @@ const runtimeHelpers = (apiBase, storeId) => `
     var API_BASE = ${JSON.stringify(apiBase)};
     var STORE_ID = ${JSON.stringify(storeId)};
     var CART_KEY = 'jeema_store_cart_' + STORE_ID;
+    var CACHE_KEY = 'jeema_store_cache_';
+    var CACHE_TTL = 60000; // 60 seconds
     function money(amount, currency) {
       var n = Number(amount || 0);
       try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency || 'USD' }).format(n); }
       catch (e) { return (currency || 'USD') + ' ' + n.toFixed(2); }
     }
+    function cacheKey(url) { return CACHE_KEY + btoa(url); }
+    function getCache(url) {
+      try {
+        var item = localStorage.getItem(cacheKey(url));
+        if (!item) return null;
+        var data = JSON.parse(item);
+        if (Date.now() - data.time > CACHE_TTL) { localStorage.removeItem(cacheKey(url)); return null; }
+        return data.value;
+      } catch (e) { return null; }
+    }
+    function setCache(url, value) {
+      try { localStorage.setItem(cacheKey(url), JSON.stringify({ time: Date.now(), value: value })); } catch (e) {}
+    }
     function fetchJson(url) {
-      return fetch(url).then(function (r) { return r.json(); }).then(function (j) {
+      var cached = getCache(url);
+      if (cached) return Promise.resolve(cached);
+      return fetch(url).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(function (j) {
         if (!j || j.success === false) throw new Error((j && j.error) || 'Request failed');
+        setCache(url, j.data);
         return j.data;
       });
     }
@@ -97,7 +117,7 @@ const ICONS = {
 // ── 1. Hero ──────────────────────────────────────────────────────────────
 function heroBlock(apiBase, storeId) {
   const content = `
-    <section class="store-block store-hero" data-store-block="hero" style="padding:96px 32px;text-align:center;background:linear-gradient(135deg,#111827,#1f2937);color:#fff;font-family:sans-serif;">
+    <section class="store-block store-hero" data-store-block="hero" data-height="medium" data-alignment="center" data-show-button="true" style="padding:96px 32px;text-align:center;background:linear-gradient(135deg,#111827,#1f2937);color:#fff;font-family:sans-serif;">
       <h1 style="margin:0 0 12px;font-size:36px;font-weight:800;">Loading store…</h1>
       <p style="margin:0 auto 24px;max-width:560px;color:#d1d5db;line-height:1.6;">&nbsp;</p>
       <a href="#shop" style="display:inline-block;padding:14px 28px;border-radius:8px;background:#fff;color:#111827;font-weight:700;text-decoration:none;">Shop now</a>
@@ -108,12 +128,20 @@ function heroBlock(apiBase, storeId) {
       function hydrate(el) {
         if (el.dataset.hydrated) return;
         el.dataset.hydrated = '1';
+        var showButton = el.dataset.showButton !== 'false';
+        var alignment = el.dataset.alignment || 'center';
+        var height = el.dataset.height || 'medium';
+        var paddingMap = { small: '60px 32px', medium: '96px 32px', large: '140px 32px' };
+        el.style.padding = paddingMap[height] || paddingMap.medium;
+        el.style.textAlign = alignment;
+        var link = el.querySelector('a');
+        if (link && !showButton) link.style.display = 'none';
         fetchJson(API_BASE + '/store/' + STORE_ID + '/info').then(function (store) {
           var h1 = el.querySelector('h1');
           var p = el.querySelector('p');
           if (h1) h1.textContent = store.name || 'Welcome to our store';
           if (p) p.textContent = store.description || 'Discover our latest products, curated just for you.';
-        }).catch(function () {
+        }).catch(function (err) {
           var h1 = el.querySelector('h1');
           if (h1) h1.textContent = 'Welcome to our store';
         });
@@ -128,32 +156,44 @@ function heroBlock(apiBase, storeId) {
 // ── 2. Product Grid ──────────────────────────────────────────────────────
 function productGridBlock(apiBase, storeId) {
   const content = `
-    <section class="store-block store-product-grid" data-store-block="product-grid" data-limit="8" style="padding:48px 24px;font-family:sans-serif;">
+    <section class="store-block store-product-grid" data-store-block="product-grid" data-limit="8" data-columns="4" data-sort="latest" data-show-price="true" data-show-button="true" data-show-rating="false" data-collection="" style="padding:48px 24px;font-family:sans-serif;">
       <h2 style="margin:0 0 20px;font-size:24px;font-weight:800;color:#111827;">Shop our products</h2>
-      <div class="store-product-grid-items" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:20px;">
+      <div class="store-product-grid-items" style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px;">
         <div style="color:#6b7280;">Loading products…</div>
       </div>
     </section>
     <script>
     (function () {
       ${runtimeHelpers(apiBase, storeId)}
-      function card(p) {
+      function card(p, opts) {
         var img = p.image ? '<img src="' + p.image + '" alt="" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;background:#f3f4f6;">' :
           '<div style="width:100%;aspect-ratio:1/1;border-radius:8px;background:#f3f4f6;"></div>';
+        var price = opts.showPrice ? '<div style="color:#374151;font-weight:600;">' + money(p.price, p.currency) + '</div>' : '';
+        var button = opts.showButton ? '<button type="button" data-add-to-cart="' + p.id + '" style="border:none;border-radius:6px;background:#111827;color:#fff;padding:8px 10px;font-weight:700;cursor:pointer;">Add to cart</button>' : '';
+        var rating = opts.showRating ? '<div style="color:#6b7280;font-size:12px;">★★★★★ (0)</div>' : '';
         return '<div style="display:flex;flex-direction:column;gap:8px;">' + img +
           '<div style="font-weight:700;color:#111827;font-size:14px;">' + (p.title || '') + '</div>' +
-          '<div style="color:#374151;font-weight:600;">' + money(p.price, p.currency) + '</div>' +
-          '<button type="button" data-add-to-cart="' + p.id + '" style="border:none;border-radius:6px;background:#111827;color:#fff;padding:8px 10px;font-weight:700;cursor:pointer;">Add to cart</button>' +
+          price + rating + button +
           '</div>';
       }
       function hydrate(el) {
         if (el.dataset.hydrated) return;
         el.dataset.hydrated = '1';
         var wrap = el.querySelector('.store-product-grid-items');
-        var limit = el.getAttribute('data-limit') || 8;
-        fetchJson(API_BASE + '/store/' + STORE_ID + '/products?limit=' + limit).then(function (products) {
+        var limit = parseInt(el.dataset.limit) || 8;
+        var columns = parseInt(el.dataset.columns) || 4;
+        var sort = el.dataset.sort || 'latest';
+        var showPrice = el.dataset.showPrice !== 'false';
+        var showButton = el.dataset.showButton !== 'false';
+        var showRating = el.dataset.showRating === 'true';
+        var collection = el.dataset.collection || '';
+        var url = API_BASE + '/store/' + STORE_ID + '/products?limit=' + limit;
+        if (collection) url += '&collectionId=' + encodeURIComponent(collection);
+        if (sort && sort !== 'latest') url += '&sort=' + encodeURIComponent(sort);
+        wrap.style.gridTemplateColumns = 'repeat(' + columns + ',1fr)';
+        fetchJson(url).then(function (products) {
           if (!products.length) { wrap.innerHTML = '<div style="color:#6b7280;">No products yet.</div>'; return; }
-          wrap.innerHTML = products.map(card).join('');
+          wrap.innerHTML = products.map(function (p) { return card(p, { showPrice: showPrice, showButton: showButton, showRating: showRating }); }).join('');
           wrap.addEventListener('click', function (e) {
             var btn = e.target.closest('[data-add-to-cart]');
             if (!btn) return;
@@ -173,7 +213,7 @@ function productGridBlock(apiBase, storeId) {
 // ── 3. Featured Product ──────────────────────────────────────────────────
 function featuredProductBlock(apiBase, storeId) {
   const content = `
-    <section class="store-block store-featured-product" data-store-block="featured-product" style="padding:48px 24px;font-family:sans-serif;">
+    <section class="store-block store-featured-product" data-store-block="featured-product" data-product-id="" data-show-price="true" data-show-button="true" style="padding:48px 24px;font-family:sans-serif;">
       <div class="store-featured-product-body" style="display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:center;">
         <div style="color:#6b7280;">Loading featured product…</div>
       </div>
@@ -185,30 +225,35 @@ function featuredProductBlock(apiBase, storeId) {
         if (el.dataset.hydrated) return;
         el.dataset.hydrated = '1';
         var body = el.querySelector('.store-featured-product-body');
-        var explicitId = el.getAttribute('data-product-id');
-        var url = explicitId
-          ? API_BASE + '/store/' + STORE_ID + '/products/' + explicitId
+        var productId = el.dataset.productId || '';
+        var showPrice = el.dataset.showPrice !== 'false';
+        var showButton = el.dataset.showButton !== 'false';
+        var url = productId
+          ? API_BASE + '/store/' + STORE_ID + '/products/' + encodeURIComponent(productId)
           : API_BASE + '/store/' + STORE_ID + '/products?limit=1';
         fetchJson(url).then(function (data) {
           var p = Array.isArray(data) ? data[0] : data;
           if (!p) { body.innerHTML = '<div style="color:#6b7280;">No product to feature yet.</div>'; return; }
           var img = p.image ? '<img src="' + p.image + '" alt="" style="width:100%;border-radius:12px;object-fit:cover;aspect-ratio:1/1;background:#f3f4f6;">' :
             '<div style="width:100%;border-radius:12px;aspect-ratio:1/1;background:#f3f4f6;"></div>';
+          var price = showPrice ? '<div style="font-size:22px;font-weight:800;color:#111827;margin-bottom:16px;">' + money(p.price, p.currency) + '</div>' : '';
+          var button = showButton ? '<button type="button" data-add-to-cart="' + p.id + '" style="border:none;border-radius:8px;background:#111827;color:#fff;padding:12px 22px;font-weight:700;cursor:pointer;">Add to cart</button>' : '';
           body.innerHTML = img +
             '<div>' +
             '<h2 style="margin:0 0 10px;font-size:28px;font-weight:800;color:#111827;">' + (p.title || '') + '</h2>' +
             '<p style="margin:0 0 14px;color:#4b5563;line-height:1.6;">' + (p.description || '') + '</p>' +
-            '<div style="font-size:22px;font-weight:800;color:#111827;margin-bottom:16px;">' + money(p.price, p.currency) + '</div>' +
-            '<button type="button" data-add-to-cart="' + p.id + '" style="border:none;border-radius:8px;background:#111827;color:#fff;padding:12px 22px;font-weight:700;cursor:pointer;">Add to cart</button>' +
+            price + button +
             '</div>';
-          body.addEventListener('click', function (e) {
-            var btn = e.target.closest('[data-add-to-cart]');
-            if (!btn) return;
-            addToCart(btn.getAttribute('data-add-to-cart'), 1);
-            btn.textContent = 'Added ✓';
-            setTimeout(function () { btn.textContent = 'Add to cart'; }, 1200);
-          });
-        }).catch(function () { body.innerHTML = '<div style="color:#ef4444;">Could not load product.</div>'; });
+          var btn = body.querySelector('[data-add-to-cart]');
+          if (btn) {
+            btn.addEventListener('click', function (e) {
+              e.preventDefault();
+              addToCart(btn.getAttribute('data-add-to-cart'), 1);
+              btn.textContent = 'Added ✓';
+              setTimeout(function () { btn.textContent = 'Add to cart'; }, 1200);
+            });
+          }
+        }).catch(function (err) { body.innerHTML = '<div style="color:#ef4444;">Could not load product.</div>'; });
       }
       document.querySelectorAll('[data-store-block="featured-product"]').forEach(hydrate);
     })();
@@ -220,9 +265,9 @@ function featuredProductBlock(apiBase, storeId) {
 // ── 4. Collection ────────────────────────────────────────────────────────
 function collectionBlock(apiBase, storeId) {
   const content = `
-    <section class="store-block store-collections" data-store-block="collection" data-limit="6" style="padding:48px 24px;font-family:sans-serif;">
+    <section class="store-block store-collections" data-store-block="collection" data-limit="6" data-sort="latest" data-columns="3" style="padding:48px 24px;font-family:sans-serif;">
       <h2 style="margin:0 0 20px;font-size:24px;font-weight:800;color:#111827;">Shop by collection</h2>
-      <div class="store-collections-items" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:18px;">
+      <div class="store-collections-items" style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;">
         <div style="color:#6b7280;">Loading collections…</div>
       </div>
     </section>
@@ -241,10 +286,15 @@ function collectionBlock(apiBase, storeId) {
         if (el.dataset.hydrated) return;
         el.dataset.hydrated = '1';
         var wrap = el.querySelector('.store-collections-items');
-        var limit = el.getAttribute('data-limit') || 6;
-        fetchJson(API_BASE + '/store/' + STORE_ID + '/collections?limit=' + limit).then(function (collections) {
+        var limit = parseInt(el.dataset.limit) || 6;
+        var sort = el.dataset.sort || 'latest';
+        var columns = parseInt(el.dataset.columns) || 3;
+        var url = API_BASE + '/store/' + STORE_ID + '/collections?limit=' + limit;
+        if (sort && sort !== 'latest') url += '&sort=' + encodeURIComponent(sort);
+        wrap.style.gridTemplateColumns = 'repeat(' + columns + ',1fr)';
+        fetchJson(url).then(function (collections) {
           wrap.innerHTML = collections.length ? collections.map(tile).join('') : '<div style="color:#6b7280;">No collections yet.</div>';
-        }).catch(function () { wrap.innerHTML = '<div style="color:#ef4444;">Could not load collections.</div>'; });
+        }).catch(function (err) { wrap.innerHTML = '<div style="color:#ef4444;">Could not load collections.</div>'; });
       }
       document.querySelectorAll('[data-store-block="collection"]').forEach(hydrate);
     })();
@@ -253,12 +303,50 @@ function collectionBlock(apiBase, storeId) {
   return block({ id: 'store-collection', label: 'Collection', iconSvg: ICONS.collection, content });
 }
 
-// ── 5. Testimonials ──────────────────────────────────────────────────────
+// ── 5. Category Grid ────────────────────────────────────────────────────
+function categoryGridBlock(apiBase, storeId) {
+  const content = `
+    <section class="store-block store-category-grid" data-store-block="category-grid" data-limit="6" data-columns="3" style="padding:48px 24px;font-family:sans-serif;">
+      <h2 style="margin:0 0 20px;font-size:24px;font-weight:800;color:#111827;">Shop by category</h2>
+      <div class="store-category-grid-items" style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;">
+        <div style="color:#6b7280;">Loading categories…</div>
+      </div>
+    </section>
+    <script>
+    (function () {
+      ${runtimeHelpers(apiBase, storeId)}
+      function tile(c) {
+        var img = c.imageUrl ? '<img src="' + c.imageUrl + '" alt="" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:10px;background:#f3f4f6;">' :
+          '<div style="width:100%;aspect-ratio:4/3;border-radius:10px;background:#f3f4f6;"></div>';
+        return '<a href="#collection-' + c.slug + '" style="text-decoration:none;color:inherit;display:block;">' + img +
+          '<div style="margin-top:8px;font-weight:700;color:#111827;">' + (c.title || '') + '</div>' +
+          '<div style="font-size:12px;color:#6b7280;">' + (c.productCount || 0) + ' products</div>' +
+          '</a>';
+      }
+      function hydrate(el) {
+        if (el.dataset.hydrated) return;
+        el.dataset.hydrated = '1';
+        var wrap = el.querySelector('.store-category-grid-items');
+        var limit = parseInt(el.dataset.limit) || 6;
+        var columns = parseInt(el.dataset.columns) || 3;
+        wrap.style.gridTemplateColumns = 'repeat(' + columns + ',1fr)';
+        fetchJson(API_BASE + '/store/' + STORE_ID + '/collections?limit=' + limit).then(function (collections) {
+          wrap.innerHTML = collections.length ? collections.map(tile).join('') : '<div style="color:#6b7280;">No categories yet.</div>';
+        }).catch(function (err) { wrap.innerHTML = '<div style="color:#ef4444;">Could not load categories.</div>'; });
+      }
+      document.querySelectorAll('[data-store-block="category-grid"]').forEach(hydrate);
+    })();
+    <\/script>
+  `;
+  return block({ id: 'store-category-grid', label: 'Category Grid', iconSvg: ICONS.collection, content });
+}
+
+// ── 6. Testimonials ──────────────────────────────────────────────────────
 function testimonialsBlock(apiBase, storeId) {
   const content = `
-    <section class="store-block store-testimonials" data-store-block="testimonials" data-limit="6" style="padding:48px 24px;background:#f9fafb;font-family:sans-serif;">
+    <section class="store-block store-testimonials" data-store-block="testimonials" data-limit="6" data-columns="3" data-autoplay="false" style="padding:48px 24px;background:#f9fafb;font-family:sans-serif;">
       <h2 style="margin:0 0 20px;font-size:24px;font-weight:800;color:#111827;text-align:center;">What our customers say</h2>
-      <div class="store-testimonials-items" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px;">
+      <div class="store-testimonials-items" style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;">
         <div style="color:#6b7280;">Loading testimonials…</div>
       </div>
     </section>
@@ -283,10 +371,25 @@ function testimonialsBlock(apiBase, storeId) {
         if (el.dataset.hydrated) return;
         el.dataset.hydrated = '1';
         var wrap = el.querySelector('.store-testimonials-items');
-        var limit = el.getAttribute('data-limit') || 6;
+        var limit = parseInt(el.dataset.limit) || 6;
+        var columns = parseInt(el.dataset.columns) || 3;
+        var autoplay = el.dataset.autoplay === 'true';
+        wrap.style.gridTemplateColumns = 'repeat(' + columns + ',1fr)';
         fetchJson(API_BASE + '/store/' + STORE_ID + '/testimonials?limit=' + limit).then(function (items) {
-          wrap.innerHTML = items.length ? items.map(card).join('') : '<div style="color:#6b7280;">No testimonials yet.</div>';
-        }).catch(function () { wrap.innerHTML = '<div style="color:#ef4444;">Could not load testimonials.</div>'; });
+          if (!items.length) {
+            wrap.innerHTML = '<div style="color:#6b7280;">No testimonials yet.</div>';
+            return;
+          }
+          wrap.innerHTML = items.map(card).join('');
+          if (autoplay && items.length > 1) {
+            var current = 0;
+            setInterval(function () {
+              current = (current + 1) % items.length;
+              var cards = wrap.querySelectorAll('[style*="background:#fff"]');
+              cards.forEach(function (c, i) { c.style.opacity = i === current ? '1' : '0.4'; });
+            }, 4000);
+          }
+        }).catch(function (err) { wrap.innerHTML = '<div style="color:#ef4444;">Could not load testimonials.</div>'; });
       }
       document.querySelectorAll('[data-store-block="testimonials"]').forEach(hydrate);
     })();
@@ -295,10 +398,10 @@ function testimonialsBlock(apiBase, storeId) {
   return block({ id: 'store-testimonials', label: 'Testimonials', iconSvg: ICONS.testimonials, content });
 }
 
-// ── 6. Search ─────────────────────────────────────────────────────────────
+// ── 7. Search ─────────────────────────────────────────────────────────────
 function searchBlock(apiBase, storeId) {
   const content = `
-    <section class="store-block store-search" data-store-block="search" style="padding:24px;font-family:sans-serif;position:relative;">
+    <section class="store-block store-search" data-store-block="search" data-placeholder="Search products…" data-show-filters="false" style="padding:24px;font-family:sans-serif;position:relative;">
       <div style="position:relative;max-width:420px;">
         <input type="text" class="store-search-input" placeholder="Search products…" style="width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;" />
         <div class="store-search-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 6px);background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.08);max-height:360px;overflow:auto;z-index:20;"></div>
@@ -312,14 +415,17 @@ function searchBlock(apiBase, storeId) {
         el.dataset.hydrated = '1';
         var input = el.querySelector('.store-search-input');
         var results = el.querySelector('.store-search-results');
+        var placeholder = el.dataset.placeholder || 'Search products…';
+        var showFilters = el.dataset.showFilters === 'true';
+        input.placeholder = placeholder;
         var timer = null;
         input.addEventListener('input', function () {
           var q = input.value.trim();
           clearTimeout(timer);
           if (!q) { results.style.display = 'none'; results.innerHTML = ''; return; }
           timer = setTimeout(function () {
-            fetchJson(API_BASE + '/store/' + STORE_ID + '/search?q=' + encodeURIComponent(q)).then(function (data) {
-              var products = (data.products || []).slice(0, 6);
+            fetchJson(API_BASE + '/store/' + STORE_ID + '/products?q=' + encodeURIComponent(q) + '&limit=6').then(function (data) {
+              var products = (data.products || data || []).slice(0, 6);
               if (!products.length) {
                 results.innerHTML = '<div style="padding:14px;color:#6b7280;font-size:13px;">No matches for \u201c' + q + '\u201d</div>';
               } else {
@@ -332,7 +438,7 @@ function searchBlock(apiBase, storeId) {
                 }).join('');
               }
               results.style.display = 'block';
-            }).catch(function () { results.style.display = 'none'; });
+            }).catch(function (err) { results.style.display = 'none'; });
           }, 250);
         });
         document.addEventListener('click', function (e) {
@@ -555,6 +661,7 @@ export function registerStoreBlocks(editor, { apiBase, storeId }) {
     productGridBlock,
     featuredProductBlock,
     collectionBlock,
+    categoryGridBlock,
     testimonialsBlock,
     searchBlock,
     cartBlock,

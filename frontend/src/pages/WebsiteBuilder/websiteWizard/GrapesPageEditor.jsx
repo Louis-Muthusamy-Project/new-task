@@ -4,6 +4,7 @@ import presetWebpage from 'grapesjs-preset-webpage';
 import axios from 'axios';
 import QRCode from 'qrcode';
 import { registerStoreBlocks } from './storeDynamicBlocks';
+import { registerStoreTraits } from '../builders/store/storeBlockTraits';
 
 const API_BASE = import.meta.env?.VITE_WEBSITE_WIZARD_API_BASE || 'http://localhost:5500/api';
 
@@ -1144,8 +1145,9 @@ const GrapesPageEditor = ({
       if (isStoreRef.current && websiteIdRef.current) {
         try {
           registerStoreBlocks(editor, { apiBase: API_BASE, storeId: websiteIdRef.current });
+          registerStoreTraits(editor);
         } catch (e) {
-          console.warn('[GrapesPageEditor] registerStoreBlocks failed:', e);
+          console.warn('[GrapesPageEditor] registerStoreBlocks/Traits failed:', e);
         }
       }
     });

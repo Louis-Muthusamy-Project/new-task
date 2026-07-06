@@ -104,8 +104,12 @@ exports.getStoreInfo = async (req, res) => {
  *   limit       (default 12, max 60)
  *   page        (default 1)
  *   collectionId
- *   featured=true  → newest Active products (used by "Featured Product" / hero blocks)
- *   q           → simple title text search (used by the search block)
+ *   q           → title/description text search
+ *   sort        → latest|oldest|price-low|price-high|name-asc|name-desc (default: latest)
+ *   priceMin    → minimum price filter
+ *   priceMax    → maximum price filter
+ *   tag         → filter by tag
+ *   featured=true  → newest Active products
  */
 exports.listProducts = async (req, res) => {
   const { storeId } = req.params;
@@ -113,6 +117,7 @@ exports.listProducts = async (req, res) => {
 
   const limit = Math.min(parseInt(req.query.limit, 10) || 12, 60);
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+  const sort = String(req.query.sort || 'latest').toLowerCase();
 
   const filter = { storeId, isDeleted: false, status: 'Active' };
 
@@ -121,12 +126,55 @@ exports.listProducts = async (req, res) => {
   }
 
   if (req.query.q) {
-    filter.title = { $regex: String(req.query.q).trim(), $options: 'i' };
+    const searchTerm = String(req.query.q).trim();
+    filter.$or = [
+      { title: { $regex: searchTerm, $options: 'i' } },
+      { description: { $regex: searchTerm, $options: 'i' } },
+      { tags: { $regex: searchTerm, $options: 'i' } },
+      { sku: { $regex: searchTerm, $options: 'i' } },
+    ];
+  }
+
+  if (req.query.tag) {
+    filter.tags = String(req.query.tag).trim();
+  }
+
+  if (req.query.priceMin || req.query.priceMax) {
+    filter.price = {};
+    if (req.query.priceMin) {
+      const priceMin = parseFloat(req.query.priceMin);
+      if (!isNaN(priceMin)) filter.price.$gte = priceMin;
+    }
+    if (req.query.priceMax) {
+      const priceMax = parseFloat(req.query.priceMax);
+      if (!isNaN(priceMax)) filter.price.$lte = priceMax;
+    }
+  }
+
+  // Determine MongoDB sort object based on sort parameter
+  let sortObj = { createdAt: -1 }; // default: latest
+  switch (sort) {
+    case 'oldest':
+      sortObj = { createdAt: 1 };
+      break;
+    case 'price-low':
+      sortObj = { price: 1 };
+      break;
+    case 'price-high':
+      sortObj = { price: -1 };
+      break;
+    case 'name-asc':
+      sortObj = { title: 1 };
+      break;
+    case 'name-desc':
+      sortObj = { title: -1 };
+      break;
+    // 'latest' uses default
   }
 
   const [items, total] = await Promise.all([
     StoreProduct.find(filter)
-      .sort({ createdAt: -1 })
+      .sort(sortObj)
       .skip((page - 1) * limit)
       .limit(limit),
     StoreProduct.countDocuments(filter),
@@ -160,20 +208,31 @@ exports.getProduct = async (req, res) => {
 
 /**
  * GET /api/store/:storeId/collections
- * Used by the "Collection" block's picker and by any storefront collection list.
+ * Query params:
+ *   limit       (default 20, max 60)
+ *   sort        → latest|oldest|name (default: name)
  */
 exports.listCollections = async (req, res) => {
   const { storeId } = req.params;
   requireValidId(storeId, 'storeId');
 
   const limit = Math.min(parseInt(req.query.limit, 10) || 20, 60);
+  const sort = String(req.query.sort || 'name').toLowerCase();
+
+  // Determine MongoDB sort object
+  let sortObj = { title: 1 }; // default: name A-Z
+  if (sort === 'latest') {
+    sortObj = { createdAt: -1 };
+  } else if (sort === 'oldest') {
+    sortObj = { createdAt: 1 };
+  }
 
   const collections = await StoreCollection.find({
     storeId,
     isDeleted: false,
     isActive: true,
   })
-    .sort({ title: 1 })
+    .sort(sortObj)
     .limit(limit);
 
   res.status(200).json({ success: true, data: collections.map(toPublicCollection) });
@@ -181,8 +240,10 @@ exports.listCollections = async (req, res) => {
 
 /**
  * GET /api/store/:storeId/collections/:collectionId
- * Returns the collection plus its (Active, non-deleted) products, for the
- * "Collection" block to render a titled product shelf.
+ * Returns the collection plus its (Active, non-deleted) products.
+ * Query params:
+ *   limit       (default 12, max 60)
+ *   sort        → latest|oldest|price-low|price-high|name-asc|name-desc (default: latest)
  */
 exports.getCollection = async (req, res) => {
   const { storeId, collectionId } = req.params;
@@ -190,6 +251,7 @@ exports.getCollection = async (req, res) => {
   requireValidId(collectionId, 'collectionId');
 
   const limit = Math.min(parseInt(req.query.limit, 10) || 12, 60);
+  const sort = String(req.query.sort || 'latest').toLowerCase();
 
   const collection = await StoreCollection.findOne({
     _id: collectionId,
@@ -198,13 +260,33 @@ exports.getCollection = async (req, res) => {
   });
   if (!collection) throw notFoundError('Collection not found.');
 
+  // Determine MongoDB sort object
+  let sortObj = { createdAt: -1 }; // default: latest
+  switch (sort) {
+    case 'oldest':
+      sortObj = { createdAt: 1 };
+      break;
+    case 'price-low':
+      sortObj = { price: 1 };
+      break;
+    case 'price-high':
+      sortObj = { price: -1 };
+      break;
+    case 'name-asc':
+      sortObj = { title: 1 };
+      break;
+    case 'name-desc':
+      sortObj = { title: -1 };
+      break;
+  }
+
   const products = await StoreProduct.find({
     storeId,
     isDeleted: false,
     status: 'Active',
     collectionIds: collectionId,
   })
-    .sort({ createdAt: -1 })
+    .sort(sortObj)
     .limit(limit);
 
   res.status(200).json({
