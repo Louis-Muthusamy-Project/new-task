@@ -38,8 +38,30 @@ const AUTO_CONVERTIBLE_TYPES = new Set([
  */
 const MANUAL_MAPPING_TYPES = new Set(['contact-form', 'newsletter', 'blog-list']);
 
+// Token the WordPress Import Pipeline's component detector embeds into a
+// converted block's markup/hydration script when it runs before a real
+// Store exists (StoreTemplate.pages snapshot stage — no storeId yet).
+const STORE_ID_PLACEHOLDER = /\{\{\s*STORE_ID\s*\}\}/g;
+
+/**
+ * Resolves any `{{STORE_ID}}` placeholder left in a page's stored HTML to
+ * the real storeId, once one exists (i.e. once create-from-template /
+ * WordPress "import into a live Store" actually creates the Store
+ * document). A no-op for html with no placeholder — most pages, since
+ * only auto-converted store blocks ever embed the token.
+ *
+ * @param {string} html
+ * @param {import('mongoose').Types.ObjectId|string} storeId
+ * @returns {string}
+ */
+function resolveStoreBlockPlaceholders(html, storeId) {
+  if (!html || typeof html !== 'string') return html || '';
+  return html.replace(STORE_ID_PLACEHOLDER, String(storeId ?? ''));
+}
+
 module.exports = {
   COMPONENT_LABELS,
   AUTO_CONVERTIBLE_TYPES,
   MANUAL_MAPPING_TYPES,
+  resolveStoreBlockPlaceholders,
 };

@@ -649,7 +649,7 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
             <Col span={7}>
               <Card bodyStyle={{ padding: 24, height: "100%", display: "flex", flexDirection: "column" }} style={{ borderRadius: 16, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
                 <div style={{ fontWeight: 800, marginBottom: 4, color: 'var(--text-primary)', fontSize: 16 }}>Storefront</div>
-                <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 8, fontWeight: 500 }}>https://jeema.one/shop/{activeStore.slug}</div>
+                <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 8, fontWeight: 500 }}>/shop/{activeStore.slug}</div>
                 <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16, fontWeight: 500 }}>Set store to <strong>Active</strong> in General so customers can checkout.</div>
                 
                 <Space direction="vertical" style={{ width: "100%", marginTop: "auto" }}>
@@ -2152,7 +2152,11 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
               <div style={{ fontSize: 12, fontWeight: 800, color: "var(--accent-success)", letterSpacing: 1, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}><Store size={14} /> ONLINE STORE</div>
               <Title level={2} style={{ margin: 0, color: 'var(--text-primary)', fontWeight: 900 }}>{activeStore.slug}</Title>
             </div>
-            <Button type="primary" style={{ background: 'var(--accent-success)', border: 'none', borderRadius: 8, fontWeight: 700, padding: '0 24px', height: 40, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Button
+              type="primary"
+              style={{ background: 'var(--accent-success)', border: 'none', borderRadius: 8, fontWeight: 700, padding: '0 24px', height: 40, display: 'flex', alignItems: 'center', gap: 8 }}
+              onClick={() => setIsPreviewOpen(true)}
+            >
               View storefront <ExternalLink size={16} />
             </Button>
           </div>

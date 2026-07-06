@@ -67,15 +67,27 @@ function discoverHtmlPages(zip) {
     .map(({ zipPath, uncompressedSize }) => ({
       zipPath,
       fileName: zipPath.split('/').pop(),
-      isHome: /(^|\/)index\.html?$/i.test(zipPath),
+      isIndexNamed: /(^|\/)index\.html?$/i.test(zipPath),
       uncompressedSize,
     }));
 
   pages.sort((a, b) =>
-    a.isHome === b.isHome ? a.zipPath.localeCompare(b.zipPath) : a.isHome ? -1 : 1
+    a.isIndexNamed === b.isIndexNamed ? a.zipPath.localeCompare(b.zipPath) : a.isIndexNamed ? -1 : 1
   );
 
-  return pages;
+  // Only the first index.html-named entry (post-sort) is ever "home" — a
+  // ZIP can contain more than one file literally named index.html (nested
+  // app folders, stray build output, node_modules docs, ...); marking all
+  // of them isHome let parseStoreTemplateZip persist multiple StorePage
+  // documents as isHome: true from a single import, with no guarantee the
+  // one actually rendered as "home" downstream was the one this
+  // validation step checked. Mirrors the same single-home fix there.
+  let homeAssigned = false;
+  return pages.map((p) => {
+    const isHome = !homeAssigned && p.isIndexNamed;
+    if (isHome) homeAssigned = true;
+    return { zipPath: p.zipPath, fileName: p.fileName, isHome, uncompressedSize: p.uncompressedSize };
+  });
 }
 
 module.exports = { listEntries, discoverHtmlPages, normZip };

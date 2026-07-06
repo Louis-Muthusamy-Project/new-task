@@ -45,7 +45,27 @@ function escapeHtml(value) {
     "'": "&#39;",
   }[c]));
 }
+function normalizePreviewContent(page = {}) {
+  const content = page?.content;
 
+  if (typeof content === "string") {
+    return { html: content, css: "", headLinks: "" };
+  }
+
+  if (content && typeof content === "object") {
+    return {
+      html: asString(content.html),
+      css: asString(content.css),
+      headLinks: asString(content.headLinks),
+    };
+  }
+
+  return {
+    html: asString(page?.html),
+    css: asString(page?.css),
+    headLinks: asString(page?.headLinks),
+  };
+}
 /**
  * Builds the floating chat-widget launcher + small details box that gets
  * injected into the previewed page when a chat widget is assigned to the
@@ -113,10 +133,7 @@ function buildChatWidgetSnippet(widget) {
 }
 
 export function buildPreviewHtml(page = {}, chatWidget = null) {
-  const content = page.content || {};
-  const html = asString(content.html);
-  const css = asString(content.css);
-  const headLinks = asString(content.headLinks);
+  const { html, css, headLinks } = normalizePreviewContent(page);
 
   const styleBlock = css.trim() ? `<style>${css}</style>` : "";
   const headMarkup = [headLinks, styleBlock].filter(Boolean).join("\n");

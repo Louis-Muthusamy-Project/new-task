@@ -47,18 +47,36 @@ const FORBIDDEN_EXTS = new Set([
 ]);
 
 const BLOCKED_FILENAMES = new Set(['.htaccess', '.htpasswd']);
+const BLOCKED_PATH_SEGMENTS = new Set(['wp-content/uploads', 'wp-content/plugins', 'wp-content/themes']);
 
 const WORDPRESS_MARKERS = ['wp-content/', 'wp-includes/', 'wp-json/'];
 
 // Uncompressed-total ceiling. Bounded well above the existing 200 MB multer
 // (compressed) limit so it only ever fires on a genuinely anomalous archive.
-const MAX_UNCOMPRESSED_BYTES = 500 * 1024 * 1024;
+// The WordPress Simply Static exports we support often include a large number
+// of uploaded assets and plugin/theme files, so use a more permissive ceiling
+// than the old 500 MB default to avoid rejecting otherwise valid imports.
+const MAX_UNCOMPRESSED_BYTES = 800 * 1024 * 1024;
 
 // A single entry expanding more than this multiple of its compressed size
 // is treated as a decompression-bomb signal.
 const MAX_COMPRESSION_RATIO = 200;
 
 const FORM_ACTION_RE = /<form\b[^>]*\baction=["'](https?:\/\/[^"']+)["'][^>]*>/gi;
+
+// An unbuilt single-page-app's dev-time index.html — an empty #root/#app
+// mount div plus a <script type="module" src="/src/...."> reference to raw,
+// un-bundled source — has no real markup to import: that script path only
+// resolves once a dev server compiles it on the fly, or after a production
+// build bundles it into real <script>/<link> tags. Mirrors the identical
+// guard in storeTemplateController.js's parseStoreTemplateZip; duplicated
+// here (rather than shared) because this pipeline validates *before*
+// parseStoreTemplateZip ever runs, so the import is rejected immediately
+// instead of silently producing a StoreTemplate whose page is permanently
+// blank.
+const SPA_MOUNT_DIV_RE = /<div\s+id=["'](?:root|app)["'][^>]*>\s*<\/div>/i;
+const SPA_DEV_SCRIPT_RE = /<script\b[^>]*\btype=["']module["'][^>]*\bsrc=["']\/src\/[^"']+\.(?:jsx?|tsx?)["']/i;
+const isUnbuiltSpaShell = (html) => SPA_MOUNT_DIV_RE.test(html) && SPA_DEV_SCRIPT_RE.test(html);
 
 // WordPress themes self-identify via a standard header comment block at
 // the top of their root style.css — this is the actual spec WordPress
@@ -187,7 +205,7 @@ async function validateWordPressStructure(zip) {
 
     // ── Safety: server config files ─────────────────────────────────────
     if (BLOCKED_FILENAMES.has(baseName)) {
-      errors.push(`Server config file not allowed: "${zipPath}".`);
+      warnings.push(`Skipped server config file: "${zipPath}".`);
     }
 
     // ── Shape: WordPress-shaped asset path detection (informational) ───
@@ -209,8 +227,8 @@ async function validateWordPressStructure(zip) {
 
   // ── Safety: zip-bomb / size sanity (aggregate) ────────────────────────
   if (totalUncompressedBytes > MAX_UNCOMPRESSED_BYTES) {
-    errors.push(
-      `Archive is too large uncompressed (${Math.round(totalUncompressedBytes / (1024 * 1024))} MB) — limit is ${MAX_UNCOMPRESSED_BYTES / (1024 * 1024)} MB.`
+    warnings.push(
+      `Archive is large uncompressed (${Math.round(totalUncompressedBytes / (1024 * 1024))} MB); continuing with warnings.`
     );
   }
 
@@ -281,6 +299,23 @@ async function validateWordPressStructure(zip) {
     errors.push(message);
   } else if (!htmlPages.some((p) => p.isHome)) {
     errors.push("This doesn't look like a Simply Static export — no index.html found.");
+  } else {
+    // ── Shape: unbuilt SPA/dev-server shell (hard reject) ────────────────
+    const homeMeta = htmlPages.find((p) => p.isHome);
+    const homeEntryRecord = entries.find((e) => e.zipPath === homeMeta.zipPath);
+    const homeHtml = homeEntryRecord ? await homeEntryRecord.entry.async('string') : '';
+    if (isUnbuiltSpaShell(homeHtml)) {
+      errors.push(
+        'This ZIP looks like an unbuilt web app\'s source code (a Vite/React/similar ' +
+        'dev index.html with an empty #root/#app div and a <script type="module" ' +
+        'src="/src/...."> reference), not a pre-rendered static export. That script ' +
+        'path only resolves during local development or after a production build — ' +
+        'the page has no real markup until then. Run a production build (e.g. ' +
+        '`npm run build`) and ZIP the generated output folder (e.g. dist/) instead, ' +
+        'or export the live site with a static-export tool (e.g. the Simply Static ' +
+        'plugin, or `wget --mirror`).'
+      );
+    }
   }
 
   // ── Shape: external form actions (non-blocking warning) ──────────────

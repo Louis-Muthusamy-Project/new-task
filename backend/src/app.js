@@ -8,8 +8,9 @@ const app = express();
 
 
 // Increased limits to handle large GrapesJS page content (HTML + CSS + embedded assets)
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+// and large Simply Static ZIP exports used by the WordPress import flow.
+app.use(express.json({ limit: '1000mb' }));
+app.use(express.urlencoded({ limit: '1000mb', extended: true }));
 
 const cors = require("cors");
 app.use(cors());

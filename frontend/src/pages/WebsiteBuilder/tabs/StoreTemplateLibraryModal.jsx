@@ -4,6 +4,7 @@ import { Store, X as CloseIcon, Search as SearchIcon, CheckCircle, UploadCloud, 
 import { useAuth } from "../../../contexts/AuthContext";
 import { storeTemplateApi } from "../../../api/storeTemplateApi";
 import { storeApi } from "../../../api/storeApi";
+import { buildPreviewHtml } from "../utils/previewHtml";
 import ImportWordPressTemplateModal from "./ImportWordPressTemplateModal";
 
 const { Title, Text } = Typography;
@@ -49,6 +50,7 @@ const StoreTemplateLibraryModal = ({ open, onCancel, onCreate, initialStoreName 
   const [activeCategory, setActiveCategory] = useState(null); // null = "All templates"
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
 
   const [templates, setTemplates] = useState(FALLBACK_TEMPLATES);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
@@ -81,6 +83,7 @@ const StoreTemplateLibraryModal = ({ open, onCancel, onCreate, initialStoreName 
           type: t.category || "Other",
           thumbnail: t.thumbnail || "",
           preview: t.preview || "",
+          pages: Array.isArray(t.pages) ? t.pages : [],
           bg: PALETTE[i % PALETTE.length],
         }));
         setTemplates(mapped);
@@ -246,6 +249,16 @@ const StoreTemplateLibraryModal = ({ open, onCancel, onCreate, initialStoreName 
     setPreviewTemplate(null);
   };
 
+  const previewPage = useMemo(() => {
+    if (!previewTemplate || !Array.isArray(previewTemplate.pages)) return null;
+    return previewTemplate.pages.find((p) => p.isHome) || previewTemplate.pages[0] || null;
+  }, [previewTemplate]);
+
+  const previewHtml = useMemo(() => {
+    if (!previewPage) return "";
+    return buildPreviewHtml(previewPage);
+  }, [previewPage]);
+
   // Load version history (v1, v2, …) whenever a template preview opens.
   // Fallback templates / not-yet-persisted templates (pending-*) have no
   // server record yet, so just show a single implicit v1 for those.
@@ -300,9 +313,26 @@ const StoreTemplateLibraryModal = ({ open, onCancel, onCreate, initialStoreName 
       setTemplates((prev) =>
         prev.map((t) =>
           t.id === previewTemplate.id
-            ? { ...t, thumbnail: updated?.thumbnail ?? t.thumbnail, preview: updated?.preview ?? t.preview }
+            ? {
+                ...t,
+                thumbnail: updated?.thumbnail ?? t.thumbnail,
+                preview: updated?.preview ?? t.preview,
+                pages: Array.isArray(updated?.pages) ? updated.pages : t.pages,
+                versions: Array.isArray(updated?.versions) ? updated.versions : t.versions,
+              }
             : t
         )
+      );
+      setPreviewTemplate((prev) =>
+        prev && prev.id === updated?._id
+          ? {
+              ...prev,
+              thumbnail: updated?.thumbnail ?? prev.thumbnail,
+              preview: updated?.preview ?? prev.preview,
+              pages: Array.isArray(updated?.pages) ? updated.pages : prev.pages,
+              versions: Array.isArray(updated?.versions) ? updated.versions : prev.versions,
+            }
+          : prev
       );
       const { versions, currentVersion } = await storeTemplateApi.getTemplateVersions(previewTemplate.id);
       setVersionHistory(versions || []);
@@ -332,6 +362,8 @@ const StoreTemplateLibraryModal = ({ open, onCancel, onCreate, initialStoreName 
           type: duplicate?.category || "Other",
           thumbnail: duplicate?.thumbnail || "",
           preview: duplicate?.preview || "",
+          pages: Array.isArray(duplicate?.pages) ? duplicate.pages : [],
+          versions: Array.isArray(duplicate?.versions) ? duplicate.versions : [],
           bg: PALETTE[prev.length % PALETTE.length],
         },
         ...prev,
@@ -423,15 +455,38 @@ const StoreTemplateLibraryModal = ({ open, onCancel, onCreate, initialStoreName 
               </div>
               <Space>
                 {canUploadTemplate && (
-                  <>
+                  <div style={{ position: "relative" }}>
                     <Button
                       icon={<UploadCloud size={16} />}
-                      onClick={handleUploadClick}
+                      onClick={() => setUploadMenuOpen((prev) => !prev)}
                       loading={uploading}
                       style={{ borderRadius: 8, height: 40, fontWeight: 600, borderColor: "var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)" }}
-                    >
-                      Upload template
-                    </Button>
+                      title="Upload templates"
+                    />
+                    {uploadMenuOpen && (
+                      <div style={{ position: "absolute", top: "calc(100% + 8px)", right: 0, display: "flex", flexDirection: "column", gap: 8, minWidth: 220, padding: 12, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 12, boxShadow: "var(--shadow-sm)", zIndex: 20 }}>
+                        <Button
+                          icon={<UploadCloud size={16} />}
+                          onClick={() => {
+                            setUploadMenuOpen(false);
+                            handleUploadClick();
+                          }}
+                          style={{ justifyContent: "flex-start", borderRadius: 8, height: 40, fontWeight: 600, borderColor: "var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)" }}
+                        >
+                          Upload template
+                        </Button>
+                        <Button
+                          icon={<Globe size={16} />}
+                          onClick={() => {
+                            setUploadMenuOpen(false);
+                            setImportModalOpen(true);
+                          }}
+                          style={{ justifyContent: "flex-start", borderRadius: 8, height: 40, fontWeight: 600, borderColor: "var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)" }}
+                        >
+                          Import WordPress Template
+                        </Button>
+                      </div>
+                    )}
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -439,17 +494,7 @@ const StoreTemplateLibraryModal = ({ open, onCancel, onCreate, initialStoreName 
                       onChange={handleFileSelected}
                       style={{ display: "none" }}
                     />
-                    {/* Import WordPress Template — Simply Static ZIP -> WordPress
-                        Import Pipeline -> StoreTemplate, surfaced in this same
-                        toolbar/permission gate as the manual upload above. */}
-                    {/* <Button
-                      icon={<Globe size={16} />}
-                      onClick={() => setImportModalOpen(true)}
-                      style={{ borderRadius: 8, height: 40, fontWeight: 600, borderColor: "var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)" }}
-                    >
-                      Import WordPress Template
-                    </Button> */}
-                  </>
+                  </div>
                 )}
                 {/* Search */}
                 <Input
@@ -607,7 +652,14 @@ const StoreTemplateLibraryModal = ({ open, onCancel, onCreate, initialStoreName 
               </div>
             )}
 
-            {previewTemplate.preview ? (
+            {previewPage ? (
+              <iframe
+                title={`${previewTemplate.name} preview`}
+                srcDoc={previewHtml}
+                style={{ width: "100%", height: 420, border: "1px solid var(--border-color)", borderRadius: 8 }}
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+              />
+            ) : previewTemplate.preview ? (
               <iframe
                 title={`${previewTemplate.name} preview`}
                 src={previewTemplate.preview}

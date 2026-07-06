@@ -407,7 +407,7 @@ const QRLinksTab = ({ itemVariants }) => {
         shape: formData.shape,
       };
 
-      const destination = payload.customUrl || `https://jeema.one/q/${payload.slug}`;
+      const destination = payload.customUrl || `https://localhost:5500/api/${payload.slug}`;
       const resolveColor = (color, fallback) => {
         if (!color || typeof color !== 'string') return fallback;
         return color.startsWith('var(') ? fallback : color;

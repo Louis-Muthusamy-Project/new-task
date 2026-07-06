@@ -31,7 +31,7 @@ const { minifyCss } = require('../utils/minifyCss');
 const { optimizeImageUrl } = require('../utils/storeImageOptimizer');
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Multer — in-memory, 200 MB, ZIP-only
+// Multer — in-memory, ZIP-only
 //
 // Shared by both upload entry points that ultimately call
 // parseStoreTemplateZip: the manual "Upload template" flow
@@ -39,17 +39,10 @@ const { optimizeImageUrl } = require('../utils/storeImageOptimizer');
 // (wordpressImportRoutes.js re-exports this exact `upload`) — see the
 // comment there for why the two intentionally stay in sync.
 //
-// Limit was previously 50 MB, which real-world WordPress/Simply Static
-// exports (many full-resolution images, fonts, multiple pages) routinely
-// exceed. Raised to 200 MB. validateTemplate.js's own uncompressed-size
-// ceiling (500 MB) is unaffected and still guards against zip-bombs
-// regardless of this compressed-upload limit.
-//
-// `fileFilter` rejects anything that isn't a .zip up front (by extension
-// and, when the client sends one, MIME type) so a non-ZIP upload fails
-// fast with a clear 400 instead of reaching JSZip.loadAsync and failing
-// there with a generic/confusing error.
-const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // 200 MB
+// The compressed request payload limit is intentionally very high to
+// support large static exports from WordPress/Simply Static, while the
+// uncompressed-size validation pipeline still guards against zip bombs.
+const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024; // 1 GB
 
 // Extension is the authoritative check — `file.mimetype` is a client-supplied
 // header and unreliable (browsers/OSes send everything from
@@ -68,7 +61,13 @@ const zipFileFilter = (req, file, cb) => {
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits:  { fileSize: MAX_UPLOAD_BYTES },
+  limits: {
+    fileSize: MAX_UPLOAD_BYTES,
+    fields: 30,
+    parts: 35,
+    fieldNameSize: 100,
+    fieldSize: 2 * 1024 * 1024, // 2 MB per non-file field
+  },
   fileFilter: zipFileFilter,
 });
 
@@ -652,6 +651,19 @@ const slugifySegment = (s) =>
     .replace(/-+/g, '-').replace(/^-|-$/g, '');
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Unbuilt SPA source detection — a dev-time Vite/CRA/similar index.html has
+// an empty mount div (<div id="root"></div> / <div id="app"></div>) and a
+// <script type="module" src="/src/..."> pointing at raw, un-bundled source.
+// That combination never resolves to real markup outside a dev server or a
+// production build, so it's a reliable, low-false-positive signal that a
+// ZIP is a project's source tree rather than a pre-rendered static export.
+// ─────────────────────────────────────────────────────────────────────────────
+const SPA_MOUNT_DIV_RE = /<div\s+id=["'](?:root|app)["'][^>]*>\s*<\/div>/i;
+const SPA_DEV_SCRIPT_RE = /<script\b[^>]*\btype=["']module["'][^>]*\bsrc=["']\/src\/[^"']+\.(?:jsx?|tsx?)["']/i;
+
+const isUnbuiltSpaShell = (html) => SPA_MOUNT_DIV_RE.test(html) && SPA_DEV_SCRIPT_RE.test(html);
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Shared parse pipeline — Extract -> Read HTML -> Read CSS -> Upload Images ->
 // Generate ProjectData (page docs), independent of *what* the caller does
 // with the result (create a live Store + StorePages, or save straight onto
@@ -690,6 +702,52 @@ const parseStoreTemplateZip = async (zipBuffer, { cloudinaryFolder }) => {
     throw error;
   }
 
+  // Sort *before* picking "the" home entry below — a ZIP can contain more
+  // than one file literally named index.html (nested app folders, stray
+  // build output, node_modules docs, ...). This is the same ordering used
+  // to build `pages` further down (home first, then alphabetical), so
+  // whichever entry is checked here for the unbuilt-SPA-shell signature is
+  // guaranteed to be the exact same one that ends up persisted as the
+  // page's home — previously this check ran on `zip.forEach`'s raw
+  // iteration order (whatever the ZIP's internal entry order happened to
+  // be), which could name a completely different index.html than the one
+  // the (separately, alphabetically) sorted main loop below actually
+  // marked isHome — letting a broken SPA shell slip through undetected
+  // whenever the ZIP had more than one index.html.
+  htmlEntries.sort((a, b) => {
+    const ai = /(^|\/)index\.html?$/i.test(a.zipPath);
+    const bi = /(^|\/)index\.html?$/i.test(b.zipPath);
+    return ai === bi ? a.zipPath.localeCompare(b.zipPath) : ai ? -1 : 1;
+  });
+
+  // A ZIP containing an *unbuilt* single-page-app's index.html (the
+  // Vite/CRA/etc. dev-time shell — an empty mount div plus a
+  // <script type="module" src="/src/..."> reference to raw source) has no
+  // real markup to import: that script path only resolves once a dev
+  // server compiles it on the fly, or after a production build bundles it
+  // into real <script>/<link> tags. Importing it verbatim silently
+  // produces a StoreTemplate/StorePage whose content is permanently
+  // blank, since nothing will ever serve /src/main.jsx on the storefront.
+  // Caught here, up front, before any Cloudinary uploads happen.
+  {
+    const homeEntry = htmlEntries[0];
+    const homeHtml = homeEntry ? await homeEntry.entry.async('string') : '';
+    if (isUnbuiltSpaShell(homeHtml)) {
+      const error = new Error(
+        'This ZIP looks like an unbuilt web app\'s source code (a Vite/React/similar ' +
+        'dev index.html with an empty #root/#app div and a <script type="module" ' +
+        'src="/src/...."> reference), not a pre-rendered static export. That script ' +
+        'path only resolves during local development or after a production build — ' +
+        'the page has no real markup until then. Run a production build (e.g. ' +
+        '`npm run build`) and ZIP the generated output folder (e.g. dist/) instead, ' +
+        'or export the live site with a static-export tool (e.g. the Simply Static ' +
+        'plugin, or `wget --mirror`).'
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
   // 3. Build assetIndex
   const { index, lcIndex } = buildAssetIndex(zip);
   cssEntries.forEach((_, zipPath) => {
@@ -720,14 +778,21 @@ const parseStoreTemplateZip = async (zipBuffer, { cloudinaryFolder }) => {
     }
   };
 
-  // Process HTML files ("Read HTML" + "Read CSS" + "Generate ProjectData")
-  htmlEntries.sort((a, b) => {
-    const ai = /(^|\/)index\.html?$/i.test(a.zipPath);
-    const bi = /(^|\/)index\.html?$/i.test(b.zipPath);
-    return ai === bi ? a.zipPath.localeCompare(b.zipPath) : ai ? -1 : 1;
-  });
-
+  // htmlEntries is already sorted (home candidate(s) first, then
+  // alphabetical) from the guard above — process in that same order.
   const pages = [];
+
+  // Only the single, already-identified `homeEntry` (htmlEntries[0], once
+  // sorting has run) should ever be treated as the store's home page.
+  // Previously every file literally named "index.html" anywhere in the
+  // archive (nested app folders, build output, docs, ...) was marked
+  // isHome independently — if more than one existed, multiple StorePage
+  // documents could each end up isHome: true, and which one a preview or
+  // storefront actually rendered as "home" became a coin flip between
+  // them (including, in practice, one that was never checked by the
+  // guard above). Tracking it explicitly here guarantees at most one page
+  // is ever the home page, and that it's the exact page already vetted.
+  let homeAssigned = false;
 
   for (const { zipPath, entry } of htmlEntries) {
     const rawHtml = await entry.async('string');
@@ -735,7 +800,8 @@ const parseStoreTemplateZip = async (zipBuffer, { cloudinaryFolder }) => {
 
     const fileName = zipPath.split('/').pop();
     const base     = fileName.replace(/\.html?$/i, '');
-    const isHome   = base.toLowerCase() === 'index';
+    const isHome   = !homeAssigned && base.toLowerCase() === 'index';
+    if (isHome) homeAssigned = true;
     const pageName = isHome ? 'Home' : normalizeName(base);
     const pageSlug = isHome ? 'home' : slugifySegment(base);
 
