@@ -21,7 +21,7 @@
  * from here rather than reaching into the controller directly.
  */
 
-const { parseStoreTemplateZip } = require('../../controllers/storeTemplateController');
+const { parseStoreTemplateZip } = require('../../controllers/store/storeTemplateController');
 
 /**
  * @param {Buffer} zipBuffer

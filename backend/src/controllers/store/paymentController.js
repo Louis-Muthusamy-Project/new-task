@@ -14,8 +14,8 @@
  */
 
 const mongoose = require('mongoose');
-const StorePayment = require('../models/store/StorePayment');
-const Store = require('../models/store/Store');
+const StorePayment = require('../../models/store/StorePayment');
+const Store = require('../../models/store/Store');
 
 const notFoundError = (message) => {
   const err = new Error(message);

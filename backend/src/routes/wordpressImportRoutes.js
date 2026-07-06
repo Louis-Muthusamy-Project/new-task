@@ -25,7 +25,7 @@ const asyncHandler = require('../utils/asyncHandler');
 // import engine (memoryStorage, 200 MB limit, ZIP-only, single "file"
 // field) rather than declaring a second one, so the two upload paths'
 // limits and accepted file types stay in sync by construction.
-const { upload } = require('../controllers/storeTemplateController');
+const { upload } = require('../controllers/store/storeTemplateController');
 const { importWordPressZip, WordPressImportValidationError } = require('../services/wordpressImport');
 
 // POST /api/wordpress-import/upload

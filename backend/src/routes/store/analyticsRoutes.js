@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 
-const analyticsController = require('../controllers/analyticsController');
-const asyncHandler = require('../utils/asyncHandler');
+const analyticsController = require('../../controllers/store/analyticsController');
+const asyncHandler = require('../../utils/asyncHandler');
 
 // Mounted under /api/store
 // Admin Analytics (Visitors, Sales, Orders, Revenue, Conversion + Top

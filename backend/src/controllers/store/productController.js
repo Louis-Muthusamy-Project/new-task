@@ -15,9 +15,9 @@
  */
 
 const mongoose = require('mongoose');
-const StoreProduct = require('../models/store/StoreProduct');
-const Store = require('../models/store/Store');
-const { invalidateStoreCache } = require('../middlewares/storeCache');
+const StoreProduct = require('../../models/store/StoreProduct');
+const Store = require('../../models/store/Store');
+const { invalidateStoreCache } = require('../../middlewares/storeCache');
 
 const notFoundError = (message) => {
   const err = new Error(message);

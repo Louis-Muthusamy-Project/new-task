@@ -1,6 +1,6 @@
 const express = require('express');
 
-const { upload, uploadStoreTemplateZipToCloudinary } = require('../controllers/storeTemplateController');
+const { upload, uploadStoreTemplateZipToCloudinary } = require('../../controllers/store/storeTemplateController');
 
 const router = express.Router();
 

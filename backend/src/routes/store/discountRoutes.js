@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 
-const discountController = require('../controllers/discountController');
-const asyncHandler = require('../utils/asyncHandler');
+const discountController = require('../../controllers/store/discountController');
+const asyncHandler = require('../../utils/asyncHandler');
 
 // Mounted under /api/store
 // Admin CRUD for StoreDiscount — Create / Edit / Delete (Coupon code,

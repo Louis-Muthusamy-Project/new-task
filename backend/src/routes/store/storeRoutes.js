@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
 
-const { createStoreFromTemplate, createStore, listStores, previewStore } = require('../controllers/storeController');
-const storePublishController = require('../controllers/storePublishController');
-const asyncHandler = require('../utils/asyncHandler');
+const { createStoreFromTemplate, createStore, listStores, previewStore } = require('../../controllers/store/storeController');
+const storePublishController = require('../../controllers/store/storePublishController');
+const asyncHandler = require('../../utils/asyncHandler');
 
 // GET /api/store  (Query: { search, status })
 // Lists every store (newest first) with a productCount per row, for the

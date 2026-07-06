@@ -25,15 +25,15 @@
  */
 
 const mongoose = require('mongoose');
-const asyncHandler = require('../utils/asyncHandler');
-const Store           = require('../models/store/Store');
-const StoreTemplate   = require('../models/store/StoreTemplate');
-const StorePage       = require('../models/store/StorePage');
-const StoreProduct    = require('../models/store/StoreProduct');
-const StoreCollection = require('../models/store/StoreCollection');
-const StoreDiscount   = require('../models/store/StoreDiscount');
-const { DEFAULT_STORE_PAGES } = require('../config/defaultStorePages');
-const { resolveStoreBlockPlaceholders } = require('../utils/storeBlockTemplates');
+const asyncHandler = require('../../utils/asyncHandler');
+const Store           = require('../../models/store/Store');
+const StoreTemplate   = require('../../models/store/StoreTemplate');
+const StorePage       = require('../../models/store/StorePage');
+const StoreProduct    = require('../../models/store/StoreProduct');
+const StoreCollection = require('../../models/store/StoreCollection');
+const StoreDiscount   = require('../../models/store/StoreDiscount');
+const { DEFAULT_STORE_PAGES } = require('../../config/defaultStorePages');
+const { resolveStoreBlockPlaceholders } = require('../../utils/storeBlockTemplates');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Utilities

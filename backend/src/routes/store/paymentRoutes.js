@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 
-const paymentController = require('../controllers/paymentController');
-const asyncHandler = require('../utils/asyncHandler');
+const paymentController = require('../../controllers/store/paymentController');
+const asyncHandler = require('../../utils/asyncHandler');
 
 // Mounted under /api/store
 // Admin Payments config (Razorpay, Stripe, PayPal, Cash on Delivery) used

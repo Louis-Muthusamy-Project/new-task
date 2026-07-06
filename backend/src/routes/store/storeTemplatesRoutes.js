@@ -2,10 +2,10 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 
-const StoreTemplate = require('../models/store/StoreTemplate');
-const asyncHandler = require('../utils/asyncHandler');
-const { uploadBufferToCloudinary } = require('../config/cloudinary');
-const { upload, parseStoreTemplateZip } = require('../controllers/storeTemplateController');
+const StoreTemplate = require('../../models/store/StoreTemplate');
+const asyncHandler = require('../../utils/asyncHandler');
+const { uploadBufferToCloudinary } = require('../../config/cloudinary');
+const { upload, parseStoreTemplateZip } = require('../../controllers/store/storeTemplateController');
 
 // GET /api/store-templates — list library entries (mirrors GET /api/templates)
 router.get(

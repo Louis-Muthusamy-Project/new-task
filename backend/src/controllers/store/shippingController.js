@@ -13,8 +13,8 @@
  */
 
 const mongoose = require('mongoose');
-const StoreShipping = require('../models/store/StoreShipping');
-const Store = require('../models/store/Store');
+const StoreShipping = require('../../models/store/StoreShipping');
+const Store = require('../../models/store/Store');
 
 const notFoundError = (message) => {
   const err = new Error(message);

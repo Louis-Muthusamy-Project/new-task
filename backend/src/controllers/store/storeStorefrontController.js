@@ -1,10 +1,10 @@
 const mongoose = require('mongoose');
-const Store = require('../models/store/Store');
-const StoreProduct = require('../models/store/StoreProduct');
-const StoreCollection = require('../models/store/StoreCollection');
-const StoreTestimonial = require('../models/store/StoreTestimonial');
-const StoreOrder = require('../models/store/StoreOrder');
-const { optimizeImageUrl, optimizeImageList } = require('../utils/storeImageOptimizer');
+const Store = require('../../models/store/Store');
+const StoreProduct = require('../../models/store/StoreProduct');
+const StoreCollection = require('../../models/store/StoreCollection');
+const StoreTestimonial = require('../../models/store/StoreTestimonial');
+const StoreOrder = require('../../models/store/StoreOrder');
+const { optimizeImageUrl, optimizeImageList } = require('../../utils/storeImageOptimizer');
 
 /**
  * storeStorefrontController.js
@@ -361,7 +361,7 @@ exports.createOrder = async (req, res) => {
 // client doesn't have one yet (first visit) so the caller can persist it
 // (e.g. localStorage) and reuse it for the rest of the session.
 // ─────────────────────────────────────────────────────────────────────────
-const StoreVisit = require('../models/store/StoreVisit');
+const StoreVisit = require('../../models/store/StoreVisit');
 
 exports.trackVisit = async (req, res) => {
   const { storeId } = req.params;

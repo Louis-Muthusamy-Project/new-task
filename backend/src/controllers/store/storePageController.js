@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
-const Store = require('../models/store/Store');
-const StorePage = require('../models/store/StorePage');
-const { slugify, generateUniqueStorePageSlug } = require('../utils/slugUtils');
+const Store = require('../../models/store/Store');
+const StorePage = require('../../models/store/StorePage');
+const { slugify, generateUniqueStorePageSlug } = require('../../utils/slugUtils');
 
 /**
  * storePageController.js — mirrors controllers/pageController.js.

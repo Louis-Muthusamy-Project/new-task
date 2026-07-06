@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 
-const orderController = require('../controllers/orderController');
-const asyncHandler = require('../utils/asyncHandler');
+const orderController = require('../../controllers/store/orderController');
+const asyncHandler = require('../../utils/asyncHandler');
 
 // Mounted under /api/store
 // Admin CRUD for StoreOrder — List / View / Update Status / Delete used by

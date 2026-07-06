@@ -15,8 +15,8 @@
  */
 
 const mongoose = require('mongoose');
-const StoreEmailSettings = require('../models/store/StoreEmailSettings');
-const Store = require('../models/store/Store');
+const StoreEmailSettings = require('../../models/store/StoreEmailSettings');
+const Store = require('../../models/store/Store');
 
 const notFoundError = (message) => {
   const err = new Error(message);

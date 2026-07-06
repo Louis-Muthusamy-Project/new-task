@@ -15,10 +15,10 @@
  */
 
 const mongoose = require('mongoose');
-const StoreCollection = require('../models/store/StoreCollection');
-const StoreProduct = require('../models/store/StoreProduct');
-const Store = require('../models/store/Store');
-const { invalidateStoreCache } = require('../middlewares/storeCache');
+const StoreCollection = require('../../models/store/StoreCollection');
+const StoreProduct = require('../../models/store/StoreProduct');
+const Store = require('../../models/store/Store');
+const { invalidateStoreCache } = require('../../middlewares/storeCache');
 
 const notFoundError = (message) => {
   const err = new Error(message);

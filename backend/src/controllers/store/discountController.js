@@ -10,8 +10,8 @@
  */
 
 const mongoose = require('mongoose');
-const StoreDiscount = require('../models/store/StoreDiscount');
-const Store = require('../models/store/Store');
+const StoreDiscount = require('../../models/store/StoreDiscount');
+const Store = require('../../models/store/Store');
 
 const notFoundError = (message) => {
   const err = new Error(message);

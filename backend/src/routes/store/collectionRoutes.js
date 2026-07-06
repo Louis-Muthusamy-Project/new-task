@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 
-const collectionController = require('../controllers/collectionController');
-const asyncHandler = require('../utils/asyncHandler');
+const collectionController = require('../../controllers/store/collectionController');
+const asyncHandler = require('../../utils/asyncHandler');
 
 // Mounted under /api/store
 // Admin CRUD for StoreCollection — Create / Edit / Delete, plus linking

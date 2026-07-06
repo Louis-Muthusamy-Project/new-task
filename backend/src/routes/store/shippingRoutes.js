@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 
-const shippingController = require('../controllers/shippingController');
-const asyncHandler = require('../utils/asyncHandler');
+const shippingController = require('../../controllers/store/shippingController');
+const asyncHandler = require('../../utils/asyncHandler');
 
 // Mounted under /api/store
 // Admin Shipping config (Shipping Zones, Shipping Charges, Free Shipping,

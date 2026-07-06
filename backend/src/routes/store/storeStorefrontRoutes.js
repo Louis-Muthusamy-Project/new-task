@@ -1,8 +1,8 @@
 const express = require('express');
 
-const storeStorefrontController = require('../controllers/storeStorefrontController');
-const asyncHandler = require('../utils/asyncHandler');
-const { storeReadCache } = require('../middlewares/storeCache');
+const storeStorefrontController = require('../../controllers/store/storeStorefrontController');
+const asyncHandler = require('../../utils/asyncHandler');
+const { storeReadCache } = require('../../middlewares/storeCache');
 
 const router = express.Router();
 

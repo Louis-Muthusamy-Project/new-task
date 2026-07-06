@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 
-const emailController = require('../controllers/emailController');
-const asyncHandler = require('../utils/asyncHandler');
+const emailController = require('../../controllers/store/emailController');
+const asyncHandler = require('../../utils/asyncHandler');
 
 // Mounted under /api/store
 // Admin Email sender config (SMTP, sender identity, per-event templates —

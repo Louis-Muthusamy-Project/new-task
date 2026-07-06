@@ -1,7 +1,7 @@
 const express = require('express');
 
-const storePageController = require('../controllers/storePageController');
-const asyncHandler = require('../utils/asyncHandler');
+const storePageController = require('../../controllers/store/storePageController');
+const asyncHandler = require('../../utils/asyncHandler');
 
 const router = express.Router();
 

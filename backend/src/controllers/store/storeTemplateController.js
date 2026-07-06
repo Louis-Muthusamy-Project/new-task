@@ -23,12 +23,12 @@
 const multer  = require('multer');
 const JSZip   = require('jszip');
 
-const asyncHandler = require('../utils/asyncHandler');
-const Store        = require('../models/store/Store');
-const StorePage    = require('../models/store/StorePage');
-const { uploadBufferToCloudinary } = require('../config/cloudinary');
-const { minifyCss } = require('../utils/minifyCss');
-const { optimizeImageUrl } = require('../utils/storeImageOptimizer');
+const asyncHandler = require('../../utils/asyncHandler');
+const Store        = require('../../models/store/Store');
+const StorePage    = require('../../models/store/StorePage');
+const { uploadBufferToCloudinary } = require('../../config/cloudinary');
+const { minifyCss } = require('../../utils/minifyCss');
+const { optimizeImageUrl } = require('../../utils/storeImageOptimizer');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Multer — in-memory, ZIP-only

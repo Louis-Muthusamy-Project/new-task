@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const storePublishService = require('../services/storePublishService');
+const storePublishService = require('../../services/storePublishService');
 
 const notFoundError = (message) => {
   const error = new Error(message);

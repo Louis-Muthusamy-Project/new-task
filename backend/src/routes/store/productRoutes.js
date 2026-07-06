@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 
-const productController = require('../controllers/productController');
-const asyncHandler = require('../utils/asyncHandler');
+const productController = require('../../controllers/store/productController');
+const asyncHandler = require('../../utils/asyncHandler');
 
 // Mounted under /api/store
 // Admin CRUD for StoreProduct — Create / Edit / Delete, Images, Inventory,
