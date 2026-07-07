@@ -79,4 +79,7 @@ router.use('/store', require('./store/emailRoutes'));
 // products) used by the Analytics tab in StoresTab.jsx.
 router.use('/store', require('./store/analyticsRoutes'));
 
+// SEO Workspace routes
+router.use('/seo', require('./seoRoutes'));
+
 module.exports = router;

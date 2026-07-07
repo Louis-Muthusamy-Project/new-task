@@ -17,4 +17,12 @@ module.exports = {
   StorePayment: require('./store/StorePayment'),
   StoreEmailSettings: require('./store/StoreEmailSettings'),
   StoreVisit: require('./store/StoreVisit'),
+  SeoProject: require('./seo/SeoProject'),
+  SeoAudit: require('./seo/SeoAudit'),
+  SeoIssue: require('./seo/SeoIssue'),
+  SeoKeyword: require('./seo/SeoKeyword'),
+  SeoCompetitor: require('./seo/SeoCompetitor'),
+  SeoStrategy: require('./seo/SeoStrategy'),
+  SeoContent: require('./seo/SeoContent'),
+  SeoHistory: require('./seo/SeoHistory'),
 };
