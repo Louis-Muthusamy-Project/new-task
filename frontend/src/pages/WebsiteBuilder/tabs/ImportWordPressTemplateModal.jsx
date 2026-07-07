@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Modal, Button, Upload, Progress, Alert, Typography, Tag, message } from "antd";
+import { Modal, Button, Upload, Progress, Alert, Typography, Tag, message, Switch, Select } from "antd";
 import {
   Globe,
   UploadCloud,
   ShieldCheck,
-  Image as ImageIcon,
+  ImageIcon,
   FileText,
   Check,
   Loader2,
@@ -17,6 +17,7 @@ import { precheckWordPressZip } from "../utils/wordpressZipPrecheck";
 
 const { Dragger } = Upload;
 const { Text } = Typography;
+const { Option } = Select;
 
 // Mirrors the backend's own multer limit in storeTemplateController.js
 // (200 MB) so a too-large ZIP is rejected instantly, client-side, instead of
@@ -80,6 +81,12 @@ const ImportWordPressTemplateModal = ({ open, onClose, onImported, onUseTemplate
   const [fileError, setFileError] = useState("");
   const [checkingFile, setCheckingFile] = useState(false);
 
+  // Update flow state
+  const [isUpdateMode, setIsUpdateMode] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState(null);
+  const [templatesList, setTemplatesList] = useState([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+
   // phase: 'select' | 'importing' | 'success' | 'error'
   const [phase, setPhase] = useState("select");
   const [uploadPercent, setUploadPercent] = useState(0);
@@ -110,6 +117,21 @@ const ImportWordPressTemplateModal = ({ open, onClose, onImported, onUseTemplate
     setWarnings([]);
     setComponentSummary(null);
     setResult(null);
+
+    // Fetch templates list for the overwrite feature
+    setIsUpdateMode(false);
+    setSelectedTemplateId(null);
+    setTemplatesList([]);
+    setLoadingTemplates(true);
+    storeTemplateApi.getAllStoreTemplates()
+      .then((list) => {
+        setTemplatesList(list || []);
+        if (list && list.length > 0) {
+          setSelectedTemplateId(list[0]._id);
+        }
+      })
+      .catch((err) => console.error("Failed to load templates:", err))
+      .finally(() => setLoadingTemplates(false));
   }, [open]);
 
   // ── Client-side validation (Requirement: "Validation") ──────────────────
@@ -183,6 +205,7 @@ const ImportWordPressTemplateModal = ({ open, onClose, onImported, onUseTemplate
         category: "Other",
         description: "Imported from a WordPress (Simply Static) export.",
         status: "Published",
+        templateId: isUpdateMode ? selectedTemplateId : undefined,
         onProgress: (pct) => {
           if (runId.current !== thisRun) return;
           setUploadPercent(pct);
@@ -253,7 +276,7 @@ const ImportWordPressTemplateModal = ({ open, onClose, onImported, onUseTemplate
           type="primary"
           icon={checkingFile ? <Loader2 size={14} className="spin" /> : <UploadCloud size={14} />}
           onClick={startImport}
-          disabled={!file || !!fileError || checkingFile}
+          disabled={!file || !!fileError || checkingFile || (isUpdateMode && !selectedTemplateId)}
           style={{ background: "var(--accent-success)", border: "none", borderRadius: 8, fontWeight: 700 }}
         >
           {checkingFile ? "Scanning archive…" : "Start import"}
@@ -359,6 +382,33 @@ const ImportWordPressTemplateModal = ({ open, onClose, onImported, onUseTemplate
               .zip only, up to {MAX_FILE_MB} MB — must contain index.html
             </p>
           </Dragger>
+
+          <div style={{ marginTop: 20, paddingTop: 20, borderTop: "1px solid var(--border-color)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <span style={{ fontWeight: 700, fontSize: 13, color: "var(--text-primary)" }}>
+                Update/overwrite an existing template?
+              </span>
+              <Switch checked={isUpdateMode} onChange={(checked) => setIsUpdateMode(checked)} />
+            </div>
+            {isUpdateMode && (
+              <div style={{ animation: "fade-in 0.2s ease" }}>
+                <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 8, fontWeight: 500 }}>
+                  Select the template from your library to overwrite:
+                </div>
+                <Select
+                  style={{ width: "100%" }}
+                  placeholder="Choose template to update..."
+                  value={selectedTemplateId}
+                  onChange={(val) => setSelectedTemplateId(val)}
+                  loading={loadingTemplates}
+                  options={templatesList.map((t) => ({
+                    value: t._id,
+                    label: `${t.name} (v${t.version || 1})`,
+                  }))}
+                />
+              </div>
+            )}
+          </div>
 
           {checkingFile && !fileError && (
             <div

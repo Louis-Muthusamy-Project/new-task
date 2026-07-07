@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { Typography, Row, Col, Card, Button, Select, Table, Tag, Input } from 'antd';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LayoutGrid, Globe, Store, FileText, LayoutTemplate, Smartphone, QrCode, MessageCircle, Link2, Plus, ExternalLink, Sparkles, Code, Activity, ChevronDown } from 'lucide-react';
@@ -16,7 +17,20 @@ import DomainsTab from './tabs/DomainsTab';
 const { Title, Text } = Typography;
 
 const WebsiteBuilder = () => {
-  const [activeTab, setActiveTab] = useState('overview');
+  // Read the wildcard sub-path so the Stores manage view can survive a
+  // browser refresh. The route is mounted as "workspace/website/*" in
+  // App.jsx, so useParams()['*'] gives us the sub-path, e.g.:
+  //   "stores"             → list view
+  //   "stores/<mongoId>"   → manage view for that store
+  const params = useParams();
+  const subPath = params['*'] || '';
+
+  // Derive the active tab and (optionally) the store ID from the URL.
+  const urlSegments = subPath.split('/').filter(Boolean);
+  const urlTab = urlSegments[0] || 'overview';
+  const urlStoreId = urlTab === 'stores' && urlSegments[1] ? urlSegments[1] : null;
+
+  const [activeTab, setActiveTab] = useState(urlTab);
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -51,7 +65,7 @@ const WebsiteBuilder = () => {
     switch (activeTab) {
       case 'funnels': return <FunnelsTab itemVariants={itemVariants} />;
       case 'websites': return <WebsitesTab itemVariants={itemVariants} />;
-      case 'stores': return <StoresTab itemVariants={itemVariants} />;
+      case 'stores': return <StoresTab itemVariants={itemVariants} initialStoreId={urlStoreId} />;
       case 'forms': return <FormsTab itemVariants={itemVariants} />;
       case 'blogs': return <BlogsTab itemVariants={itemVariants} />;
       case 'qr-links': return <QRLinksTab itemVariants={itemVariants} />;

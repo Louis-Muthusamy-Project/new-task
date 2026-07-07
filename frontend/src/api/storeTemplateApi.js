@@ -161,13 +161,14 @@ export const storeTemplateApi = {
   // validated as a Simply Static export first. Returns
   // { template, warnings } on success; throws with `.errors` (validation
   // failures from Stage 3) or `.payload` set when available.
-  importWordPressTemplate: async ({ file, name, category, description, status, onProgress } = {}) => {
+  importWordPressTemplate: async ({ file, name, category, description, status, onProgress, templateId } = {}) => {
     const form = new FormData();
     if (file) form.append('file', file);
     if (name) form.append('name', name);
     if (category) form.append('category', category);
     if (description) form.append('description', description);
     if (status) form.append('status', status);
+    if (templateId) form.append('templateId', templateId);
 
     const json = await requestMultipartWithProgress('/wordpress-import/upload', form, onProgress);
     if (!json || json.success === false) {

@@ -42,10 +42,10 @@ router.post(
       file: { name: req.file.originalname, size: req.file.size },
     });
 
-    const { name, category, description, thumbnail, preview, status, uploadedByRole } = req.body || {};
+    const { name, category, description, thumbnail, preview, status, uploadedByRole, templateId } = req.body || {};
 
     try {
-      const { template, warnings, templateId } = await importWordPressZip(req.file.buffer, {
+      const { template, warnings, templateId: returnedId } = await importWordPressZip(req.file.buffer, {
         name: name || req.file.originalname?.replace(/\.[^/.]+$/, '') || 'Imported WordPress Site',
         category,
         description,
@@ -54,9 +54,10 @@ router.post(
         status,
         uploadedByRole,
         uploadedBy: req?.user?.id || req?.user?._id || null,
+        templateId,
       });
 
-      console.log(`[wordpress-import] DONE — template: ${templateId}  pages: ${template.pages?.length || 0}  warnings: ${warnings.length}`);
+      console.log(`[wordpress-import] DONE — template: ${returnedId}  pages: ${template.pages?.length || 0}  warnings: ${warnings.length}`);
 
       return res.status(201).json({ success: true, data: template, warnings });
     } catch (err) {

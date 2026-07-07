@@ -30,6 +30,7 @@
 
 const mongoose = require('mongoose');
 
+const StoreTemplate = require('../../models/store/StoreTemplate');
 const { extractZip } = require('./extractZip');
 const { validateWordPressStructure } = require('./validateTemplate');
 const { uploadAndRewriteAssets } = require('./uploadAssets');
@@ -69,6 +70,7 @@ class WordPressImportValidationError extends Error {
  * @param {string} [meta.status]         'Draft' | 'Published' | 'Archived'
  * @param {string} [meta.uploadedByRole]
  * @param {import('mongoose').Types.ObjectId|string} [meta.uploadedBy]
+ * @param {string} [meta.templateId]     optional templateId to update/overwrite
  * @returns {Promise<{ template: import('mongoose').Document, warnings: string[], templateId: string }>}
  * @throws {WordPressImportValidationError} on Stage 3 failure (422)
  * @throws {Error} with `.statusCode` set for missing-file / unreadable-ZIP cases (400)
@@ -93,10 +95,11 @@ async function importWordPressZip(zipBuffer, meta = {}) {
     throw new WordPressImportValidationError(report.errors, report.warnings);
   }
 
-  // Reserve the template's _id up front so Stage 6's Cloudinary folder is
+  // Reserve or reuse the template's _id up front so Stage 6's Cloudinary folder is
   // scoped to the final document's _id — same pattern the existing manual
   // upload route (storeTemplatesRoutes.js) already uses.
-  const templateId = new mongoose.Types.ObjectId();
+  const isUpdating = meta.templateId && mongoose.Types.ObjectId.isValid(meta.templateId);
+  const templateId = isUpdating ? new mongoose.Types.ObjectId(meta.templateId) : new mongoose.Types.ObjectId();
   const cloudinaryFolder = `store-templates/${templateId}/assets`;
 
   // Stage 5 + 6 + 7 — Read HTML/CSS/JS, Upload all assets to Cloudinary,
@@ -128,22 +131,78 @@ async function importWordPressZip(zipBuffer, meta = {}) {
   const thumbnail = meta.thumbnail || derivedPreview.thumbnail;
   const preview = meta.preview || derivedPreview.preview;
 
-  // Stage 10 — Generate StoreTemplate document.
-  const template = await createStoreTemplateDocument({
-    templateId,
-    name: meta.name,
-    category: meta.category,
-    description: meta.description,
-    thumbnail,
-    preview,
-    pages: pageDefinitions,
-    zipCloudinaryUrl: zipUploadResult.secure_url,
-    assetMap,
-    status: meta.status,
-    uploadedByRole: meta.uploadedByRole,
-    uploadedBy: meta.uploadedBy,
-    sourceMeta: { ...report.meta, componentSummary },
-  });
+  let template;
+  if (isUpdating) {
+    // Stage 10 (Update Flow) — Update existing StoreTemplate document.
+    const existing = await StoreTemplate.findById(templateId);
+    if (!existing) {
+      const error = new Error(`Template to update was not found (${templateId}).`);
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Push the current state to versions history first
+    existing.versions.push({
+      version: existing.version || 1,
+      projectData: existing.projectData,
+      pages: existing.pages,
+      theme: existing.theme,
+      thumbnail: existing.thumbnail,
+      preview: existing.preview,
+      label: `WordPress re-import v${existing.version || 1}`,
+      createdBy: meta.uploadedBy || null,
+      createdAt: new Date(),
+    });
+
+    // Calculate next version number
+    const nextVersion = (existing.versions?.length
+      ? Math.max(...existing.versions.map((v) => v.version))
+      : existing.version || 0) + 1;
+
+    // Overwrite fields
+    existing.name = meta.name || existing.name;
+    if (meta.category) existing.category = meta.category;
+    if (meta.description) existing.description = meta.description;
+    existing.thumbnail = thumbnail;
+    existing.preview = preview;
+    existing.projectData = { zipCloudinaryUrl: zipUploadResult.secure_url, assetMap: assetMap || {} };
+    existing.pages = pageDefinitions;
+    existing.version = nextVersion;
+    existing.source = 'wordpress-import';
+    existing.sourceMeta = { ...report.meta, componentSummary };
+
+    // Seed/add the new version in history
+    existing.versions.push({
+      version: nextVersion,
+      projectData: existing.projectData,
+      pages: existing.pages,
+      theme: existing.theme,
+      thumbnail: existing.thumbnail,
+      preview: existing.preview,
+      label: `WordPress re-import v${nextVersion}`,
+      createdBy: meta.uploadedBy || null,
+      createdAt: new Date(),
+    });
+
+    template = await existing.save();
+  } else {
+    // Stage 10 (Create Flow) — Generate brand-new StoreTemplate document.
+    template = await createStoreTemplateDocument({
+      templateId,
+      name: meta.name,
+      category: meta.category,
+      description: meta.description,
+      thumbnail,
+      preview,
+      pages: pageDefinitions,
+      zipCloudinaryUrl: zipUploadResult.secure_url,
+      assetMap,
+      status: meta.status,
+      uploadedByRole: meta.uploadedByRole,
+      uploadedBy: meta.uploadedBy,
+      sourceMeta: { ...report.meta, componentSummary },
+    });
+  }
 
   // "Appear in Template Library" needs zero new code here — GET
   // /api/store-templates already returns every StoreTemplate with

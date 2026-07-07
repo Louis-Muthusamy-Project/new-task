@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Button, Table, Typography, Space, Popconfirm, Select, Card, Input, InputNumber, Row, Col, Checkbox, Tag, message, Empty, Spin, Switch } from "antd";
 import { Plus, Trash2, Store, ShoppingBag, LayoutGrid, Users, Tag as TagIcon, LayoutTemplate, Truck, Settings, CreditCard, Mail, Search, ExternalLink, Activity, ArrowRight, Eye, Edit3, Image as ImageIcon, Wallet, Banknote, Landmark, Server, FileText, Package, Gift, ChevronDown, ChevronRight, TrendingUp, Percent, DollarSign } from "lucide-react";
 import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 import CreateStoreModal from "./CreateStoreModal";
 import StorePreviewModal from "./StorePreviewModal";
 import StorePublishModal from "./StorePublishModal";
@@ -40,12 +41,54 @@ const EMAIL_TEMPLATE_META = {
 const EMAIL_VARIABLE_HINT = "Available variables: {{customerName}}, {{orderNumber}}, {{orderTotal}}, {{trackingUrl}}, {{storeName}}";
 
 const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
+  const navigate = useNavigate();
   const [activeSubTab, setActiveSubTab] = useState("home");
 
   // Real storeId, when this store has a backing Store document (created via
   // the template flow or the "start from scratch" flow). Stores created
   // before this existed may only have a local mock `key`.
   const storeId = activeStore?._id || activeStore?.id || null;
+
+  // ── Website Pages Module state ──────────────────────────────────────────
+  const [storePages, setStorePages] = useState([]);
+  const [storePagesLoading, setStorePagesLoading] = useState(false);
+
+  const loadStorePages = async () => {
+    if (!storeId) return;
+    setStorePagesLoading(true);
+    try {
+      const data = await storeApi.previewStore(storeId);
+      setStorePages(data?.pages || []);
+    } catch (err) {
+      message.error(err.message || "Failed to load store pages.");
+    } finally {
+      setStorePagesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === "website_pages") {
+      loadStorePages();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSubTab, storeId]);
+
+  const handleEditStorePage = (page) => {
+    if (!storeId || !page?._id) {
+      message.error("Cannot open builder: missing store or page ID.");
+      return;
+    }
+    navigate(`/stores/${storeId}/pages/${page._id}`, {
+      state: { storeId, pageId: page._id, pageName: page.title || page.slug },
+    });
+  };
+
+  const handleDeleteStorePage = async (page) => {
+    // Soft-delete is done via PUT /api/store/pages/:id (storePageRoutes)
+    // We can't easily call it without a dedicated delete endpoint, so we
+    // hide it from the list optimistically and reload.
+    message.info("Page delete not yet wired to a backend endpoint.");
+  };
 
   // ── Store Preview module (Desktop/Tablet/Mobile) ──────────────────────────
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -790,35 +833,61 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
   };
 
   const renderWebsitePages = () => {
-    const pages = [
-      { key: 1, page: `${activeStore.slug} — home`, sub: `store-${activeStore.slug}-home`, type: "Store home", status: "Draft" },
-      { key: 2, page: `${activeStore.slug} — catalog`, sub: `store-${activeStore.slug}-catalog`, type: "Catalog", status: "Draft" },
-      { key: 3, page: `${activeStore.slug} — cart`, sub: `store-${activeStore.slug}-cart`, type: "Cart", status: "Draft" },
-      { key: 4, page: `${activeStore.slug} — checkout`, sub: `store-${activeStore.slug}-checkout`, type: "Checkout", status: "Draft" },
-      { key: 5, page: `${activeStore.slug} — blog`, sub: `store-${activeStore.slug}-blog`, type: "Blog", status: "Draft" },
-    ];
-
-    const columns = [
-      { title: "PAGE", key: "page", render: (_, r) => (
-        <div>
-          <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{r.page}</div>
-          <div style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 500 }}>{r.sub}</div>
-        </div>
-      ) },
-      { title: "TYPE", dataIndex: "type", key: "type", render: t => <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{t}</span> },
-      { title: "STATUS", dataIndex: "status", key: "status", render: () => (
-        <Select defaultValue="Draft" bordered={false} style={{ width: 100, fontWeight: 600 }}>
-          <Option value="Draft">Draft</Option>
-          <Option value="Published">Published</Option>
-        </Select>
-      ) },
-      { title: "ACTIONS", key: "actions", render: () => (
-        <Space>
-          <Button type="primary" style={{ background: "var(--accent-primary)", border: 'none', borderRadius: 8, fontWeight: 700 }}>Edit in builder</Button>
-          <Button icon={<Eye size={14}/>} style={{ borderRadius: 8, fontWeight: 600, borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'var(--bg-secondary)' }} />
-          <Button danger icon={<Trash2 size={14}/>} style={{ borderRadius: 8, background: 'rgba(239, 68, 68, 0.1)', border: 'none' }} />
-        </Space>
-      ) },
+    const pageColumns = [
+      {
+        title: "PAGE",
+        key: "page",
+        render: (_, r) => (
+          <div>
+            <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{r.title || r.slug || '—'}</div>
+            <div style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 500 }}>/{r.slug}</div>
+          </div>
+        ),
+      },
+      {
+        title: "TYPE",
+        key: "type",
+        render: (_, r) => (
+          <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>
+            {r.isHome ? 'Home' : r.pageType || 'Custom'}
+          </span>
+        ),
+      },
+      {
+        title: "STATUS",
+        key: "status",
+        render: (_, r) => {
+          const s = r.status || 'Draft';
+          const color = s === 'Published' ? 'var(--accent-success)' : 'var(--text-tertiary)';
+          return (
+            <Tag style={{ background: `${s === 'Published' ? 'rgba(16,185,129,0.1)' : 'rgba(148,163,184,0.15)'}`, color, border: 'none', fontWeight: 700, borderRadius: 6 }}>
+              {s}
+            </Tag>
+          );
+        },
+      },
+      {
+        title: "ACTIONS",
+        key: "actions",
+        render: (_, r) => (
+          <Space>
+            <Button
+              type="primary"
+              icon={<Edit3 size={14} />}
+              onClick={() => handleEditStorePage(r)}
+              style={{ background: "var(--accent-primary)", border: 'none', borderRadius: 8, fontWeight: 700 }}
+            >
+              Edit in builder
+            </Button>
+            <Button
+              danger
+              icon={<Trash2 size={14} />}
+              onClick={() => handleDeleteStorePage(r)}
+              style={{ borderRadius: 8, background: 'rgba(239, 68, 68, 0.1)', border: 'none' }}
+            />
+          </Space>
+        ),
+      },
     ];
 
     return (
@@ -826,26 +895,36 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
         <div style={{ padding: "16px 24px", borderRadius: 12, background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.2)', color: 'var(--accent-primary)', fontSize: 13, fontWeight: 600, marginBottom: 24 }}>
           Store header and footer are synced from your home page. Catalog, cart, checkout, and blog pages use them automatically.
         </div>
-        
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 24, gap: 24 }}>
-          <div style={{ color: "var(--text-secondary)", fontSize: 13, fontWeight: 500, maxWidth: 600 }}>
-            Default layouts are created once per page type. Edit the <strong>home page</strong> to set your store header and footer — catalog, cart, checkout, and blog pages use that chrome automatically.
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, alignItems: "flex-end" }}>
-            <Button style={{ borderRadius: 8, fontWeight: 700, borderColor: 'var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>Create default pages</Button>
-            <Space>
-              <Input placeholder="Custom page title" style={{ borderRadius: 8, width: 200, height: 40 }} />
-              <Button type="primary" style={{ background: "var(--accent-primary)", border: 'none', borderRadius: 8, fontWeight: 700, height: 40 }}>Add page</Button>
-            </Space>
-          </div>
-        </div>
 
-        <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, overflow: "hidden", border: "1px solid var(--border-color)", background: 'var(--bg-secondary)' }}>
-          <Table columns={columns} dataSource={pages} pagination={false} size="middle" />
-        </Card>
+        {!storeId ? (
+          <Card bodyStyle={{ padding: 48, textAlign: 'center' }} style={{ borderRadius: 16, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
+            <Text type="secondary" style={{ fontSize: 14, fontWeight: 500 }}>
+              This store isn't linked to a backend record yet. Create a new store to manage its pages.
+            </Text>
+          </Card>
+        ) : storePagesLoading ? (
+          <div style={{ padding: 60, textAlign: 'center' }}><Spin /></div>
+        ) : (
+          <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
+            <Table
+              columns={pageColumns}
+              dataSource={storePages}
+              rowKey="_id"
+              pagination={false}
+              size="middle"
+              locale={{
+                emptyText: (
+                  <div style={{ padding: '60px 0', textAlign: 'center' }}>
+                    <Empty description="No pages yet — create your store from a template to auto-generate default pages." />
+                  </div>
+                ),
+              }}
+            />
+          </Card>
+        )}
 
         <div style={{ color: "var(--text-tertiary)", fontSize: 12, fontWeight: 500, marginTop: 16, textAlign: 'center' }}>
-          Live cart opens in a right sidebar on your storefront. Use cart & checkout modules in the builder for promos; checkout still runs on the live cart page.
+          Live cart opens in a right sidebar on your storefront. Use cart &amp; checkout modules in the builder for promos; checkout still runs on the live cart page.
         </div>
       </motion.div>
     );
@@ -2137,7 +2216,7 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
           {navItems.find(i => i.key === activeSubTab)?.label} <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>|</span> {activeStore.slug}
         </div>
         <Space size="large">
-          <div style={{ color: "var(--text-secondary)", fontSize: 14, fontWeight: 600, cursor: "pointer", display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => setView("list")}>
+          <div style={{ color: "var(--text-secondary)", fontSize: 14, fontWeight: 600, cursor: "pointer", display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => { setView("list"); navigate('/workspace/website/stores', { relative: 'path' }); }}>
             <LayoutGrid size={16} /> All stores
           </div>
           {getActionBtn()}
@@ -2218,7 +2297,8 @@ const mapStoreToRow = (store) => ({
   currency: store.currency || "USD",
 });
 
-const StoresTab = ({ itemVariants }) => {
+const StoresTab = ({ itemVariants, initialStoreId }) => {
+  const navigate = useNavigate();
   const [view, setView] = useState("list");
   const [stores, setStores] = useState([]);
   const [storesLoading, setStoresLoading] = useState(false);
@@ -2246,6 +2326,18 @@ const StoresTab = ({ itemVariants }) => {
   useEffect(() => {
     loadStores();
   }, []);
+
+  // If a storeId was passed from the URL (via WebsiteBuilder.jsx reading
+  // the wildcard sub-path), auto-enter the manage view for that store once
+  // the list has loaded.
+  useEffect(() => {
+    if (!initialStoreId || stores.length === 0) return;
+    const found = stores.find((s) => s._id === initialStoreId);
+    if (found) {
+      setActiveStore(found);
+      setView('manage');
+    }
+  }, [initialStoreId, stores]);
 
   const handleDelete = (key) => {
     // No backend delete endpoint exists yet for stores — remove locally only.
@@ -2296,11 +2388,13 @@ const StoresTab = ({ itemVariants }) => {
       align: "right",
       render: (_, record) => (
         <Space size="middle">
-          <span 
+          <span
             style={{ color: "var(--accent-success)", fontWeight: 800, cursor: "pointer", display: 'flex', alignItems: 'center', gap: 6 }}
             onClick={() => {
               setActiveStore(record);
               setView("manage");
+              // Push the storeId into the URL so this view survives a page refresh.
+              navigate(`/workspace/website/stores/${record._id}`);
             }}
           >
             Manage <ArrowRight size={14} />
@@ -2356,7 +2450,7 @@ const StoresTab = ({ itemVariants }) => {
   };
 
   if (view === "manage" && activeStore) {
-    return <ManageStoreView activeStore={activeStore} setView={setView} itemVariants={itemVariants} />;
+    return <ManageStoreView activeStore={activeStore} setView={(v) => { setView(v); if (v === 'list') navigate('/workspace/website/stores'); }} itemVariants={itemVariants} />;
   }
 
   return (
