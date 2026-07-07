@@ -73,6 +73,61 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSubTab, storeId]);
 
+  // ── Home Module state — real counts fetched from the database (products,
+  // collections, discounts, orders + lifetime revenue) instead of the
+  // hardcoded placeholder numbers that used to live in renderHome(). ──────
+  const [homeStats, setHomeStats] = useState({
+    productsCount: 0,
+    collectionsCount: 0,
+    discountsCount: 0,
+    ordersCount: 0,
+    unfulfilledCount: 0,
+    lifetimeSales: 0,
+    currency: activeStore?.currency || "INR",
+  });
+  const [homeStatsLoading, setHomeStatsLoading] = useState(false);
+
+  const COUNTED_ORDER_STATUSES = ["Paid", "Shipped", "Delivered"];
+
+  const loadHomeStats = async () => {
+    if (!storeId) return;
+    setHomeStatsLoading(true);
+    try {
+      const [productsData, collectionsData, discountsData, ordersData] = await Promise.all([
+        productApi.list(storeId).catch(() => []),
+        collectionApi.list(storeId).catch(() => []),
+        discountApi.list(storeId).catch(() => []),
+        orderApi.list(storeId).catch(() => []),
+      ]);
+
+      const lifetimeSales = (ordersData || [])
+        .filter((o) => COUNTED_ORDER_STATUSES.includes(o.status))
+        .reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+      const unfulfilledCount = (ordersData || []).filter((o) => o.status === "Paid").length;
+
+      setHomeStats({
+        productsCount: (productsData || []).length,
+        collectionsCount: (collectionsData || []).length,
+        discountsCount: (discountsData || []).length,
+        ordersCount: (ordersData || []).length,
+        unfulfilledCount,
+        lifetimeSales,
+        currency: ordersData?.[0]?.currency || activeStore?.currency || "INR",
+      });
+    } catch (err) {
+      message.error(err.message || "Failed to load store overview.");
+    } finally {
+      setHomeStatsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === "home") {
+      loadHomeStats();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSubTab, storeId]);
+
   const handleEditStorePage = (page) => {
     if (!storeId || !page?._id) {
       message.error("Cannot open builder: missing store or page ID.");
@@ -647,44 +702,44 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
             <Col span={6}>
               <Card bodyStyle={{ padding: 20 }} style={{ borderRadius: 16, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', height: '100%', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-tertiary)", letterSpacing: 0.5, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}><ShoppingBag size={14} /> PRODUCTS</div>
-                <div style={{ fontSize: 32, fontWeight: 800, marginBottom: 12, color: 'var(--text-primary)' }}>6</div>
-                <div style={{ color: "var(--accent-success)", fontWeight: 700, fontSize: 13, cursor: "pointer", marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>Manage <ArrowRight size={14} /></div>
+                <div style={{ fontSize: 32, fontWeight: 800, marginBottom: 12, color: 'var(--text-primary)' }}>{homeStatsLoading ? <Spin size="small" /> : homeStats.productsCount}</div>
+                <div onClick={() => setActiveSubTab("products")} style={{ color: "var(--accent-success)", fontWeight: 700, fontSize: 13, cursor: "pointer", marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>Manage <ArrowRight size={14} /></div>
               </Card>
             </Col>
             <Col span={6}>
               <Card bodyStyle={{ padding: 20 }} style={{ borderRadius: 16, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', height: '100%', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-tertiary)", letterSpacing: 0.5, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}><LayoutGrid size={14} /> COLLECTIONS</div>
-                <div style={{ fontSize: 32, fontWeight: 800, marginBottom: 12, color: 'var(--text-primary)' }}>3</div>
-                <div style={{ color: "var(--accent-success)", fontWeight: 700, fontSize: 13, cursor: "pointer", marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>Manage <ArrowRight size={14} /></div>
+                <div style={{ fontSize: 32, fontWeight: 800, marginBottom: 12, color: 'var(--text-primary)' }}>{homeStatsLoading ? <Spin size="small" /> : homeStats.collectionsCount}</div>
+                <div onClick={() => setActiveSubTab("collections")} style={{ color: "var(--accent-success)", fontWeight: 700, fontSize: 13, cursor: "pointer", marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>Manage <ArrowRight size={14} /></div>
               </Card>
             </Col>
             <Col span={6}>
               <Card bodyStyle={{ padding: 20 }} style={{ borderRadius: 16, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', height: '100%', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-tertiary)", letterSpacing: 0.5, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}><Activity size={14} /> ORDERS</div>
-                <div style={{ fontSize: 32, fontWeight: 800, marginBottom: 12, color: 'var(--text-primary)' }}>0</div>
-                <div style={{ color: "var(--accent-success)", fontWeight: 700, fontSize: 13, cursor: "pointer", marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>View <ArrowRight size={14} /></div>
+                <div style={{ fontSize: 32, fontWeight: 800, marginBottom: 12, color: 'var(--text-primary)' }}>{homeStatsLoading ? <Spin size="small" /> : homeStats.ordersCount}</div>
+                <div onClick={() => setActiveSubTab("orders")} style={{ color: "var(--accent-success)", fontWeight: 700, fontSize: 13, cursor: "pointer", marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>View <ArrowRight size={14} /></div>
               </Card>
             </Col>
             <Col span={6}>
               <Card bodyStyle={{ padding: 20 }} style={{ borderRadius: 16, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', height: '100%', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-tertiary)", letterSpacing: 0.5, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}><TagIcon size={14} /> DISCOUNTS</div>
-                <div style={{ fontSize: 32, fontWeight: 800, marginBottom: 12, color: 'var(--text-primary)' }}>1</div>
-                <div style={{ color: "var(--accent-success)", fontWeight: 700, fontSize: 13, cursor: "pointer", marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>Manage <ArrowRight size={14} /></div>
+                <div style={{ fontSize: 32, fontWeight: 800, marginBottom: 12, color: 'var(--text-primary)' }}>{homeStatsLoading ? <Spin size="small" /> : homeStats.discountsCount}</div>
+                <div onClick={() => setActiveSubTab("discounts")} style={{ color: "var(--accent-success)", fontWeight: 700, fontSize: 13, cursor: "pointer", marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>Manage <ArrowRight size={14} /></div>
               </Card>
             </Col>
 
             <Col span={10}>
               <Card bodyStyle={{ padding: 24, height: "100%", display: 'flex', flexDirection: 'column' }} style={{ borderRadius: 16, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
                 <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-tertiary)", letterSpacing: 0.5, marginBottom: 8 }}>LIFETIME SALES (PAID)</div>
-                <div style={{ fontSize: 28, fontWeight: 800, marginBottom: 16, color: 'var(--text-primary)' }}>INR 0.00</div>
-                <div style={{ color: "var(--accent-primary)", fontWeight: 700, fontSize: 13, cursor: "pointer", marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>Open analytics <ArrowRight size={14} /></div>
+                <div style={{ fontSize: 28, fontWeight: 800, marginBottom: 16, color: 'var(--text-primary)' }}>{homeStatsLoading ? <Spin size="small" /> : `${homeStats.currency} ${homeStats.lifetimeSales.toFixed(2)}`}</div>
+                <div onClick={() => setActiveSubTab("analytics")} style={{ color: "var(--accent-primary)", fontWeight: 700, fontSize: 13, cursor: "pointer", marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>Open analytics <ArrowRight size={14} /></div>
               </Card>
             </Col>
-            
+
             <Col span={7}>
               <Card bodyStyle={{ padding: 24, height: "100%", display: 'flex', flexDirection: 'column' }} style={{ borderRadius: 16, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
                 <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-tertiary)", letterSpacing: 0.5, marginBottom: 8 }}>UNFULFILLED ORDERS</div>
-                <div style={{ fontSize: 28, color: "var(--accent-warning)", fontWeight: 800, marginBottom: 16 }}>0</div>
+                <div style={{ fontSize: 28, color: "var(--accent-warning)", fontWeight: 800, marginBottom: 16 }}>{homeStatsLoading ? <Spin size="small" /> : homeStats.unfulfilledCount}</div>
                 <div style={{ color: "var(--text-secondary)", fontSize: 12, fontWeight: 500, marginTop: 'auto' }}>Mark orders shipped from the Orders screen.</div>
               </Card>
             </Col>
@@ -694,10 +749,10 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
                 <div style={{ fontWeight: 800, marginBottom: 4, color: 'var(--text-primary)', fontSize: 16 }}>Storefront</div>
                 <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 8, fontWeight: 500 }}>/shop/{activeStore.slug}</div>
                 <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16, fontWeight: 500 }}>Set store to <strong>Active</strong> in General so customers can checkout.</div>
-                
+
                 <Space direction="vertical" style={{ width: "100%", marginTop: "auto" }}>
-                  <Button block style={{ borderRadius: 8, fontSize: 13, fontWeight: 700, height: 40, borderColor: "var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)" }}>Manage design</Button>
-                  <Button block style={{ borderRadius: 8, fontSize: 13, fontWeight: 700, height: 40, borderColor: "var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)" }}>Pages in Builder</Button>
+                  <Button block onClick={() => setActiveSubTab("website_pages")} style={{ borderRadius: 8, fontSize: 13, fontWeight: 700, height: 40, borderColor: "var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)" }}>Manage design</Button>
+                  <Button block onClick={() => setActiveSubTab("website_pages")} style={{ borderRadius: 8, fontSize: 13, fontWeight: 700, height: 40, borderColor: "var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)" }}>Pages in Builder</Button>
                   <Button type="primary" block style={{ background: "var(--accent-primary)", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, height: 40 }} onClick={() => setIsPublishOpen(true)}>Publish</Button>
                   <Button type="primary" block style={{ background: "var(--accent-success)", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, height: 40 }} onClick={() => setIsPreviewOpen(true)}>Preview live <ArrowRight size={14} style={{ marginLeft: 4 }} /></Button>
                 </Space>
@@ -1627,7 +1682,7 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
           <Title level={4} style={{ marginTop: 0, marginBottom: 32, color: 'var(--text-primary)', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 10 }}>
             <Settings size={20} color="var(--text-tertiary)" /> General Settings
           </Title>
-          
+
           <div style={{ marginBottom: 24 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>Name</div>
             <Input defaultValue={activeStore.store} size="large" style={{ borderRadius: 8 }} />
@@ -1693,7 +1748,7 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
           <Card bodyStyle={{ padding: 32 }} style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 12, marginBottom: 32 }}>
             <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 8, color: 'var(--text-primary)' }}>Tracking pixels</div>
             <div style={{ color: "var(--text-secondary)", fontSize: 13, marginBottom: 24, fontWeight: 500 }}>Injected on every public page for this store.</div>
-            
+
             <Row gutter={24} style={{ marginBottom: 20 }}>
               <Col span={12}>
                 <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-tertiary)", letterSpacing: 0.5, marginBottom: 8 }}>META PIXEL ID</div>
@@ -1732,7 +1787,7 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
               <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)' }}>Frontend design</div>
               <Button type="text" style={{ color: "var(--accent-info)", fontWeight: 700, padding: 0 }} icon={<ExternalLink size={16} />}>Open store page in Website Builder</Button>
             </div>
-            
+
             <Row gutter={24}>
               <Col span={8}>
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: 'var(--text-primary)' }}>Theme accent</div>
@@ -1760,7 +1815,7 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
             <Button type="primary" style={{ background: "var(--accent-success)", border: 'none', borderRadius: 8, fontWeight: 800, height: 48, padding: "0 40px", fontSize: 16 }}>
               Save Settings
             </Button>
-            
+
             <Popconfirm title="Are you absolutely sure you want to delete this store?" placement="topLeft">
               <Button danger style={{ borderRadius: 8, fontWeight: 700, height: 40, padding: "0 24px", background: "rgba(239, 68, 68, 0.1)", border: "none" }}>
                 Delete store
@@ -2242,7 +2297,7 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 24px', borderBottom: '2px solid var(--border-color)', paddingBottom: 0 }}>
             {navItems.map(item => (
-              <div 
+              <div
                 key={item.key}
                 onClick={() => setActiveSubTab(item.key)}
                 style={{
@@ -2362,9 +2417,9 @@ const StoresTab = ({ itemVariants, initialStoreId }) => {
       dataIndex: "status",
       key: "status",
       render: (status) => (
-        <Tag style={{ 
+        <Tag style={{
           margin: 0,
-          background: status === 'Published' ? 'rgba(16, 185, 129, 0.15)' : 'var(--bg-secondary)', 
+          background: status === 'Published' ? 'rgba(16, 185, 129, 0.15)' : 'var(--bg-secondary)',
           color: status === 'Published' ? 'var(--accent-success)' : 'var(--text-secondary)',
           border: 'none',
           padding: '4px 12px',
@@ -2465,9 +2520,9 @@ const StoresTab = ({ itemVariants, initialStoreId }) => {
           </Text>
         </div>
         <Space>
-          <Button 
-            type="primary" 
-            icon={<Plus size={18} />} 
+          <Button
+            type="primary"
+            icon={<Plus size={18} />}
             style={{ backgroundColor: "var(--accent-success)", border: 'none', borderRadius: 8, fontWeight: 700, height: 44, padding: '0 24px', boxShadow: 'var(--shadow-md)' }}
             onClick={() => setIsCreateModalOpen(true)}
           >
@@ -2499,15 +2554,15 @@ const StoresTab = ({ itemVariants, initialStoreId }) => {
         }}
       />
 
-      <CreateStoreModal 
-        open={isCreateModalOpen} 
-        onCancel={() => setIsCreateModalOpen(false)} 
-        onContinue={handleCreateContinue} 
+      <CreateStoreModal
+        open={isCreateModalOpen}
+        onCancel={() => setIsCreateModalOpen(false)}
+        onContinue={handleCreateContinue}
       />
-      
+
       {isTemplateModalOpen && (
-        <StoreTemplateLibraryModal 
-          open={isTemplateModalOpen} 
+        <StoreTemplateLibraryModal
+          open={isTemplateModalOpen}
           onCancel={() => setIsTemplateModalOpen(false)}
           onCreate={handleTemplateCreate}
           initialStoreName={tempStoreData?.storeName}
