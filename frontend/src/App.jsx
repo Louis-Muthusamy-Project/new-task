@@ -31,6 +31,7 @@ const WebsitesRouteWrapper = lazy(() => import('./pages/WebsiteBuilder/WebsitesR
 
 const Strategy = lazy(() => import('./pages/Strategy/Strategy'));
 const WebsiteSetupPage = lazy(() => import('./pages/WebsiteBuilder/websiteWizard/WebsiteSetupPage'));
+const StorefrontPreviewPage = lazy(() => import('./pages/WebsiteBuilder/storefront/StorefrontPreviewPage'));
 
 const SEO = lazy(() => import('./pages/SEO/SEO'));
 const Content = lazy(() => import('./pages/Content/Content'));
@@ -139,6 +140,13 @@ const AppRoutes = () => {
             )
           }
         />
+
+        {/*
+          Storefront Preview — unauthenticated on purpose, same as a real
+          shopper would see. Used by StorePreviewModal's "Open in new tab"
+          action; mounts the same StorefrontApp component the modal does.
+        */}
+        <Route path="/preview/store/:storeId" element={<StorefrontPreviewPage />} />
 
         {/* Super Admin Routes */}
         <Route element={<ProtectedRoute allowedRoles={['superadmin']} />}>

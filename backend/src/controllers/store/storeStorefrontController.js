@@ -1,9 +1,10 @@
+'use strict';
+
 const mongoose = require('mongoose');
 const Store = require('../../models/store/Store');
-const StoreProduct = require('../../models/store/StoreProduct');
-const StoreCollection = require('../../models/store/StoreCollection');
 const StoreTestimonial = require('../../models/store/StoreTestimonial');
-const StoreOrder = require('../../models/store/StoreOrder');
+const StoreVisit = require('../../models/store/StoreVisit');
+const { productService, collectionService, orderService, inventoryService, pageService } = require('../../services/store');
 const { optimizeImageUrl, optimizeImageList } = require('../../utils/storeImageOptimizer');
 
 /**
@@ -18,7 +19,9 @@ const { optimizeImageUrl, optimizeImageList } = require('../../utils/storeImageO
  * Unlike the admin-facing store routes, these are intentionally
  * unauthenticated (a live storefront visitor is never logged in) and only
  * ever return `status: 'Active'` / non-deleted records scoped to a single
- * storeId.
+ * storeId. Reads and writes both go through the same Store Engine services
+ * the admin routes use (productService/collectionService/orderService) —
+ * this controller only validates params and shapes the public response.
  */
 
 const invalidIdError = (message) => {
@@ -49,7 +52,7 @@ const toPublicProduct = (p) => ({
   price: p.price,
   compareAtPrice: p.compareAtPrice,
   currency: p.currency || 'USD',
-  inStock: p.trackInventory ? (p.inventoryQuantity || 0) > 0 : true,
+  inStock: inventoryService.isInStock(p),
   collectionIds: p.collectionIds || [],
   tags: p.tags || [],
 });
@@ -100,85 +103,13 @@ exports.getStoreInfo = async (req, res) => {
 
 /**
  * GET /api/store/:storeId/products
- * Query params:
- *   limit       (default 12, max 60)
- *   page        (default 1)
- *   collectionId
- *   q           → title/description text search
- *   sort        → latest|oldest|price-low|price-high|name-asc|name-desc (default: latest)
- *   priceMin    → minimum price filter
- *   priceMax    → maximum price filter
- *   tag         → filter by tag
- *   featured=true  → newest Active products
+ * Query params: limit, page, collectionId, q, sort, priceMin, priceMax, tag
  */
 exports.listProducts = async (req, res) => {
   const { storeId } = req.params;
   requireValidId(storeId, 'storeId');
 
-  const limit = Math.min(parseInt(req.query.limit, 10) || 12, 60);
-  const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-  const sort = String(req.query.sort || 'latest').toLowerCase();
-
-  const filter = { storeId, isDeleted: false, status: 'Active' };
-
-  if (req.query.collectionId && mongoose.Types.ObjectId.isValid(req.query.collectionId)) {
-    filter.collectionIds = req.query.collectionId;
-  }
-
-  if (req.query.q) {
-    const searchTerm = String(req.query.q).trim();
-    filter.$or = [
-      { title: { $regex: searchTerm, $options: 'i' } },
-      { description: { $regex: searchTerm, $options: 'i' } },
-      { tags: { $regex: searchTerm, $options: 'i' } },
-      { sku: { $regex: searchTerm, $options: 'i' } },
-    ];
-  }
-
-  if (req.query.tag) {
-    filter.tags = String(req.query.tag).trim();
-  }
-
-  if (req.query.priceMin || req.query.priceMax) {
-    filter.price = {};
-    if (req.query.priceMin) {
-      const priceMin = parseFloat(req.query.priceMin);
-      if (!isNaN(priceMin)) filter.price.$gte = priceMin;
-    }
-    if (req.query.priceMax) {
-      const priceMax = parseFloat(req.query.priceMax);
-      if (!isNaN(priceMax)) filter.price.$lte = priceMax;
-    }
-  }
-
-  // Determine MongoDB sort object based on sort parameter
-  let sortObj = { createdAt: -1 }; // default: latest
-  switch (sort) {
-    case 'oldest':
-      sortObj = { createdAt: 1 };
-      break;
-    case 'price-low':
-      sortObj = { price: 1 };
-      break;
-    case 'price-high':
-      sortObj = { price: -1 };
-      break;
-    case 'name-asc':
-      sortObj = { title: 1 };
-      break;
-    case 'name-desc':
-      sortObj = { title: -1 };
-      break;
-    // 'latest' uses default
-  }
-
-  const [items, total] = await Promise.all([
-    StoreProduct.find(filter)
-      .sort(sortObj)
-      .skip((page - 1) * limit)
-      .limit(limit),
-    StoreProduct.countDocuments(filter),
-  ]);
+  const { items, total, page, limit } = await productService.listPublicProducts(storeId, req.query);
 
   res.status(200).json({
     success: true,
@@ -196,105 +127,98 @@ exports.getProduct = async (req, res) => {
   requireValidId(storeId, 'storeId');
   requireValidId(productId, 'productId');
 
-  const product = await StoreProduct.findOne({
-    _id: productId,
-    storeId,
-    isDeleted: false,
-  });
-  if (!product) throw notFoundError('Product not found.');
-
+  const product = await productService.getPublicProduct(storeId, productId);
   res.status(200).json({ success: true, data: toPublicProduct(product) });
 };
 
 /**
  * GET /api/store/:storeId/collections
- * Query params:
- *   limit       (default 20, max 60)
- *   sort        → latest|oldest|name (default: name)
+ * Query params: limit, sort
  */
 exports.listCollections = async (req, res) => {
   const { storeId } = req.params;
   requireValidId(storeId, 'storeId');
 
-  const limit = Math.min(parseInt(req.query.limit, 10) || 20, 60);
-  const sort = String(req.query.sort || 'name').toLowerCase();
-
-  // Determine MongoDB sort object
-  let sortObj = { title: 1 }; // default: name A-Z
-  if (sort === 'latest') {
-    sortObj = { createdAt: -1 };
-  } else if (sort === 'oldest') {
-    sortObj = { createdAt: 1 };
-  }
-
-  const collections = await StoreCollection.find({
-    storeId,
-    isDeleted: false,
-    isActive: true,
-  })
-    .sort(sortObj)
-    .limit(limit);
-
+  const collections = await collectionService.listPublicCollections(storeId, req.query);
   res.status(200).json({ success: true, data: collections.map(toPublicCollection) });
 };
 
 /**
  * GET /api/store/:storeId/collections/:collectionId
  * Returns the collection plus its (Active, non-deleted) products.
- * Query params:
- *   limit       (default 12, max 60)
- *   sort        → latest|oldest|price-low|price-high|name-asc|name-desc (default: latest)
+ * Query params: limit, sort
  */
 exports.getCollection = async (req, res) => {
   const { storeId, collectionId } = req.params;
   requireValidId(storeId, 'storeId');
   requireValidId(collectionId, 'collectionId');
 
-  const limit = Math.min(parseInt(req.query.limit, 10) || 12, 60);
-  const sort = String(req.query.sort || 'latest').toLowerCase();
-
-  const collection = await StoreCollection.findOne({
-    _id: collectionId,
-    storeId,
-    isDeleted: false,
+  const collection = await collectionService.getPublicCollection(storeId, collectionId);
+  const { items } = await productService.listPublicProducts(storeId, {
+    ...req.query,
+    collectionId,
   });
-  if (!collection) throw notFoundError('Collection not found.');
-
-  // Determine MongoDB sort object
-  let sortObj = { createdAt: -1 }; // default: latest
-  switch (sort) {
-    case 'oldest':
-      sortObj = { createdAt: 1 };
-      break;
-    case 'price-low':
-      sortObj = { price: 1 };
-      break;
-    case 'price-high':
-      sortObj = { price: -1 };
-      break;
-    case 'name-asc':
-      sortObj = { title: 1 };
-      break;
-    case 'name-desc':
-      sortObj = { title: -1 };
-      break;
-  }
-
-  const products = await StoreProduct.find({
-    storeId,
-    isDeleted: false,
-    status: 'Active',
-    collectionIds: collectionId,
-  })
-    .sort(sortObj)
-    .limit(limit);
 
   res.status(200).json({
     success: true,
     data: {
       ...toPublicCollection(collection),
-      products: products.map(toPublicProduct),
+      products: items.map(toPublicProduct),
     },
+  });
+};
+
+/**
+ * GET /api/store/:storeId/products/featured
+ * Featured Products section — see ProductService.getFeaturedProducts.
+ */
+exports.listFeaturedProducts = async (req, res) => {
+  const { storeId } = req.params;
+  requireValidId(storeId, 'storeId');
+
+  const limit = Math.min(parseInt(req.query.limit, 10) || 8, 30);
+  const items = await productService.getFeaturedProducts(storeId, limit);
+  res.status(200).json({ success: true, data: items.map(toPublicProduct) });
+};
+
+/**
+ * GET /api/store/:storeId/products/latest
+ * Latest Products section — see ProductService.getLatestProducts.
+ */
+exports.listLatestProducts = async (req, res) => {
+  const { storeId } = req.params;
+  requireValidId(storeId, 'storeId');
+
+  const limit = Math.min(parseInt(req.query.limit, 10) || 8, 30);
+  const items = await productService.getLatestProducts(storeId, limit);
+  res.status(200).json({ success: true, data: items.map(toPublicProduct) });
+};
+
+/**
+ * GET /api/store/:storeId/products/bestsellers
+ * Best Sellers section — see OrderService.getBestSellers.
+ */
+exports.listBestSellers = async (req, res) => {
+  const { storeId } = req.params;
+  requireValidId(storeId, 'storeId');
+
+  const limit = Math.min(parseInt(req.query.limit, 10) || 8, 30);
+  const items = await orderService.getBestSellers(storeId, limit);
+  res.status(200).json({ success: true, data: items.map(toPublicProduct) });
+};
+
+/**
+ * GET /api/store/:storeId/pages
+ * Published pages only, minimal shape — backs the Menu and Footer nav.
+ */
+exports.listPages = async (req, res) => {
+  const { storeId } = req.params;
+  requireValidId(storeId, 'storeId');
+
+  const pages = await pageService.listPublicPages(storeId);
+  res.status(200).json({
+    success: true,
+    data: pages.map((p) => ({ id: p._id, name: p.name, slug: p.slug, isHome: p.isHome })),
   });
 };
 
@@ -333,21 +257,10 @@ exports.search = async (req, res) => {
   }
 
   const limit = Math.min(parseInt(req.query.limit, 10) || 8, 30);
-  const regex = { $regex: q, $options: 'i' };
 
   const [products, collections] = await Promise.all([
-    StoreProduct.find({
-      storeId,
-      isDeleted: false,
-      status: 'Active',
-      $or: [{ title: regex }, { tags: regex }, { sku: regex }],
-    }).limit(limit),
-    StoreCollection.find({
-      storeId,
-      isDeleted: false,
-      isActive: true,
-      title: regex,
-    }).limit(limit),
+    productService.searchPublicProducts(storeId, q, limit),
+    collectionService.searchPublicCollections(storeId, q, limit),
   ]);
 
   res.status(200).json({
@@ -361,67 +274,18 @@ exports.search = async (req, res) => {
 
 /**
  * POST /api/store/:storeId/orders
- * Body: { items: [{ productId, quantity }], customer?: { name, email } }
+ * Body: { items: [{ productId, quantity }], customer?: { name, email }, discountCode? }
  *
- * Used by the "Checkout" block. Re-prices every line server-side from the
- * live StoreProduct record (never trusts a price sent by the client) and
- * creates a Pending StoreOrder. Payment collection itself is out of scope
- * here — this just gives the checkout block something real to submit to.
+ * Used by the "Checkout" block. Delegates entirely to Order Service, which
+ * re-prices every line server-side, checks/decrements stock via Inventory
+ * Service, resolves an optional discount code via Discount Service, and
+ * rolls the order into the customer record via Customer Service.
  */
 exports.createOrder = async (req, res) => {
   const { storeId } = req.params;
   requireValidId(storeId, 'storeId');
 
-  const items = Array.isArray(req.body?.items) ? req.body.items : [];
-  if (items.length === 0) {
-    throw invalidIdError('Order must include at least one item.');
-  }
-
-  const productIds = items
-    .map((i) => i.productId)
-    .filter((id) => mongoose.Types.ObjectId.isValid(id));
-
-  const products = await StoreProduct.find({
-    _id: { $in: productIds },
-    storeId,
-    isDeleted: false,
-  });
-  const productMap = new Map(products.map((p) => [String(p._id), p]));
-
-  const orderItems = [];
-  let subtotal = 0;
-
-  for (const line of items) {
-    const product = productMap.get(String(line.productId));
-    if (!product) continue;
-    const quantity = Math.max(parseInt(line.quantity, 10) || 1, 1);
-    const price = product.price || 0;
-    subtotal += price * quantity;
-    orderItems.push({
-      productId: product._id,
-      title: product.title,
-      quantity,
-      price,
-    });
-  }
-
-  if (orderItems.length === 0) {
-    throw invalidIdError('None of the submitted items matched a real product.');
-  }
-
-  const orderNumber = `ORD-${Date.now().toString(36).toUpperCase()}`;
-
-  const order = await StoreOrder.create({
-    storeId,
-    orderNumber,
-    items: orderItems,
-    subtotal,
-    total: subtotal,
-    currency: products[0]?.currency || 'USD',
-    paymentStatus: 'Pending',
-    fulfillmentStatus: 'Unfulfilled',
-    status: 'Pending',
-  });
+  const order = await orderService.createOrder(storeId, req.body);
 
   res.status(201).json({
     success: true,
@@ -438,13 +302,7 @@ exports.createOrder = async (req, res) => {
 // POST /api/store/:storeId/track
 // Body: { sessionId?, path?, referrer? }
 // Fire-and-forget pageview ping called once per storefront page load.
-// Powers the Visitors + Conversion metrics on the Analytics tab
-// (analyticsController.js). Generates a sessionId server-side when the
-// client doesn't have one yet (first visit) so the caller can persist it
-// (e.g. localStorage) and reuse it for the rest of the session.
 // ─────────────────────────────────────────────────────────────────────────
-const StoreVisit = require('../../models/store/StoreVisit');
-
 exports.trackVisit = async (req, res) => {
   const { storeId } = req.params;
   requireValidId(storeId, 'storeId');

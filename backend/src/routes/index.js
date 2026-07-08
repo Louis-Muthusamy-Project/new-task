@@ -63,6 +63,10 @@ router.use('/store', require('./store/orderRoutes'));
 // by the Discounts tab in StoresTab.jsx.
 router.use('/store', require('./store/discountRoutes'));
 
+// Admin Theme tokens (colors/fonts/layout/custom) used by the Theme tab in
+// StoresTab.jsx. Backed by Store Engine's Theme Service.
+router.use('/store', require('./store/themeRoutes'));
+
 // Admin Shipping config (Zones/Charges/Free Shipping/Delivery Time) used
 // by the Shipping tab in StoresTab.jsx.
 router.use('/store', require('./store/shippingRoutes'));

@@ -21,6 +21,15 @@ const cache = storeReadCache();
 
 router.get('/:storeId/info', cache, asyncHandler(storeStorefrontController.getStoreInfo));
 
+router.get('/:storeId/pages', cache, asyncHandler(storeStorefrontController.listPages));
+
+// Specific /products/* routes must be registered before the /products/:productId
+// param route below, or Express would treat "featured"/"latest"/"bestsellers"
+// as a productId.
+router.get('/:storeId/products/featured', cache, asyncHandler(storeStorefrontController.listFeaturedProducts));
+router.get('/:storeId/products/latest', cache, asyncHandler(storeStorefrontController.listLatestProducts));
+router.get('/:storeId/products/bestsellers', cache, asyncHandler(storeStorefrontController.listBestSellers));
+
 router.get('/:storeId/products', cache, asyncHandler(storeStorefrontController.listProducts));
 router.get('/:storeId/products/:productId', cache, asyncHandler(storeStorefrontController.getProduct));
 

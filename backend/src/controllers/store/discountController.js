@@ -3,21 +3,13 @@
 /**
  * discountController.js — Discounts Module (admin CRUD)
  *
- * Store-module counterpart of productController.js / customerController.js.
- * Handles the merchant-facing Create / Edit / Delete flows for
- * StoreDiscount documents (Coupon code, Percentage/Flat amount, Expiry,
- * Minimum Order) used by the Discounts tab in StoresTab.jsx.
+ * Thin HTTP layer over Store Engine's Discount Service. All business logic
+ * (type/value rules, coupon-code uniqueness) lives in
+ * services/store/discountService.js.
  */
 
 const mongoose = require('mongoose');
-const StoreDiscount = require('../../models/store/StoreDiscount');
-const Store = require('../../models/store/Store');
-
-const notFoundError = (message) => {
-  const err = new Error(message);
-  err.statusCode = 404;
-  return err;
-};
+const { discountService } = require('../../services/store');
 
 const badRequestError = (message) => {
   const err = new Error(message);
@@ -31,46 +23,14 @@ const requireValidId = (id, label = 'id') => {
   }
 };
 
-const DISCOUNT_TYPES = ['Percentage', 'Flat', 'FreeShipping'];
-
-const ALLOWED_FIELDS = ['code', 'type', 'value', 'minOrderAmount', 'endsAt', 'startsAt', 'isActive'];
-
-function normalizePayload(body = {}) {
-  const updates = {};
-  for (const field of ALLOWED_FIELDS) {
-    if (Object.prototype.hasOwnProperty.call(body, field)) {
-      updates[field] = body[field];
-    }
-  }
-
-  if (updates.code != null) updates.code = String(updates.code).trim().toUpperCase();
-  if (updates.value != null) updates.value = Number(updates.value) || 0;
-  if (updates.minOrderAmount != null) {
-    updates.minOrderAmount = updates.minOrderAmount === '' ? 0 : Number(updates.minOrderAmount) || 0;
-  }
-  if (Object.prototype.hasOwnProperty.call(updates, 'endsAt')) {
-    updates.endsAt = updates.endsAt ? new Date(updates.endsAt) : null;
-  }
-  if (Object.prototype.hasOwnProperty.call(updates, 'startsAt')) {
-    updates.startsAt = updates.startsAt ? new Date(updates.startsAt) : null;
-  }
-
-  return updates;
-}
-
 // ─────────────────────────────────────────────────────────────────────────
 // GET /api/store/:storeId/admin/discounts
-// Query: search (matches code)
 // ─────────────────────────────────────────────────────────────────────────
 exports.listDiscounts = async (req, res) => {
   const { storeId } = req.params;
-  const { search } = req.query;
   requireValidId(storeId, 'storeId');
 
-  const query = { storeId, isDeleted: false };
-  if (search) query.code = { $regex: search, $options: 'i' };
-
-  const discounts = await StoreDiscount.find(query).sort({ createdAt: -1 }).lean();
+  const discounts = await discountService.listDiscounts(storeId, req.query);
   res.status(200).json({ success: true, data: discounts });
 };
 
@@ -82,46 +42,18 @@ exports.getDiscount = async (req, res) => {
   requireValidId(storeId, 'storeId');
   requireValidId(id, 'id');
 
-  const discount = await StoreDiscount.findOne({ _id: id, storeId, isDeleted: false }).lean();
-  if (!discount) throw notFoundError('Discount not found.');
-
+  const discount = await discountService.getDiscount(storeId, id);
   res.status(200).json({ success: true, data: discount });
 };
 
 // ─────────────────────────────────────────────────────────────────────────
 // POST /api/store/:storeId/admin/discounts
-// Body: { code, type, value, minOrderAmount, endsAt, startsAt, isActive }
 // ─────────────────────────────────────────────────────────────────────────
 exports.createDiscount = async (req, res) => {
   const { storeId } = req.params;
   requireValidId(storeId, 'storeId');
 
-  const store = await Store.findOne({ _id: storeId, isDeleted: false }).lean();
-  if (!store) throw notFoundError('Store not found.');
-
-  const { code } = req.body || {};
-  if (!code?.trim()) {
-    throw badRequestError('Coupon code is required.');
-  }
-
-  const updates = normalizePayload(req.body);
-
-  if (updates.type && !DISCOUNT_TYPES.includes(updates.type)) {
-    throw badRequestError(`Invalid type. Must be one of: ${DISCOUNT_TYPES.join(', ')}.`);
-  }
-  if (updates.type === 'Percentage' && updates.value > 100) {
-    throw badRequestError('Percentage value cannot exceed 100.');
-  }
-
-  const existing = await StoreDiscount.findOne({ storeId, code: updates.code, isDeleted: false }).lean();
-  if (existing) throw badRequestError('A discount with this coupon code already exists.');
-
-  const discount = await StoreDiscount.create({
-    storeId,
-    isActive: true,
-    ...updates,
-  });
-
+  const discount = await discountService.createDiscount(storeId, req.body);
   res.status(201).json({ success: true, data: discount });
 };
 
@@ -133,51 +65,18 @@ exports.updateDiscount = async (req, res) => {
   requireValidId(storeId, 'storeId');
   requireValidId(id, 'id');
 
-  const discount = await StoreDiscount.findOne({ _id: id, storeId, isDeleted: false });
-  if (!discount) throw notFoundError('Discount not found.');
-
-  const updates = normalizePayload(req.body);
-
-  if (updates.type && !DISCOUNT_TYPES.includes(updates.type)) {
-    throw badRequestError(`Invalid type. Must be one of: ${DISCOUNT_TYPES.join(', ')}.`);
-  }
-  const nextType = updates.type || discount.type;
-  const nextValue = updates.value != null ? updates.value : discount.value;
-  if (nextType === 'Percentage' && nextValue > 100) {
-    throw badRequestError('Percentage value cannot exceed 100.');
-  }
-
-  if (updates.code && updates.code !== discount.code) {
-    const existing = await StoreDiscount.findOne({
-      storeId,
-      code: updates.code,
-      isDeleted: false,
-      _id: { $ne: id },
-    }).lean();
-    if (existing) throw badRequestError('A discount with this coupon code already exists.');
-  }
-
-  Object.assign(discount, updates);
-  await discount.save();
-
+  const discount = await discountService.updateDiscount(storeId, id, req.body);
   res.status(200).json({ success: true, data: discount });
 };
 
 // ─────────────────────────────────────────────────────────────────────────
 // DELETE /api/store/:storeId/admin/discounts/:id
-// Soft delete, matching Product/Customer's isDeleted flag convention.
 // ─────────────────────────────────────────────────────────────────────────
 exports.deleteDiscount = async (req, res) => {
   const { storeId, id } = req.params;
   requireValidId(storeId, 'storeId');
   requireValidId(id, 'id');
 
-  const discount = await StoreDiscount.findOneAndUpdate(
-    { _id: id, storeId, isDeleted: false },
-    { $set: { isDeleted: true } },
-    { new: true }
-  );
-  if (!discount) throw notFoundError('Discount not found.');
-
+  const discount = await discountService.deleteDiscount(storeId, id);
   res.status(200).json({ success: true, data: { id: discount._id, deleted: true } });
 };

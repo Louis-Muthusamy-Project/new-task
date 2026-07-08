@@ -63,6 +63,24 @@ const storeSchema = new Schema(
       cloudinaryPublicId: { type: String },
     },
     settings: { type: Schema.Types.Mixed },
+    // Theme tokens live on the Store itself (copied from StoreTemplate.theme
+    // at creation, then independently editable) so ThemeService has a
+    // single per-store record to read/update instead of theme only ever
+    // existing on the originating template. See services/store/themeService.js.
+    theme: {
+      colors: {
+        primary: { type: String, trim: true },
+        secondary: { type: String, trim: true },
+        background: { type: String, trim: true },
+        text: { type: String, trim: true },
+      },
+      fonts: {
+        heading: { type: String, trim: true },
+        body: { type: String, trim: true },
+      },
+      layout: { type: String, trim: true },
+      custom: { type: Schema.Types.Mixed, default: {} },
+    },
     isDeleted: {
       type: Boolean,
       default: false,
