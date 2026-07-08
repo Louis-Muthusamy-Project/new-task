@@ -19,6 +19,12 @@ const router = express.Router();
 // two write routes (orders, track) are intentionally left uncached.
 const cache = storeReadCache();
 
+// Real-time sync — Server-Sent Events stream of product/collection/
+// inventory changes for this store. No cache (a live stream), no auth
+// (same public trust level as the rest of this router). See
+// storeStorefrontController.streamEvents / services/store/storeEvents.js.
+router.get('/:storeId/events', asyncHandler(storeStorefrontController.streamEvents));
+
 router.get('/:storeId/info', cache, asyncHandler(storeStorefrontController.getStoreInfo));
 
 router.get('/:storeId/pages', cache, asyncHandler(storeStorefrontController.listPages));

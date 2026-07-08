@@ -15,6 +15,7 @@ const StoreProduct = require('../../models/store/StoreProduct');
 const Store = require('../../models/store/Store');
 const { notFoundError, badRequestError } = require('./errors');
 const { slugify, uniqueSlug } = require('./slug');
+const { emitStoreEvent } = require('./storeEvents');
 
 const ALLOWED_FIELDS = ['title', 'description', 'imageUrl', 'productIds', 'isActive'];
 
@@ -82,7 +83,7 @@ async function createCollection(storeId, body) {
   const slug = await uniqueSlug(StoreCollection, { storeId }, slugify(title), null, 'collection');
   const productIds = await resolveProductIds(storeId, updates.productIds);
 
-  return StoreCollection.create({
+  const collection = await StoreCollection.create({
     storeId,
     title: title.trim(),
     slug,
@@ -91,6 +92,9 @@ async function createCollection(storeId, body) {
     isActive: updates.isActive ?? true,
     productIds: productIds ?? [],
   });
+
+  emitStoreEvent(storeId, 'collection.created', { collectionId: collection._id });
+  return collection;
 }
 
 async function updateCollection(storeId, id, body) {
@@ -111,6 +115,7 @@ async function updateCollection(storeId, id, body) {
 
   Object.assign(collection, updates);
   await collection.save();
+  emitStoreEvent(storeId, 'collection.updated', { collectionId: id });
   return collection;
 }
 
@@ -121,6 +126,7 @@ async function deleteCollection(storeId, id) {
     { new: true }
   );
   if (!collection) throw notFoundError('Collection not found.');
+  emitStoreEvent(storeId, 'collection.deleted', { collectionId: id });
   return collection;
 }
 

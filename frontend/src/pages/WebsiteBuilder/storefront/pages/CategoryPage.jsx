@@ -1,20 +1,19 @@
 import React from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { useStorefront } from '../StorefrontContext';
-import { useStorefrontQuery } from '../hooks/useStorefrontQuery';
-import { storefrontApi } from '../../../../api/storefrontApi';
+import { useCollection } from '../hooks/useProducts';
 import ProductGrid from '../components/ProductGrid';
 
 // CategoryPage.jsx — a Category/Collection detail page. Fetches the
 // collection record plus its live, Active products via one Store Engine
-// call (GET /collections/:id) — never a client-side filter over some
-// already-fetched "all products" list.
+// call (GET /collections/:id) through useCollection — never a client-side
+// filter over some already-fetched "all products" list. useCollection
+// reloads automatically on collection and product events (a product
+// added to/removed from/archived out of this collection), so this page
+// never needs a manual refresh either.
 export default function CategoryPage({ collectionId }) {
-  const { storeId, goHome } = useStorefront();
-  const { data, loading, error } = useStorefrontQuery(
-    () => storefrontApi.getCollection(storeId, collectionId),
-    [storeId, collectionId]
-  );
+  const { goHome } = useStorefront();
+  const { collection: data, loading, error } = useCollection(collectionId);
 
   return (
     <div style={{ padding: '32px 24px', maxWidth: 1120, margin: '0 auto' }}>

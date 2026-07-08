@@ -1,6 +1,6 @@
 import React from 'react';
 import { useParams } from 'react-router-dom';
-import StorefrontApp from './storefront/StorefrontApp';
+import StorefrontApp from './StorefrontApp';
 
 // StorefrontPreviewPage.jsx — full-page mount of the dynamic storefront,
 // used by StorePreviewModal's "Open in new tab" action. Same StorefrontApp

@@ -1,19 +1,18 @@
 import React from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { useStorefront } from '../StorefrontContext';
-import { useStorefrontQuery } from '../hooks/useStorefrontQuery';
-import { storefrontApi } from '../../../../api/storefrontApi';
+import { useSearch } from '../hooks/useProducts';
 import ProductGrid from '../components/ProductGrid';
 
 // SearchResultsPage.jsx — the Search section's results view. Fetches
-// GET /search itself for the current query; SearchBar only supplies the
-// query string via navigation, never the results.
+// GET /search itself (via useSearch); SearchBar only supplies the query
+// string via navigation, never the results. useSearch reloads on both
+// product and collection events, so a newly created/edited product or
+// collection that matches an already-open query appears without the
+// shopper re-submitting the search.
 export default function SearchResultsPage({ q }) {
-  const { storeId, goHome, goToCollection } = useStorefront();
-  const { data, loading, error } = useStorefrontQuery(
-    () => storefrontApi.search(storeId, q),
-    [storeId, q]
-  );
+  const { goHome, goToCollection } = useStorefront();
+  const { products, collections, loading, error } = useSearch(q);
 
   return (
     <div style={{ padding: '32px 24px', maxWidth: 1120, margin: '0 auto' }}>
@@ -36,11 +35,11 @@ export default function SearchResultsPage({ q }) {
         <div style={{ color: '#ef4444', fontWeight: 600 }}>{error}</div>
       ) : (
         <>
-          {data?.collections?.length > 0 && (
+          {collections?.length > 0 && (
             <div style={{ marginBottom: 32 }}>
               <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 12 }}>Collections</h3>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                {data.collections.map((c) => (
+                {collections.map((c) => (
                   <span
                     key={c.id}
                     role="button"
@@ -64,7 +63,7 @@ export default function SearchResultsPage({ q }) {
           )}
 
           <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 12 }}>Products</h3>
-          <ProductGrid products={data?.products} loading={false} error={null} emptyLabel="No products matched your search." />
+          <ProductGrid products={products} loading={false} error={null} emptyLabel="No products matched your search." />
         </>
       )}
     </div>

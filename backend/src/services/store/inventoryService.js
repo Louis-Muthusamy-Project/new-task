@@ -21,6 +21,16 @@
 const mongoose = require('mongoose');
 const StoreProduct = require('../../models/store/StoreProduct');
 const { notFoundError, badRequestError } = require('./errors');
+const { emitStoreEvent } = require('./storeEvents');
+
+const emitInventoryUpdated = (storeId, product) => {
+  emitStoreEvent(storeId, 'inventory.updated', {
+    productId: product._id,
+    inventoryQuantity: product.inventoryQuantity,
+    trackInventory: product.trackInventory,
+    inStock: isInStock(product),
+  });
+};
 
 /**
  * True if `product` (a StoreProduct doc or lean object) currently has
@@ -73,6 +83,7 @@ async function setInventory(storeId, productId, quantity, { trackInventory } = {
   }
 
   await product.save();
+  emitInventoryUpdated(storeId, product);
   return product;
 }
 
@@ -91,6 +102,10 @@ async function adjustInventory(storeId, productId, delta, session) {
   const next = Math.max(0, (product.inventoryQuantity || 0) + delta);
   product.inventoryQuantity = next;
   await product.save({ session: session || undefined });
+  // Covers both checkout (decrement) and order-cancellation (restock), so a
+  // shopper completing an order updates every other open storefront tab's
+  // stock badge in real time, not just the admin's own view.
+  emitInventoryUpdated(storeId, product);
   return product;
 }
 

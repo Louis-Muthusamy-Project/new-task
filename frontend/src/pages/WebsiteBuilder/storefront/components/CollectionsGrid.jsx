@@ -1,19 +1,19 @@
 import React from 'react';
 import { useStorefront } from '../StorefrontContext';
-import { useStorefrontQuery } from '../hooks/useStorefrontQuery';
-import { storefrontApi } from '../../../../api/storefrontApi';
+import { useCollections } from '../hooks/useProducts';
 import SectionHeading from './SectionHeading';
 
-// CollectionsGrid.jsx — fetches GET /collections itself. Powers both the
-// "Shop by Collection" homepage section and the Menu's category dropdown
-// (Menu re-uses the data via its own fetch, not a prop, to keep each
-// component independently responsible for its own API call).
+// CollectionsGrid.jsx — renders GET /collections via useCollections. Powers
+// both the "Shop by Collection" homepage section and the Menu's category
+// dropdown (Menu re-uses the data via its own fetch, not a prop, to keep
+// each component independently responsible for its own API call).
+// useCollections reloads on both collection events (created/renamed/
+// deleted) and product events (a collection's productCount changes as
+// products are added/removed/archived) — so this grid never needs a
+// manual refresh either way.
 export default function CollectionsGrid({ limit = 8 }) {
-  const { storeId, goToCollection } = useStorefront();
-  const { data, loading, error } = useStorefrontQuery(
-    () => storefrontApi.listCollections(storeId, { limit }),
-    [storeId, limit]
-  );
+  const { goToCollection } = useStorefront();
+  const { collections: data, loading, error } = useCollections(limit);
 
   return (
     <section style={{ marginBottom: 40 }}>

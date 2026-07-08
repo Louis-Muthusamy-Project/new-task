@@ -1,20 +1,16 @@
 import React from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { useStorefront } from '../StorefrontContext';
-import { useStorefrontQuery } from '../hooks/useStorefrontQuery';
-import { storefrontApi } from '../../../../api/storefrontApi';
+import { useProduct } from '../hooks/useProducts';
 
 // ProductPage.jsx — a single Product Page. Fetches this one product by id
-// directly from the Store Engine (GET /products/:productId) every time
-// it's opened, so editing or restocking a product in Admin is reflected
-// the next time a shopper opens this page — never a cached snapshot from
-// whatever list they clicked through from.
+// via useProduct (GET /products/:productId), which subscribes to the
+// store's real-time event stream — so editing a product, restocking it,
+// or a concurrent checkout decrementing its inventory in Admin is
+// reflected here immediately, on an already-open page, with no reload.
 export default function ProductPage({ productId }) {
-  const { storeId, currency, goHome } = useStorefront();
-  const { data: product, loading, error } = useStorefrontQuery(
-    () => storefrontApi.getProduct(storeId, productId),
-    [storeId, productId]
-  );
+  const { currency, goHome } = useStorefront();
+  const { product, loading, error } = useProduct(productId);
 
   const price = product
     ? new Intl.NumberFormat(undefined, { style: 'currency', currency: product.currency || currency }).format(

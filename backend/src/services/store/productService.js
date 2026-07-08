@@ -19,6 +19,7 @@ const Store = require('../../models/store/Store');
 const { notFoundError, badRequestError } = require('./errors');
 const { slugify, uniqueSlug } = require('./slug');
 const inventoryService = require('./inventoryService');
+const { emitStoreEvent } = require('./storeEvents');
 
 const ALLOWED_FIELDS = [
   'title',
@@ -117,6 +118,11 @@ async function createProduct(storeId, body) {
     ...updates,
   });
 
+  // Every downstream storefront surface (Homepage, Category, Product Page,
+  // Search, Collections) reacts to this single event instead of polling —
+  // see storeEvents.js.
+  emitStoreEvent(storeId, 'product.created', { productId: product._id, status: product.status });
+
   return product;
 }
 
@@ -144,11 +150,17 @@ async function updateProduct(storeId, id, body) {
   // Stock changes always flow through InventoryService, even when they
   // arrive bundled with the rest of the product form, so there is exactly
   // one place that decides how a product's stock level may change.
+  // InventoryService.setInventory emits its own 'inventory.updated' event,
+  // so we only need to additionally emit 'product.updated' here so any
+  // section rendering this product's other fields refreshes too.
   if (inventoryQuantity != null || trackInventory != null) {
     await inventoryService.setInventory(storeId, id, inventoryQuantity, { trackInventory });
-    return StoreProduct.findById(id);
+    const refreshed = await StoreProduct.findById(id);
+    emitStoreEvent(storeId, 'product.updated', { productId: id, status: refreshed.status });
+    return refreshed;
   }
 
+  emitStoreEvent(storeId, 'product.updated', { productId: id, status: product.status });
   return product;
 }
 
@@ -159,6 +171,7 @@ async function deleteProduct(storeId, id) {
     { new: true }
   );
   if (!product) throw notFoundError('Product not found.');
+  emitStoreEvent(storeId, 'product.deleted', { productId: id });
   return product;
 }
 

@@ -5,6 +5,7 @@ const Store = require('../../models/store/Store');
 const StoreTestimonial = require('../../models/store/StoreTestimonial');
 const StoreVisit = require('../../models/store/StoreVisit');
 const { productService, collectionService, orderService, inventoryService, pageService } = require('../../services/store');
+const { subscribe } = require('../../services/store/storeEvents');
 const { optimizeImageUrl, optimizeImageList } = require('../../utils/storeImageOptimizer');
 
 /**
@@ -320,4 +321,61 @@ exports.trackVisit = async (req, res) => {
   });
 
   res.status(201).json({ success: true, data: { sessionId: resolvedSessionId } });
+};
+
+// ─────────────────────────────────────────────────────────────────────────
+// GET /api/store/:storeId/events  (Server-Sent Events)
+//
+// The transport that makes "no manual refresh logic" real: every write
+// path in the Store Engine (ProductService, CollectionService,
+// InventoryService — see storeEvents.js) emits an event right after it
+// commits; this route streams those events to every open storefront
+// surface for the store — Homepage, Category, Product Page, Search,
+// Collections — so each surface's own hook (useProducts/useProduct/
+// useFeaturedProducts/etc, see frontend hooks/useProducts.js) knows the
+// instant to refetch instead of polling on a timer.
+//
+// Deliberately unauthenticated (same trust level as every other route in
+// this controller) and read-only — nothing is ever written from an SSE
+// connection, it only announces that something changed elsewhere.
+// ─────────────────────────────────────────────────────────────────────────
+exports.streamEvents = async (req, res) => {
+  const { storeId } = req.params;
+  requireValidId(storeId, 'storeId');
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no', // disable nginx response buffering, if present
+  });
+  res.flushHeaders?.();
+
+  // Deliberately unnamed SSE events (no `event:` line) — the `type` travels
+  // inside the JSON payload instead. That lets the client use a single
+  // `EventSource.onmessage` listener and dispatch on `event.type` itself,
+  // rather than having to register a named listener per event type it
+  // might ever see.
+  const send = (event) => {
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+  };
+
+  // Tell the client it connected successfully so useStorefrontEvents can
+  // flip from "connecting" to "live" without waiting for the first real
+  // product/collection/inventory change.
+  send({ type: 'connected', storeId, payload: {}, ts: Date.now() });
+
+  const unsubscribe = subscribe(storeId, send);
+
+  // Comment-line heartbeat (ignored by EventSource as a message, but keeps
+  // idle proxies/load balancers from timing out and silently dropping the
+  // connection).
+  const heartbeat = setInterval(() => {
+    res.write(': heartbeat\n\n');
+  }, 25000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+  });
 };

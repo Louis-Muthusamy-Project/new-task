@@ -1,22 +1,21 @@
 import React from 'react';
 import { useStorefront } from '../StorefrontContext';
 import { useStorefrontQuery } from '../hooks/useStorefrontQuery';
+import { useCollections } from '../hooks/useProducts';
 import { storefrontApi } from '../../../../api/storefrontApi';
 
 // Menu.jsx — the storefront's nav bar. Every link is derived from real
 // data fetched here: Published StorePage documents (via
 // PageService.listPublicPages) for custom pages, plus live Collections
-// for the "Shop" dropdown. Nothing in this list is hardcoded — a page a
-// merchant publishes, or a collection they create, appears the next time
-// this component's queries refetch.
+// (via useCollections, which reacts to the store's real-time event
+// stream) for the "Shop" dropdown. Nothing in this list is hardcoded — a
+// page a merchant publishes, or a collection they create, appears the
+// moment the corresponding event arrives, no refetch timer required.
 export default function Menu() {
   const { storeId, goHome, goToCollection } = useStorefront();
 
   const { data: pages } = useStorefrontQuery(() => storefrontApi.listPages(storeId), [storeId]);
-  const { data: collections } = useStorefrontQuery(
-    () => storefrontApi.listCollections(storeId, { limit: 8 }),
-    [storeId]
-  );
+  const { collections } = useCollections(8);
 
   const customPages = (pages || []).filter((p) => !p.isHome);
 
