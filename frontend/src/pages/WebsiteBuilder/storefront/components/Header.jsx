@@ -1,12 +1,18 @@
 import React from 'react';
+import { ShoppingBag, User } from 'lucide-react';
 import { useStorefront } from '../StorefrontContext';
+import { useCart } from '../CartContext';
 import Menu from './Menu';
 import SearchBar from './SearchBar';
 
 // Header.jsx — reads storeInfo from StorefrontContext (fetched once,
 // centrally) rather than fetching its own copy of the store record.
+// Also surfaces the persisted cart (item count + open-drawer) and the
+// storefront account state (sign in / signed-in name), both from
+// CartContext — never local state here.
 export default function Header() {
   const { storeInfo, storeInfoLoading, goHome } = useStorefront();
+  const { itemCount, openDrawer, isSignedIn, customer, openAuth, logout } = useCart();
 
   return (
     <header
@@ -39,7 +45,66 @@ export default function Header() {
 
       <Menu />
 
-      <SearchBar />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <SearchBar />
+
+        <button
+          onClick={isSignedIn ? logout : openAuth}
+          title={isSignedIn ? `Sign out (${customer?.firstName || customer?.email})` : 'Sign in'}
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            color: '#0f172a',
+            fontSize: 13,
+            fontWeight: 700,
+          }}
+        >
+          <User size={18} />
+          <span style={{ display: 'none' }}>{isSignedIn ? customer?.firstName || 'Account' : 'Sign in'}</span>
+        </button>
+
+        <button
+          onClick={openDrawer}
+          aria-label="Open cart"
+          style={{
+            position: 'relative',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: '#0f172a',
+            display: 'flex',
+            alignItems: 'center',
+          }}
+        >
+          <ShoppingBag size={20} />
+          {itemCount > 0 && (
+            <span
+              style={{
+                position: 'absolute',
+                top: -6,
+                right: -8,
+                background: '#0f172a',
+                color: '#fff',
+                fontSize: 10,
+                fontWeight: 800,
+                borderRadius: 999,
+                minWidth: 16,
+                height: 16,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '0 4px',
+              }}
+            >
+              {itemCount}
+            </span>
+          )}
+        </button>
+      </div>
     </header>
   );
 }

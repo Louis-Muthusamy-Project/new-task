@@ -43,15 +43,55 @@ async function requestJson(path) {
   }
 }
 
-async function postJson(path, body) {
+async function postJson(path, body, extraHeaders = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...extraHeaders },
     body: JSON.stringify(body || {}),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`Storefront API POST ${path} failed: ${res.status} ${text}`);
+    let message = `Storefront API POST ${path} failed: ${res.status} ${text}`;
+    try {
+      const json = JSON.parse(text);
+      if (json?.error) message = json.error;
+    } catch {
+      // text wasn't JSON — keep the generic message above
+    }
+    const err = new Error(message);
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
+async function patchJson(path, body, extraHeaders = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...extraHeaders },
+    body: JSON.stringify(body || {}),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Storefront API PATCH ${path} failed: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+async function deleteJson(path, extraHeaders = {}) {
+  const res = await fetch(`${API_BASE}${path}`, { method: 'DELETE', headers: extraHeaders });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Storefront API DELETE ${path} failed: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+async function getJson(path, extraHeaders = {}) {
+  const res = await fetch(`${API_BASE}${path}`, { headers: extraHeaders });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Storefront API GET ${path} failed: ${res.status} ${text}`);
   }
   return res.json();
 }
@@ -131,6 +171,69 @@ export const storefrontApi = {
   // POST /api/store/:storeId/track — fire-and-forget pageview ping
   trackVisit: async (storeId, payload) =>
     postJson(`/store/${storeId}/track`, payload).catch(() => null),
+
+  // ── Cart (persisted server-side — see cartController.js/cartService.js) ──
+  // `identityHeaders` is either { 'X-Guest-Token': token } or
+  // { Authorization: 'Bearer <jwt>' } — built by CartContext, which is the
+  // only place that decides which identity is "current."
+  getCart: async (storeId, identityHeaders) =>
+    unwrap(await getJson(`/store/${storeId}/cart`, identityHeaders)).data,
+
+  addCartItem: async (storeId, identityHeaders, productId, quantity = 1) =>
+    unwrap(await postJson(`/store/${storeId}/cart/items`, { productId, quantity }, identityHeaders)).data,
+
+  updateCartItem: async (storeId, identityHeaders, productId, quantity) =>
+    unwrap(
+      await patchJson(`/store/${storeId}/cart/items/${productId}`, { quantity }, identityHeaders)
+    ).data,
+
+  removeCartItem: async (storeId, identityHeaders, productId) =>
+    unwrap(await deleteJson(`/store/${storeId}/cart/items/${productId}`, identityHeaders)).data,
+
+  clearCart: async (storeId, identityHeaders) =>
+    unwrap(await deleteJson(`/store/${storeId}/cart`, identityHeaders)).data,
+
+  applyDiscountCode: async (storeId, identityHeaders, code) =>
+    unwrap(await postJson(`/store/${storeId}/cart/discount`, { code }, identityHeaders)).data,
+
+  removeDiscountCode: async (storeId, identityHeaders) =>
+    unwrap(await deleteJson(`/store/${storeId}/cart/discount`, identityHeaders)).data,
+
+  setCartContact: async (storeId, identityHeaders, payload) =>
+    unwrap(await patchJson(`/store/${storeId}/cart/contact`, payload, identityHeaders)).data,
+
+  setCartShipping: async (storeId, identityHeaders, payload) =>
+    unwrap(await postJson(`/store/${storeId}/cart/shipping`, payload, identityHeaders)).data,
+
+  setCartPaymentMethod: async (storeId, identityHeaders, method) =>
+    unwrap(await postJson(`/store/${storeId}/cart/payment-method`, { method }, identityHeaders)).data,
+
+  // Called once, right after a successful login/register.
+  mergeCart: async (storeId, identityHeaders, guestToken) =>
+    unwrap(await postJson(`/store/${storeId}/cart/merge`, { guestToken }, identityHeaders)).data,
+
+  // ── Checkout ──
+  // GET /api/store/:storeId/shipping-options?country=&subtotal=
+  getShippingOptions: async (storeId, params = {}) =>
+    unwrap(await requestJson(`/store/${storeId}/shipping-options${qs(params)}`)).data,
+
+  // GET /api/store/:storeId/payment-methods
+  getPaymentMethods: async (storeId) =>
+    unwrap(await requestJson(`/store/${storeId}/payment-methods`)).data,
+
+  // POST /api/store/:storeId/checkout — places the order from the persisted cart
+  checkout: async (storeId, identityHeaders, payload) =>
+    unwrap(await postJson(`/store/${storeId}/checkout`, payload, identityHeaders)).data,
+
+  // ── Storefront customer auth ──
+  register: async (storeId, payload) =>
+    unwrap(await postJson(`/store/${storeId}/auth/register`, payload)).data,
+
+  login: async (storeId, payload) =>
+    unwrap(await postJson(`/store/${storeId}/auth/login`, payload)).data,
+
+  getSession: async (storeId, identityHeaders) =>
+    unwrap(await getJson(`/store/${storeId}/auth/me`, identityHeaders)).data,
 
   invalidate,
 };

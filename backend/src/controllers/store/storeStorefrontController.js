@@ -4,7 +4,10 @@ const mongoose = require('mongoose');
 const Store = require('../../models/store/Store');
 const StoreTestimonial = require('../../models/store/StoreTestimonial');
 const StoreVisit = require('../../models/store/StoreVisit');
-const { productService, collectionService, orderService, inventoryService, pageService } = require('../../services/store');
+const StoreShipping = require('../../models/store/StoreShipping');
+const StorePayment = require('../../models/store/StorePayment');
+const { productService, collectionService, orderService, inventoryService, pageService, cartService } = require('../../services/store');
+const cartController = require('./cartController');
 const { subscribe } = require('../../services/store/storeEvents');
 const { optimizeImageUrl, optimizeImageList } = require('../../utils/storeImageOptimizer');
 
@@ -34,6 +37,12 @@ const invalidIdError = (message) => {
 const notFoundError = (message) => {
   const error = new Error(message);
   error.statusCode = 404;
+  return error;
+};
+
+const badRequestError = (message) => {
+  const error = new Error(message);
+  error.statusCode = 400;
   return error;
 };
 
@@ -274,13 +283,161 @@ exports.search = async (req, res) => {
 };
 
 /**
+ * GET /api/store/:storeId/shipping-options?country=&subtotal=
+ * Shipping step of checkout: returns every rate from zones matching
+ * `country` (or every zone if a store hasn't restricted by country),
+ * with the store's free-shipping threshold already applied against the
+ * given subtotal — the same rule cartService.getCartView re-applies at
+ * checkout time, so what a shopper picks here can't be undercut later.
+ */
+exports.listShippingOptions = async (req, res) => {
+  const { storeId } = req.params;
+  requireValidId(storeId, 'storeId');
+
+  const shipping = await StoreShipping.findOne({ storeId }).lean();
+  if (!shipping) {
+    return res.status(200).json({ success: true, data: { rates: [], freeShippingThreshold: null } });
+  }
+
+  const country = String(req.query.country || '').trim().toLowerCase();
+  const subtotal = Number(req.query.subtotal) || 0;
+  const freeShipping =
+    shipping.freeShippingThreshold != null && subtotal >= shipping.freeShippingThreshold;
+
+  const matchingZones = country
+    ? shipping.zones.filter(
+        (z) => !z.countries?.length || z.countries.some((c) => String(c).toLowerCase() === country)
+      )
+    : shipping.zones;
+  // Fall back to every zone if the country didn't match any (e.g. a
+  // shopper hasn't picked a country yet, or the store only has an
+  // unrestricted zone) — better to show something than nothing.
+  const zones = matchingZones.length ? matchingZones : shipping.zones;
+
+  const rates = zones.flatMap((zone) =>
+    (zone.rates || [])
+      .filter(
+        (r) =>
+          (r.minOrderValue == null || subtotal >= r.minOrderValue) &&
+          (r.maxOrderValue == null || subtotal <= r.maxOrderValue)
+      )
+      .map((r) => ({
+        zoneId: zone._id,
+        zoneName: zone.name,
+        name: r.name,
+        price: freeShipping ? 0 : r.price,
+        deliveryTime: r.deliveryTime,
+      }))
+  );
+
+  res.status(200).json({
+    success: true,
+    data: { rates, freeShippingThreshold: shipping.freeShippingThreshold ?? null },
+  });
+};
+
+/**
+ * GET /api/store/:storeId/payment-methods
+ * Payment step of checkout: only the enabled methods, and only the
+ * shopper-safe fields (no key secrets) — never the same shape the admin
+ * Payments tab reads.
+ */
+exports.listPaymentMethods = async (req, res) => {
+  const { storeId } = req.params;
+  requireValidId(storeId, 'storeId');
+
+  const payment = await StorePayment.findOne({ storeId }).lean();
+  const methods = payment?.methods || {};
+
+  const available = [];
+  if (methods.razorpay?.enabled) available.push({ method: 'razorpay', label: 'Razorpay', mode: methods.razorpay.mode });
+  if (methods.stripe?.enabled) available.push({ method: 'stripe', label: 'Card (Stripe)', mode: methods.stripe.mode });
+  if (methods.paypal?.enabled) available.push({ method: 'paypal', label: 'PayPal', mode: methods.paypal.mode });
+  if (methods.cod?.enabled) {
+    available.push({
+      method: 'cod',
+      label: 'Cash on Delivery',
+      extraFee: methods.cod.extraFee || 0,
+      instructions: methods.cod.instructions,
+    });
+  }
+
+  res.status(200).json({ success: true, data: available });
+};
+
+/**
+ * POST /api/store/:storeId/checkout
+ * Body: { paymentMethod, customer?: { name, email } }
+ *
+ * The real checkout endpoint — Shipping and Payment steps have already
+ * persisted their choices onto the shopper's cart (see cartRoutes.js);
+ * this reads that same cart back (never trusts a client-submitted item
+ * list), converts it into OrderService's { items, shippingAmount,
+ * discountCode, paymentMethod } shape, creates the order, and clears the
+ * cart — the "Order → Inventory" handoff, immediately followed by
+ * "Inventory → Confirmation" (the created order is returned to render a
+ * confirmation screen) and "Confirmation → Analytics" (OrderService
+ * already emits `order.created` for any open Admin Analytics/Orders tab).
+ */
+exports.checkout = async (req, res) => {
+  const { storeId } = req.params;
+  requireValidId(storeId, 'storeId');
+
+  const identity = cartController.resolveIdentity(req);
+  const cart = await cartService.getOrCreateCart(storeId, identity);
+  const view = await cartService.getCartView(storeId, cart);
+
+  if (!view.items.length) {
+    throw badRequestError('Your cart is empty.');
+  }
+  if (view.hasUnavailableItems) {
+    throw badRequestError('Some items in your cart are no longer available in the requested quantity.');
+  }
+
+  const paymentMethod = req.body?.paymentMethod || cart.paymentMethod;
+  if (!paymentMethod) {
+    throw badRequestError('Select a payment method to complete checkout.');
+  }
+
+  const contactName = req.body?.customer?.name || '';
+  const contactEmail = req.body?.customer?.email || cart.contactEmail;
+
+  const order = await orderService.createOrder(storeId, {
+    items: view.items.map((line) => ({ productId: line.productId, quantity: line.quantity })),
+    discountCode: view.discount?.valid ? view.discount.code : undefined,
+    shippingAmount: view.shippingChoice?.price || 0,
+    paymentMethod,
+    customerId: identity.customerId || undefined,
+    customer: { name: contactName, email: contactEmail },
+  });
+
+  await cartService.clearCart(storeId, identity);
+
+  res.status(201).json({
+    success: true,
+    data: {
+      id: order._id,
+      orderNumber: order.orderNumber,
+      subtotal: order.subtotal,
+      discountAmount: order.discountAmount,
+      shippingAmount: order.shippingAmount,
+      total: order.total,
+      currency: order.currency,
+      status: order.status,
+      paymentStatus: order.paymentStatus,
+    },
+  });
+};
+
+/**
  * POST /api/store/:storeId/orders
  * Body: { items: [{ productId, quantity }], customer?: { name, email }, discountCode? }
  *
- * Used by the "Checkout" block. Delegates entirely to Order Service, which
- * re-prices every line server-side, checks/decrements stock via Inventory
- * Service, resolves an optional discount code via Discount Service, and
- * rolls the order into the customer record via Customer Service.
+ * Legacy direct-order route, kept for the static GrapesJS "Checkout"
+ * block (storeDynamicBlocks.js) which posts a plain item list rather
+ * than going through the persisted cart. New checkout UI should prefer
+ * POST /:storeId/checkout above, which reads from the cart instead of
+ * trusting a client-submitted item list end to end.
  */
 exports.createOrder = async (req, res) => {
   const { storeId } = req.params;

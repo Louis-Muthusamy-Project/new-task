@@ -26,6 +26,12 @@ const inventoryService = require('./inventoryService');
 const discountService = require('./discountService');
 const customerService = require('./customerService');
 const productService = require('./productService');
+const { emitStoreEvent } = require('./storeEvents');
+
+// Payment methods a shopper can choose at the Payment step of checkout —
+// kept in sync with StorePayment.PROVIDERS (the admin-configurable set),
+// this is just the vocabulary OrderService accepts on an order.
+const PAYMENT_METHODS = ['razorpay', 'stripe', 'paypal', 'cod'];
 
 const ORDER_STATUSES = ['Pending', 'Paid', 'Shipped', 'Delivered', 'Cancelled'];
 
@@ -101,6 +107,8 @@ async function updateOrderStatus(storeId, id, status) {
     await inventoryService.restockForOrder(storeId, order.items);
   }
 
+  emitStoreEvent(storeId, 'order.updated', { orderId: order._id, status: order.status });
+
   return order;
 }
 
@@ -127,6 +135,11 @@ async function createOrder(storeId, body) {
   const items = Array.isArray(body?.items) ? body.items : [];
   if (items.length === 0) {
     throw badRequestError('Order must include at least one item.');
+  }
+
+  const paymentMethod = body?.paymentMethod ? String(body.paymentMethod).toLowerCase() : null;
+  if (paymentMethod && !PAYMENT_METHODS.includes(paymentMethod)) {
+    throw badRequestError(`Invalid payment method. Must be one of: ${PAYMENT_METHODS.join(', ')}.`);
   }
 
   // Availability check also gives us the resolved product docs so pricing
@@ -159,10 +172,26 @@ async function createOrder(storeId, body) {
     discountResult = await discountService.resolveForOrder(storeId, body.discountCode, subtotal);
   }
   const discountAmount = discountResult?.amount || 0;
-  const total = Math.max(0, subtotal - discountAmount);
+  // Shipping is priced by the Shipping step of checkout (see
+  // cartService.getCartView, which already applies the store's free-
+  // shipping threshold) and passed through as-is here — OrderService
+  // re-derives everything else (items, discount) itself, but a shipping
+  // *rate* isn't re-priceable from an id alone the way a product is, so
+  // the client-selected { name, price } pair is trusted the same way an
+  // admin-configured shipping zone would be read at read time elsewhere.
+  const shippingAmount = Math.max(0, Number(body?.shippingAmount) || 0);
+  const total = Math.max(0, subtotal - discountAmount + shippingAmount);
 
   const orderNumber = `ORD-${Date.now().toString(36).toUpperCase()}`;
   const firstProduct = productMap.get(String(orderItems[0].productId));
+
+  // Cash on Delivery has nothing to "capture" — it's Paid only once the
+  // merchant marks it delivered (see OrderService.updateOrderStatus).
+  // Every other method in this project is a simulated capture (no real
+  // gateway keys/network wired up), so it's marked Paid immediately —
+  // this keeps the demo checkout flow completable end-to-end without
+  // pretending Razorpay/Stripe/PayPal are actually integrated.
+  const isCod = paymentMethod === 'cod';
 
   const order = await StoreOrder.create({
     storeId,
@@ -171,11 +200,12 @@ async function createOrder(storeId, body) {
     subtotal,
     discountId: discountResult?.discountId || null,
     discountAmount,
+    shippingAmount,
     total,
     currency: firstProduct?.currency || 'USD',
-    paymentStatus: 'Pending',
+    paymentStatus: isCod ? 'Pending' : 'Paid',
     fulfillmentStatus: 'Unfulfilled',
-    status: 'Pending',
+    status: isCod ? 'Pending' : 'Paid',
   });
 
   // Deduct stock and roll the order into the customer's history. Neither
@@ -190,7 +220,21 @@ async function createOrder(storeId, body) {
   }
 
   try {
-    const customer = await customerService.recordOrder(storeId, body?.customer || {}, total);
+    // A signed-in shopper's own account is the customer of record; a
+    // guest checkout falls back to find-or-create-by-email exactly as
+    // before.
+    let customer = null;
+    if (body?.customerId) {
+      customer = await StoreCustomer.findOne({ _id: body.customerId, storeId, isDeleted: false });
+      if (customer) {
+        customer.ordersCount += 1;
+        customer.totalSpent += total;
+        await customer.save();
+      }
+    }
+    if (!customer) {
+      customer = await customerService.recordOrder(storeId, body?.customer || {}, total);
+    }
     if (customer) {
       order.customerId = customer._id;
       await order.save();
@@ -203,6 +247,18 @@ async function createOrder(storeId, body) {
   if (discountResult?.discountId) {
     await discountService.markUsed(discountResult.discountId);
   }
+
+  // Feeds the Inventory step's real-time fan-out (already wired via
+  // inventoryService.decrementForOrder → inventory.updated) and, new
+  // here, tells any open Admin Analytics/Orders tab a sale just
+  // happened — closing the "Order → Inventory → Confirmation →
+  // Analytics" loop without the Analytics tab needing to poll.
+  emitStoreEvent(storeId, 'order.created', {
+    orderId: order._id,
+    orderNumber: order.orderNumber,
+    total: order.total,
+    status: order.status,
+  });
 
   return order;
 }
@@ -259,6 +315,7 @@ async function getBestSellers(storeId, limit = 8) {
 
 module.exports = {
   ORDER_STATUSES,
+  PAYMENT_METHODS,
   listOrders,
   getOrder,
   updateOrderStatus,

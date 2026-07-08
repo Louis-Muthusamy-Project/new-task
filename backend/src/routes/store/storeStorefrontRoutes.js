@@ -46,6 +46,16 @@ router.get('/:storeId/testimonials', cache, asyncHandler(storeStorefrontControll
 
 router.get('/:storeId/search', asyncHandler(storeStorefrontController.search));
 
+// Checkout-adjacent public reads — Shipping step and Payment step of the
+// checkout flow. Not cached: pricing (free-shipping threshold, subtotal
+// bracket) depends on query params that change per-request.
+router.get('/:storeId/shipping-options', asyncHandler(storeStorefrontController.listShippingOptions));
+router.get('/:storeId/payment-methods', asyncHandler(storeStorefrontController.listPaymentMethods));
+
+// The real checkout — reads the persisted cart (see cartRoutes.js),
+// never a client-submitted item list.
+router.post('/:storeId/checkout', asyncHandler(storeStorefrontController.checkout));
+
 router.post('/:storeId/orders', asyncHandler(storeStorefrontController.createOrder));
 
 router.post('/:storeId/track', asyncHandler(storeStorefrontController.trackVisit));

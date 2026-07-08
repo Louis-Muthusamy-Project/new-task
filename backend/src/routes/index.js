@@ -43,6 +43,11 @@ router.use('/store', require('./store/storePageRoutes'));
 // this is new surface area for rendering real data inside store blocks.
 router.use('/store', require('./store/storeStorefrontRoutes'));
 
+// Persisted cart (guest + logged-in, with merge-on-login) and storefront
+// customer auth (register/login/me) — the checkout flow's backing store.
+router.use('/store', require('./store/cartRoutes'));
+router.use('/store', require('./store/customerStorefrontAuthRoutes'));
+
 // Admin Products CRUD (Create/Edit/Delete, Images, Inventory, Price, SEO)
 // used by the Products tab in StoresTab.jsx.
 router.use('/store', require('./store/productRoutes'));

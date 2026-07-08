@@ -1,6 +1,7 @@
-import React from 'react';
-import { ArrowLeft } from 'lucide-react';
+import React, { useState } from 'react';
+import { ArrowLeft, Minus, Plus } from 'lucide-react';
 import { useStorefront } from '../StorefrontContext';
+import { useCart } from '../CartContext';
 import { useProduct } from '../hooks/useProducts';
 
 // ProductPage.jsx — a single Product Page. Fetches this one product by id
@@ -11,12 +12,25 @@ import { useProduct } from '../hooks/useProducts';
 export default function ProductPage({ productId }) {
   const { currency, goHome } = useStorefront();
   const { product, loading, error } = useProduct(productId);
+  const { addItem } = useCart();
+  const [quantity, setQuantity] = useState(1);
+  const [adding, setAdding] = useState(false);
 
   const price = product
     ? new Intl.NumberFormat(undefined, { style: 'currency', currency: product.currency || currency }).format(
         product.price || 0
       )
     : null;
+
+  const handleAddToCart = async () => {
+    if (!product?.inStock || adding) return;
+    setAdding(true);
+    try {
+      await addItem(product.id, quantity);
+    } finally {
+      setAdding(false);
+    }
+  };
 
   return (
     <div style={{ padding: '32px 24px', maxWidth: 1000, margin: '0 auto' }}>
@@ -72,6 +86,44 @@ export default function ProductPage({ productId }) {
             >
               {product.inStock ? 'In stock' : 'Out of stock'}
             </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                <button
+                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                  aria-label="Decrease quantity"
+                  style={qtyBtnStyle}
+                >
+                  <Minus size={13} />
+                </button>
+                <span style={{ minWidth: 28, textAlign: 'center', fontSize: 13, fontWeight: 700 }}>{quantity}</span>
+                <button
+                  onClick={() => setQuantity((q) => q + 1)}
+                  aria-label="Increase quantity"
+                  style={qtyBtnStyle}
+                >
+                  <Plus size={13} />
+                </button>
+              </div>
+
+              <button
+                onClick={handleAddToCart}
+                disabled={!product.inStock || adding}
+                style={{
+                  flex: 1,
+                  padding: '11px 18px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: product.inStock ? '#0f172a' : '#e2e8f0',
+                  color: product.inStock ? '#fff' : '#94a3b8',
+                  fontWeight: 800,
+                  fontSize: 14,
+                  cursor: product.inStock ? 'pointer' : 'not-allowed',
+                }}
+              >
+                {adding ? 'Adding…' : product.inStock ? 'Add to cart' : 'Out of stock'}
+              </button>
+            </div>
             {product.description && (
               <p style={{ fontSize: 14, lineHeight: 1.7, color: '#475569', whiteSpace: 'pre-wrap' }}>
                 {product.description}
@@ -95,3 +147,15 @@ export default function ProductPage({ productId }) {
     </div>
   );
 }
+
+const qtyBtnStyle = {
+  width: 32,
+  height: 32,
+  border: 'none',
+  background: '#fff',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+  color: '#0f172a',
+};

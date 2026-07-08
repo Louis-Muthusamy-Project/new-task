@@ -34,6 +34,8 @@ const pageService = require('./pageService');
 const themeService = require('./themeService');
 const inventoryService = require('./inventoryService');
 const discountService = require('./discountService');
+const cartService = require('./cartService');
+const customerAuthService = require('./customerAuthService');
 
 module.exports = {
   productService,
@@ -44,4 +46,6 @@ module.exports = {
   themeService,
   inventoryService,
   discountService,
+  cartService,
+  customerAuthService,
 };

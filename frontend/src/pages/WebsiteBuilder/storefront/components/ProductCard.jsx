@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { Plus } from 'lucide-react';
 import { useStorefront } from '../StorefrontContext';
+import { useCart } from '../CartContext';
 
 // ProductCard.jsx — the single card renderer for a product. Featured
 // Products, Latest Products, Best Sellers, Category pages, and Search
@@ -7,6 +9,8 @@ import { useStorefront } from '../StorefrontContext';
 // own card markup.
 export default function ProductCard({ product }) {
   const { currency, goToProduct } = useStorefront();
+  const { addItem } = useCart();
+  const [adding, setAdding] = useState(false);
 
   if (!product) return null;
 
@@ -19,6 +23,17 @@ export default function ProductCard({ product }) {
           product.compareAtPrice
         )
       : null;
+
+  const handleAddToCart = async (e) => {
+    e.stopPropagation();
+    if (!product.inStock || adding) return;
+    setAdding(true);
+    try {
+      await addItem(product.id, 1);
+    } finally {
+      setAdding(false);
+    }
+  };
 
   return (
     <div
@@ -66,6 +81,28 @@ export default function ProductCard({ product }) {
         {!product.inStock && (
           <span style={{ fontSize: 11, fontWeight: 700, color: '#ef4444' }}>Out of stock</span>
         )}
+
+        <button
+          onClick={handleAddToCart}
+          disabled={!product.inStock || adding}
+          style={{
+            marginTop: 8,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            padding: '8px 10px',
+            borderRadius: 8,
+            border: '1px solid #0f172a',
+            background: product.inStock ? '#0f172a' : '#e2e8f0',
+            color: product.inStock ? '#fff' : '#94a3b8',
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: product.inStock ? 'pointer' : 'not-allowed',
+          }}
+        >
+          <Plus size={13} /> {adding ? 'Adding…' : 'Add to cart'}
+        </button>
       </div>
     </div>
   );

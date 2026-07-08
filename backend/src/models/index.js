@@ -12,6 +12,7 @@ module.exports = {
   StoreTestimonial: require('./store/StoreTestimonial'),
   StoreCustomer: require('./store/StoreCustomer'),
   StoreOrder: require('./store/StoreOrder'),
+  StoreCart: require('./store/StoreCart'),
   StoreDiscount: require('./store/StoreDiscount'),
   StoreShipping: require('./store/StoreShipping'),
   StorePayment: require('./store/StorePayment'),

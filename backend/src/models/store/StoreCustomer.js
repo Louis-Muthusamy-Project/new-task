@@ -13,6 +13,11 @@ const StoreCustomerSchema = new Schema(
     lastName: { type: String, trim: true, default: '' },
     email: { type: String, trim: true, lowercase: true, index: true },
     phone: { type: String, trim: true, default: '' },
+    // Set only when a shopper registers a storefront account (see
+    // customerAuthService.js). A customer created purely as a checkout
+    // rollup (CustomerService.recordOrder, guest checkout) has no
+    // password and simply can't log in — that's expected, not an error.
+    passwordHash: { type: String, default: null, select: false },
     addresses: {
       type: [
         {
