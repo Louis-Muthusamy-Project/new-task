@@ -71,6 +71,10 @@ router.post('/:storeId/checkout', asyncHandler(storeStorefrontController.checkou
 
 router.post('/:storeId/orders', asyncHandler(storeStorefrontController.createOrder));
 
+// Body: { type?, sessionId?, path?, referrer?, productId?, quantity?, query? }
+// type defaults to 'page_view' (StoreVisit, unchanged); also accepts
+// 'product_view' | 'search' | 'cart_add' | 'checkout_start'
+// (StoreAnalyticsEvent) — see storeStorefrontController.trackVisit.
 router.post('/:storeId/track', asyncHandler(storeStorefrontController.trackVisit));
 
 module.exports = router;

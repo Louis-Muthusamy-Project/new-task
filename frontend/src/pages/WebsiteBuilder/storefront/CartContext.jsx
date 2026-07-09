@@ -162,9 +162,12 @@ export function CartProvider({ children }) {
   const addItem = useCallback(
     (productId, quantity = 1) => {
       setDrawerOpen(true);
+      // Fire-and-forget funnel event — never blocks or fails the actual
+      // cart mutation below (see storefrontApi.trackEvent).
+      storefrontApi.trackEvent(storeId, 'cart_add', { productId, quantity });
       return mutate((sid, headers) => storefrontApi.addCartItem(sid, headers, productId, quantity));
     },
-    [mutate]
+    [mutate, storeId]
   );
 
   const updateItem = useCallback(

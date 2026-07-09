@@ -185,6 +185,13 @@ export const storefrontApi = {
   trackVisit: async (storeId, payload) =>
     postJson(`/store/${storeId}/track`, payload).catch(() => null),
 
+  // POST /api/store/:storeId/track — fire-and-forget funnel event ping.
+  // `type` is one of 'product_view' | 'search' | 'cart_add' |
+  // 'checkout_start' (see StoreAnalyticsEvent on the backend). Never
+  // throws — a dropped analytics ping should never break the storefront.
+  trackEvent: async (storeId, type, payload = {}) =>
+    postJson(`/store/${storeId}/track`, { type, ...payload }).catch(() => null),
+
   // ── Cart (persisted server-side — see cartController.js/cartService.js) ──
   // `identityHeaders` is either { 'X-Guest-Token': token } or
   // { Authorization: 'Bearer <jwt>' } — built by CartContext, which is the

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Button, Table, Typography, Space, Popconfirm, Select, Card, Input, InputNumber, Row, Col, Checkbox, Tag, message, Empty, Spin, Switch } from "antd";
-import { Plus, Trash2, Store, ShoppingBag, LayoutGrid, Users, Tag as TagIcon, LayoutTemplate, Truck, Settings, CreditCard, Mail, Search, ExternalLink, Activity, ArrowRight, Eye, Edit3, Image as ImageIcon, Wallet, Banknote, Landmark, Server, FileText, Package, Gift, ChevronDown, ChevronRight, TrendingUp, Percent, DollarSign } from "lucide-react";
+import { Plus, Trash2, Store, ShoppingBag, LayoutGrid, Users, Tag as TagIcon, LayoutTemplate, Truck, Settings, CreditCard, Mail, Search, ExternalLink, Activity, ArrowRight, Eye, Edit3, Image as ImageIcon, Wallet, Banknote, Landmark, Server, FileText, Package, Gift, ChevronDown, ChevronRight, TrendingUp, Percent, DollarSign, ShoppingCart, Award } from "lucide-react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import CreateStoreModal from "./CreateStoreModal";
@@ -1199,14 +1199,22 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
 
   const ANALYTICS_STAT_CARDS = [
     { key: "visitors", label: "VISITORS", icon: <Users size={16} />, format: (d) => d.visitors.toLocaleString() },
+    { key: "productViews", label: "PRODUCT VIEWS", icon: <Eye size={16} />, format: (d) => (d.productViews || 0).toLocaleString() },
+    { key: "searches", label: "SEARCHES", icon: <Search size={16} />, format: (d) => (d.searches || 0).toLocaleString() },
+    { key: "cartAdds", label: "CART ADDS", icon: <ShoppingCart size={16} />, format: (d) => (d.cartAdds || 0).toLocaleString() },
+    { key: "checkoutStarts", label: "CHECKOUT STARTS", icon: <CreditCard size={16} />, format: (d) => (d.checkoutStarts || 0).toLocaleString() },
     { key: "sales", label: "SALES (UNITS)", icon: <ShoppingBag size={16} />, format: (d) => d.sales.toLocaleString() },
-    { key: "orders", label: "ORDERS", icon: <Package size={16} />, format: (d) => d.orders.toLocaleString() },
+    { key: "orders", label: "ORDERS (PURCHASES)", icon: <Package size={16} />, format: (d) => d.orders.toLocaleString() },
     { key: "revenue", label: "REVENUE", icon: <DollarSign size={16} />, format: (d) => `${d.currency} ${Number(d.revenue).toFixed(2)}` },
     { key: "conversion", label: "CONVERSION", icon: <Percent size={16} />, format: (d) => `${Number(d.conversionRate).toFixed(1)}%` },
   ];
 
   const renderAnalytics = () => {
-    const data = analytics || { visitors: 0, sales: 0, orders: 0, revenue: 0, conversionRate: 0, currency: "USD", topProducts: [] };
+    const data = analytics || {
+      visitors: 0, sales: 0, orders: 0, revenue: 0, conversionRate: 0, currency: "USD",
+      productViews: 0, searches: 0, cartAdds: 0, checkoutStarts: 0,
+      topProducts: [], topViewedProducts: [], topSearchTerms: [], topCustomers: [], funnel: [],
+    };
 
     return (
       <motion.div variants={itemVariants} className="store-manage-content">
@@ -1231,7 +1239,7 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
           <>
             <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
               {ANALYTICS_STAT_CARDS.map((c) => (
-                <Col span={Math.floor(24 / ANALYTICS_STAT_CARDS.length)} key={c.key}>
+                <Col span={Math.floor(24 / Math.ceil(ANALYTICS_STAT_CARDS.length / 2))} key={c.key}>
                   <Card bodyStyle={{ padding: 22 }} style={{ borderRadius: 16, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', height: '100%' }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 800, color: "var(--text-tertiary)", letterSpacing: 0.5, marginBottom: 10 }}>
                       {c.icon} {c.label}
@@ -1242,24 +1250,116 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
               ))}
             </Row>
 
-            <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, border: "1px solid var(--border-color)", overflow: "hidden", background: 'var(--bg-secondary)' }}>
+            <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, border: "1px solid var(--border-color)", overflow: "hidden", background: 'var(--bg-secondary)', marginBottom: 20 }}>
               <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border-color)", fontWeight: 800, fontSize: 16, color: 'var(--text-primary)' }}>
-                Top products ({analyticsRange} days)
+                Conversion funnel ({analyticsRange} days)
               </div>
-              <Table
-                rowKey={(r, i) => r.title + i}
-                columns={[
-                  { title: "PRODUCT", dataIndex: "title", key: "product", render: (v) => <Text style={{ fontWeight: 700, color: "var(--text-primary)" }}>{v}</Text> },
-                  { title: "UNITS", dataIndex: "units", key: "units" },
-                  { title: "REVENUE", key: "revenue", align: "right", render: (_, r) => `${data.currency} ${Number(r.revenue).toFixed(2)}` },
-                ]}
-                dataSource={data.topProducts || []}
-                pagination={false}
-                locale={{
-                  emptyText: <div style={{ padding: "40px 0", color: "var(--text-secondary)", fontSize: 14, fontWeight: 600 }}>No paid orders in this window yet.</div>
-                }}
-              />
+              <div style={{ padding: "20px 24px", display: "flex", flexWrap: "wrap", gap: 12 }}>
+                {(data.funnel || []).map((step, i) => (
+                  <React.Fragment key={step.step}>
+                    <div style={{ minWidth: 120 }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-tertiary)", letterSpacing: 0.5, marginBottom: 6 }}>{step.step.toUpperCase()}</div>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: "var(--text-primary)" }}>{step.count.toLocaleString()}</div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-tertiary)" }}>{Number(step.rate).toFixed(1)}% of visitors</div>
+                    </div>
+                    {i < (data.funnel || []).length - 1 && (
+                      <ArrowRight size={18} color="var(--text-tertiary)" style={{ alignSelf: "center", marginTop: 18 }} />
+                    )}
+                  </React.Fragment>
+                ))}
+              </div>
             </Card>
+
+            <Row gutter={[16, 16]}>
+              <Col span={12}>
+                <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, border: "1px solid var(--border-color)", overflow: "hidden", background: 'var(--bg-secondary)', height: '100%' }}>
+                  <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border-color)", fontWeight: 800, fontSize: 16, color: 'var(--text-primary)' }}>
+                    Top products by revenue ({analyticsRange} days)
+                  </div>
+                  <Table
+                    rowKey={(r, i) => r.title + i}
+                    columns={[
+                      { title: "PRODUCT", dataIndex: "title", key: "product", render: (v) => <Text style={{ fontWeight: 700, color: "var(--text-primary)" }}>{v}</Text> },
+                      { title: "UNITS", dataIndex: "units", key: "units" },
+                      { title: "REVENUE", key: "revenue", align: "right", render: (_, r) => `${data.currency} ${Number(r.revenue).toFixed(2)}` },
+                    ]}
+                    dataSource={data.topProducts || []}
+                    pagination={false}
+                    locale={{
+                      emptyText: <div style={{ padding: "40px 0", color: "var(--text-secondary)", fontSize: 14, fontWeight: 600 }}>No paid orders in this window yet.</div>
+                    }}
+                  />
+                </Card>
+              </Col>
+              <Col span={12}>
+                <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, border: "1px solid var(--border-color)", overflow: "hidden", background: 'var(--bg-secondary)', height: '100%' }}>
+                  <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border-color)", fontWeight: 800, fontSize: 16, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Eye size={16} color="var(--text-tertiary)" /> Most-viewed products ({analyticsRange} days)
+                  </div>
+                  <Table
+                    rowKey={(r, i) => String(r.productId) + i}
+                    columns={[
+                      { title: "PRODUCT", dataIndex: "title", key: "product", render: (v) => <Text style={{ fontWeight: 700, color: "var(--text-primary)" }}>{v}</Text> },
+                      { title: "VIEWS", dataIndex: "views", key: "views", align: "right" },
+                    ]}
+                    dataSource={data.topViewedProducts || []}
+                    pagination={false}
+                    locale={{
+                      emptyText: <div style={{ padding: "40px 0", color: "var(--text-secondary)", fontSize: 14, fontWeight: 600 }}>No product views tracked in this window yet.</div>
+                    }}
+                  />
+                </Card>
+              </Col>
+            </Row>
+
+            <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+              <Col span={12}>
+                <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, border: "1px solid var(--border-color)", overflow: "hidden", background: 'var(--bg-secondary)', height: '100%' }}>
+                  <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border-color)", fontWeight: 800, fontSize: 16, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Search size={16} color="var(--text-tertiary)" /> Top search terms ({analyticsRange} days)
+                  </div>
+                  <Table
+                    rowKey={(r, i) => r.query + i}
+                    columns={[
+                      { title: "QUERY", dataIndex: "query", key: "query", render: (v) => <Text style={{ fontWeight: 700, color: "var(--text-primary)" }}>{v}</Text> },
+                      { title: "SEARCHES", dataIndex: "searches", key: "searches", align: "right" },
+                    ]}
+                    dataSource={data.topSearchTerms || []}
+                    pagination={false}
+                    locale={{
+                      emptyText: <div style={{ padding: "40px 0", color: "var(--text-secondary)", fontSize: 14, fontWeight: 600 }}>No searches tracked in this window yet.</div>
+                    }}
+                  />
+                </Card>
+              </Col>
+              <Col span={12}>
+                <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 16, border: "1px solid var(--border-color)", overflow: "hidden", background: 'var(--bg-secondary)', height: '100%' }}>
+                  <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border-color)", fontWeight: 800, fontSize: 16, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Award size={16} color="var(--text-tertiary)" /> Top customers ({analyticsRange} days)
+                  </div>
+                  <Table
+                    rowKey={(r, i) => String(r.customerId) + i}
+                    columns={[
+                      {
+                        title: "CUSTOMER", key: "customer", render: (_, r) => (
+                          <div>
+                            <div style={{ fontWeight: 700, color: "var(--text-primary)" }}>{r.name}</div>
+                            {r.email && <div style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 500 }}>{r.email}</div>}
+                          </div>
+                        )
+                      },
+                      { title: "ORDERS", dataIndex: "orders", key: "orders", align: "right" },
+                      { title: "REVENUE", key: "revenue", align: "right", render: (_, r) => `${data.currency} ${Number(r.revenue).toFixed(2)}` },
+                    ]}
+                    dataSource={data.topCustomers || []}
+                    pagination={false}
+                    locale={{
+                      emptyText: <div style={{ padding: "40px 0", color: "var(--text-secondary)", fontSize: 14, fontWeight: 600 }}>No paid orders in this window yet.</div>
+                    }}
+                  />
+                </Card>
+              </Col>
+            </Row>
           </>
         )}
       </motion.div>

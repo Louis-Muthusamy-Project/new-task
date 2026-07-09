@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const Store = require('../../models/store/Store');
 const StoreTestimonial = require('../../models/store/StoreTestimonial');
 const StoreVisit = require('../../models/store/StoreVisit');
+const StoreAnalyticsEvent = require('../../models/store/StoreAnalyticsEvent');
 const StoreShipping = require('../../models/store/StoreShipping');
 const StorePayment = require('../../models/store/StorePayment');
 const Blog = require('../../models/Blog');
@@ -564,23 +565,62 @@ exports.createOrder = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────
 // POST /api/store/:storeId/track
-// Body: { sessionId?, path?, referrer? }
-// Fire-and-forget pageview ping called once per storefront page load.
+// Body: { type?, sessionId?, path?, referrer?, productId?, quantity?, query? }
+//
+// Fire-and-forget analytics ping. `type` defaults to 'page_view' (the
+// original, and still highest-volume, shape of this endpoint — every
+// storefront view change pings it once) and keeps writing to StoreVisit
+// exactly as before, so no existing caller needs to change.
+//
+// Any of the funnel event types in StoreAnalyticsEvent.EVENT_TYPES
+// (product_view, search, cart_add, checkout_start) writes a small typed
+// event instead — these are what let getAnalytics report Product Views,
+// Searches, Cart adds, and Checkout starts alongside the existing
+// Visitors/Sales/Orders/Revenue numbers. Purchases/Revenue are never
+// written here; StoreOrder stays the single source of truth for those
+// (see analyticsController.js).
 // ─────────────────────────────────────────────────────────────────────────
 exports.trackVisit = async (req, res) => {
   const { storeId } = req.params;
   requireValidId(storeId, 'storeId');
 
-  const { sessionId, path, referrer } = req.body || {};
+  const body = req.body || {};
+  const { sessionId, path, referrer, type } = body;
   const resolvedSessionId =
     (sessionId && String(sessionId).trim()) ||
     `sess_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 
-  await StoreVisit.create({
+  const eventType = type ? String(type).trim() : 'page_view';
+
+  if (eventType === 'page_view') {
+    await StoreVisit.create({
+      storeId,
+      sessionId: resolvedSessionId,
+      path: path || '/',
+      referrer: referrer || '',
+    });
+    return res.status(201).json({ success: true, data: { sessionId: resolvedSessionId } });
+  }
+
+  if (!StoreAnalyticsEvent.EVENT_TYPES.includes(eventType)) {
+    throw badRequestError(
+      `Invalid track type. Expected one of: page_view, ${StoreAnalyticsEvent.EVENT_TYPES.join(', ')}.`
+    );
+  }
+
+  const { productId, quantity, query, resultCount } = body;
+  if ((eventType === 'product_view' || eventType === 'cart_add') && productId) {
+    requireValidId(productId, 'productId');
+  }
+
+  await StoreAnalyticsEvent.create({
     storeId,
+    type: eventType,
     sessionId: resolvedSessionId,
-    path: path || '/',
-    referrer: referrer || '',
+    productId: productId || null,
+    quantity: Number.isFinite(Number(quantity)) ? Number(quantity) : 1,
+    query: query ? String(query).trim().slice(0, 200) : '',
+    resultCount: Number.isFinite(Number(resultCount)) ? Number(resultCount) : null,
   });
 
   res.status(201).json({ success: true, data: { sessionId: resolvedSessionId } });

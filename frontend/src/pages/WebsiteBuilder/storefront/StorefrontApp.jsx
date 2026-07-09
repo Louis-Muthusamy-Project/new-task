@@ -97,6 +97,17 @@ function VisitTracker({ storeId }) {
                 ? '/checkout/confirmation'
                 : `/search?q=${encodeURIComponent(view.q || '')}`;
     storefrontApi.trackVisit(storeId, { path });
+
+    // Every view change already pings the generic pageview above; a
+    // Product Page or Search view additionally pings a typed funnel
+    // event (see StoreAnalyticsEvent on the backend) so the Analytics
+    // tab can report Product Views / Searches and top-viewed products /
+    // top search terms, not just raw pageviews.
+    if (view.name === 'product' && view.productId) {
+      storefrontApi.trackEvent(storeId, 'product_view', { productId: view.productId });
+    } else if (view.name === 'search' && String(view.q || '').trim()) {
+      storefrontApi.trackEvent(storeId, 'search', { query: view.q });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId, view.name, view.collectionId, view.productId, view.q]);
   return null;

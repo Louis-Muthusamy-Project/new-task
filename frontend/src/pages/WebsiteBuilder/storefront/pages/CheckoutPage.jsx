@@ -85,6 +85,17 @@ export default function CheckoutPage() {
   const { cart, loading, setContact, setShipping, setPaymentMethod, checkout, isSignedIn, customer, openAuth } =
     useCart();
 
+  // Funnel event — fired once per checkout attempt (not once per step),
+  // and only once the cart has actually loaded with items, so an empty
+  // or not-yet-loaded cart landing on this route doesn't inflate the
+  // Checkout Starts number. See storefrontApi.trackEvent.
+  useEffect(() => {
+    if (cart?.items?.length) {
+      storefrontApi.trackEvent(storeId, 'checkout_start', { quantity: cart.items.length });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeId, Boolean(cart?.items?.length)]);
+
   const [step, setStep] = useState(0);
   const [contact, setContactForm] = useState({
     email: '',
