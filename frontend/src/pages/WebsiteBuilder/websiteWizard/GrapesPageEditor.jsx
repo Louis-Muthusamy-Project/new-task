@@ -1137,11 +1137,12 @@ const GrapesPageEditor = ({
 
       await fetchFormTools(editor);
 
-      // Store pages get an extra "Store" block category (Hero, Product Grid,
-      // Featured Product, Collection, Testimonials, Search, Cart, Checkout,
-      // Footer) that render live data from the storefront API. Registered
-      // once per editor instance — websiteId here is the storeId for store
-      // pages (see BccBuilder, which passes storeId through as websiteId).
+      // Store pages get an extra "Store" block category (Header, Menu, Hero,
+      // Product Grid, Latest Products, Featured Product(s), Collection Grid,
+      // Testimonials, Blog, Search, Cart, Checkout, Footer) that render live
+      // data from the storefront API. Registered once per editor instance —
+      // websiteId here is the storeId for store pages (see BccBuilder, which
+      // passes storeId through as websiteId).
       if (isStoreRef.current && websiteIdRef.current) {
         try {
           registerStoreBlocks(editor, { apiBase: API_BASE, storeId: websiteIdRef.current });

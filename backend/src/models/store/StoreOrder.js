@@ -54,6 +54,22 @@ const StoreOrderSchema = new Schema(
       default: 'Pending',
       index: true,
     },
+    // Written exclusively by NotificationService (via OrderService) right
+    // after it attempts delivery — never set directly by a controller.
+    // Lets the Orders tab show "Confirmation sent" instead of that being
+    // invisible/unknowable after the fact.
+    notifications: {
+      type: [
+        {
+          type: { type: String }, // orderConfirmation | shippingUpdate | orderCancelled
+          sent: { type: Boolean, default: false },
+          to: { type: String, default: '' },
+          reason: { type: String, default: '' }, // set when sent: false (e.g. 'smtp-not-configured')
+          sentAt: { type: Date, default: Date.now },
+        },
+      ],
+      default: [],
+    },
     isDeleted: { type: Boolean, default: false, index: true },
   },
   { timestamps: true }

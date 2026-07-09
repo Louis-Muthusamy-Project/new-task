@@ -6,6 +6,7 @@ const StoreTestimonial = require('../../models/store/StoreTestimonial');
 const StoreVisit = require('../../models/store/StoreVisit');
 const StoreShipping = require('../../models/store/StoreShipping');
 const StorePayment = require('../../models/store/StorePayment');
+const Blog = require('../../models/Blog');
 const { productService, collectionService, orderService, inventoryService, pageService, cartService } = require('../../services/store');
 const cartController = require('./cartController');
 const { subscribe } = require('../../services/store/storeEvents');
@@ -83,6 +84,18 @@ const toPublicTestimonial = (t) => ({
   avatarUrl: optimizeImageUrl(t.avatarUrl || '', 'avatar'),
   quote: t.quote,
   rating: t.rating || 5,
+});
+
+const toPublicBlogPost = (post, blog) => ({
+  id: post.key || `${blog._id}-${post.slug || post.title}`,
+  title: post.title,
+  slug: post.slug || '',
+  excerpt: post.excerpt || '',
+  category: post.category || '',
+  publishedAt: post.publishedAt || null,
+  blogSlug: blog.slug,
+  blogName: blog.name,
+  url: post.slug ? `${blog.publicUrl || `/blog/${blog.slug}`}/${post.slug}` : blog.publicUrl || `/blog/${blog.slug}`,
 });
 
 /**
@@ -250,6 +263,42 @@ exports.listTestimonials = async (req, res) => {
     .limit(limit);
 
   res.status(200).json({ success: true, data: testimonials.map(toPublicTestimonial) });
+};
+
+/**
+ * GET /api/store/:storeId/blog/posts
+ * Query params: limit
+ *
+ * Flattens every *published* post from whichever active Blog(s) belong to
+ * this store — either explicitly linked via `storeId`, or (for blogs
+ * created before that link existed) assigned the legacy "Any site / store"
+ * label — into one reverse-chronological feed. Backs the "Blog" dynamic
+ * block; a store with no blog configured simply gets an empty array
+ * rather than a 404, same "never empty by construction" fallback pattern
+ * used by Featured/Latest Products.
+ */
+exports.listBlogPosts = async (req, res) => {
+  const { storeId } = req.params;
+  requireValidId(storeId, 'storeId');
+
+  const limit = Math.min(parseInt(req.query.limit, 10) || 6, 30);
+
+  const blogs = await Blog.find({
+    isDeleted: false,
+    status: 'active',
+    $or: [{ storeId }, { storeId: null, assignedTo: 'Any site / store' }],
+  }).lean();
+
+  const posts = blogs
+    .flatMap((blog) =>
+      (blog.postList || [])
+        .filter((post) => post.status === 'published')
+        .map((post) => toPublicBlogPost(post, blog))
+    )
+    .sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0))
+    .slice(0, limit);
+
+  res.status(200).json({ success: true, data: posts });
 };
 
 /**

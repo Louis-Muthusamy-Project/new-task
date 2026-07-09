@@ -17,6 +17,7 @@
  *   - themeService         (Theme Service)
  *   - inventoryService      (Inventory Service)
  *   - discountService        (Discount Service)
+ *   - notificationService     (Notification Service)
  *
  * Cross-service rules (e.g. "placing an order deducts stock and rolls up
  * into the customer record") live inside the owning service (OrderService),
@@ -36,6 +37,7 @@ const inventoryService = require('./inventoryService');
 const discountService = require('./discountService');
 const cartService = require('./cartService');
 const customerAuthService = require('./customerAuthService');
+const notificationService = require('./notificationService');
 
 module.exports = {
   productService,
@@ -48,4 +50,5 @@ module.exports = {
   discountService,
   cartService,
   customerAuthService,
+  notificationService,
 };

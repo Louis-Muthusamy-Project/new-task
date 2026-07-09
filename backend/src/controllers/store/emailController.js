@@ -17,6 +17,7 @@
 const mongoose = require('mongoose');
 const StoreEmailSettings = require('../../models/store/StoreEmailSettings');
 const Store = require('../../models/store/Store');
+const { notificationService } = require('../../services/store');
 
 const notFoundError = (message) => {
   const err = new Error(message);
@@ -36,13 +37,10 @@ const requireValidId = (id, label = 'id') => {
   }
 };
 
-async function getOrCreateEmailSettings(storeId) {
-  let settings = await StoreEmailSettings.findOne({ storeId });
-  if (!settings) {
-    settings = await StoreEmailSettings.create({ storeId });
-  }
-  return settings;
-}
+// Find-or-create now lives on NotificationService (the same module that
+// actually sends using these settings at order time) instead of being
+// redefined here — this controller is just the admin CRUD surface over it.
+const { getOrCreateEmailSettings } = notificationService;
 
 // ─────────────────────────────────────────────────────────────────────────
 // GET /api/store/:storeId/admin/email

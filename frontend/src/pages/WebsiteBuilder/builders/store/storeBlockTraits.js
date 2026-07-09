@@ -5,12 +5,17 @@
  * Registers custom component types for each store block with configurable traits.
  *
  * Traits allow merchants to configure blocks from the GrapesJS sidebar without editing HTML:
- * - Product Grid: limit, columns, sort, show price/button/rating, collection
- * - Featured Product: product ID
- * - Collections: limit, sort
- * - Testimonials: limit, autoplay
- * - Search: placeholder
+ * - Header: show cart icon, sticky
+ * - Menu: alignment, max links
  * - Hero: custom styling flags
+ * - Product Grid: limit, columns, sort, show price/button/rating, collection
+ * - Latest Products: limit, columns, show price/button
+ * - Featured Product: product ID
+ * - Featured Products (grid): limit, columns, show price/button
+ * - Collection Grid / Category Grid: limit, sort, columns
+ * - Testimonials: limit, autoplay
+ * - Blog: limit, columns, show excerpt
+ * - Search: placeholder
  * - Cart/Checkout/Footer: basic extensibility
  *
  * All configuration comes from data-* attributes only (no inline JS variables).
@@ -261,6 +266,158 @@ const searchTraits = [
 ];
 
 /**
+ * Header Traits
+ */
+const headerTraits = [
+  createTrait({
+    name: 'data-show-cart',
+    label: 'Show Cart Icon',
+    type: 'checkbox',
+    default: true,
+  }),
+  createTrait({
+    name: 'data-sticky',
+    label: 'Sticky on Scroll',
+    type: 'checkbox',
+    default: false,
+  }),
+];
+
+/**
+ * Menu Traits
+ */
+const menuTraits = [
+  createTrait({
+    name: 'data-alignment',
+    label: 'Alignment',
+    type: 'select',
+    default: 'center',
+    options: [
+      { value: 'left', name: 'Left' },
+      { value: 'center', name: 'Center' },
+      { value: 'right', name: 'Right' },
+    ],
+  }),
+  createTrait({
+    name: 'data-limit',
+    label: 'Max Links',
+    type: 'number',
+    default: 8,
+    min: 1,
+    max: 20,
+  }),
+];
+
+/**
+ * Latest Products Traits
+ */
+const latestProductsTraits = [
+  createTrait({
+    name: 'data-limit',
+    label: 'Products Limit',
+    type: 'number',
+    default: 8,
+    min: 1,
+    max: 50,
+  }),
+  createTrait({
+    name: 'data-columns',
+    label: 'Columns',
+    type: 'select',
+    default: '4',
+    options: [
+      { value: '2', name: '2 Columns' },
+      { value: '3', name: '3 Columns' },
+      { value: '4', name: '4 Columns' },
+      { value: '5', name: '5 Columns' },
+      { value: '6', name: '6 Columns' },
+    ],
+  }),
+  createTrait({
+    name: 'data-show-price',
+    label: 'Show Price',
+    type: 'checkbox',
+    default: true,
+  }),
+  createTrait({
+    name: 'data-show-button',
+    label: 'Show Add to Cart Button',
+    type: 'checkbox',
+    default: true,
+  }),
+];
+
+/**
+ * Featured Products (grid) Traits
+ */
+const featuredProductsTraits = [
+  createTrait({
+    name: 'data-limit',
+    label: 'Products Limit',
+    type: 'number',
+    default: 8,
+    min: 1,
+    max: 50,
+  }),
+  createTrait({
+    name: 'data-columns',
+    label: 'Columns',
+    type: 'select',
+    default: '4',
+    options: [
+      { value: '2', name: '2 Columns' },
+      { value: '3', name: '3 Columns' },
+      { value: '4', name: '4 Columns' },
+      { value: '5', name: '5 Columns' },
+      { value: '6', name: '6 Columns' },
+    ],
+  }),
+  createTrait({
+    name: 'data-show-price',
+    label: 'Show Price',
+    type: 'checkbox',
+    default: true,
+  }),
+  createTrait({
+    name: 'data-show-button',
+    label: 'Show Add to Cart Button',
+    type: 'checkbox',
+    default: true,
+  }),
+];
+
+/**
+ * Blog Traits
+ */
+const blogTraits = [
+  createTrait({
+    name: 'data-limit',
+    label: 'Posts to Show',
+    type: 'number',
+    default: 3,
+    min: 1,
+    max: 20,
+  }),
+  createTrait({
+    name: 'data-columns',
+    label: 'Columns',
+    type: 'select',
+    default: '3',
+    options: [
+      { value: '1', name: '1 Column' },
+      { value: '2', name: '2 Columns' },
+      { value: '3', name: '3 Columns' },
+    ],
+  }),
+  createTrait({
+    name: 'data-show-excerpt',
+    label: 'Show Excerpt',
+    type: 'checkbox',
+    default: true,
+  }),
+];
+
+/**
  * Register Store Block Component Types
  *
  * This function registers custom GrapesJS component types for each store block.
@@ -273,6 +430,38 @@ export function registerStoreTraits(editor) {
     console.warn('[storeBlockTraits] DomComponents not available');
     return;
   }
+
+  // ── Header Component ─────────────────────────────────────────────────
+  editor.DomComponents.addType('header', {
+    isComponent: (el) => {
+      return el.dataset?.storeBlock === 'header';
+    },
+    model: {
+      defaults: {
+        traits: headerTraits,
+        attributes: {
+          'data-show-cart': 'true',
+          'data-sticky': 'false',
+        },
+      },
+    },
+  });
+
+  // ── Menu Component ───────────────────────────────────────────────────
+  editor.DomComponents.addType('menu', {
+    isComponent: (el) => {
+      return el.dataset?.storeBlock === 'menu';
+    },
+    model: {
+      defaults: {
+        traits: menuTraits,
+        attributes: {
+          'data-alignment': 'center',
+          'data-limit': '8',
+        },
+      },
+    },
+  });
 
   // ── Hero Component ───────────────────────────────────────────────────
   editor.DomComponents.addType('hero', {
@@ -312,6 +501,24 @@ export function registerStoreTraits(editor) {
     },
   });
 
+  // ── Latest Products Component ────────────────────────────────────────
+  editor.DomComponents.addType('latest-products', {
+    isComponent: (el) => {
+      return el.dataset?.storeBlock === 'latest-products';
+    },
+    model: {
+      defaults: {
+        traits: latestProductsTraits,
+        attributes: {
+          'data-limit': '8',
+          'data-columns': '4',
+          'data-show-price': 'true',
+          'data-show-button': 'true',
+        },
+      },
+    },
+  });
+
   // ── Featured Product Component ───────────────────────────────────────
   editor.DomComponents.addType('featured-product', {
     isComponent: (el) => {
@@ -322,6 +529,24 @@ export function registerStoreTraits(editor) {
         traits: featuredProductTraits,
         attributes: {
           'data-product-id': '',
+          'data-show-price': 'true',
+          'data-show-button': 'true',
+        },
+      },
+    },
+  });
+
+  // ── Featured Products (grid) Component ───────────────────────────────
+  editor.DomComponents.addType('featured-products', {
+    isComponent: (el) => {
+      return el.dataset?.storeBlock === 'featured-products';
+    },
+    model: {
+      defaults: {
+        traits: featuredProductsTraits,
+        attributes: {
+          'data-limit': '8',
+          'data-columns': '4',
           'data-show-price': 'true',
           'data-show-button': 'true',
         },
@@ -374,6 +599,23 @@ export function registerStoreTraits(editor) {
           'data-limit': '3',
           'data-columns': '3',
           'data-autoplay': 'false',
+        },
+      },
+    },
+  });
+
+  // ── Blog Component ───────────────────────────────────────────────────
+  editor.DomComponents.addType('blog', {
+    isComponent: (el) => {
+      return el.dataset?.storeBlock === 'blog';
+    },
+    model: {
+      defaults: {
+        traits: blogTraits,
+        attributes: {
+          'data-limit': '3',
+          'data-columns': '3',
+          'data-show-excerpt': 'true',
         },
       },
     },

@@ -1,17 +1,35 @@
 // storeDynamicBlocks.js
 //
-// "Dynamic Blocks" — custom GrapesJS blocks for the Store Website Builder.
-// Registered into editor.BlockManager (category "Store") only when the
-// GrapesPageEditor is being used for a StorePage (see BccBuilder's
-// `isStore` flag / GrapesPageEditor's `isStore` prop).
+// "Dynamic Blocks" — the Shopify-style theme sections available to the
+// Store Website Builder: Header, Menu, Hero, Product Grid, Latest
+// Products, Featured Product(s), Collection Grid, Testimonials, Blog,
+// Search, Cart, Checkout, Footer. Registered into editor.BlockManager
+// (category "Store") only when the GrapesPageEditor is being used for a
+// StorePage (see BccBuilder's `isStore` flag / GrapesPageEditor's
+// `isStore` prop).
 //
-// Each block's `content` is a small HTML shell + an inline <script> that
-// fetches real data from the public storefront API
-// (backend/src/controllers/storeStorefrontController.js) and hydrates
-// itself client-side. This runs both inside the GrapesJS canvas iframe
+// This is the mechanism that makes the builder a *theme* builder rather
+// than a page builder that happens to embed product HTML: dropping a
+// block never writes a product's title/price/image into the page. Each
+// block's `content` is a small HTML shell (a `data-store-block="<type>"`
+// container holding only placeholder/loading markup and its editable
+// `data-*` settings) plus an inline <script> that fetches real data from
+// the public storefront API
+// (backend/src/controllers/store/storeStorefrontController.js) and
+// hydrates itself client-side. That's the only thing ever persisted when
+// a page is saved — the shell + script, never a snapshot of product data
+// — so what actually renders always reflects whatever is in the database
+// *at render time*, both inside the GrapesJS canvas iframe
 // (allowScripts: 1 is enabled in GrapesPageEditor's config) and on the
-// published storefront, so the block always shows live data rather than a
-// frozen snapshot taken at drop-time.
+// published storefront.
+//
+// Component, not markup: every block also has a matching
+// `editor.DomComponents.addType(...)` entry in
+// `../builders/store/storeBlockTraits.js`, which turns its `data-*`
+// settings into a Traits panel a merchant edits from the sidebar (limit,
+// columns, sort, which collection, etc.) instead of hand-editing HTML —
+// so a "block" here means an actual configurable component, the same way
+// a Shopify theme section + its schema settings do.
 //
 // Hydration pattern: every block wraps its markup in a container carrying
 // `data-store-block="<type>"`. Its script selects ALL not-yet-hydrated
@@ -112,7 +130,90 @@ const ICONS = {
   cart: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>',
   checkout: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><path d="M1 10h22"/></svg>',
   footer: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15h18"/></svg>',
+  header: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg>',
+  menu: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>',
+  latest: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>',
+  featuredGrid: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><polygon points="17.5 13.5 19 16.5 22.3 17 20 19.3 20.5 22.6 17.5 21 14.5 22.6 15 19.3 12.7 17 16 16.5"/></svg>',
+  blog: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 7h7M9 11h7"/></svg>',
 };
+
+// ── 0a. Header ───────────────────────────────────────────────────────────
+function headerBlock(apiBase, storeId) {
+  const content = `
+    <header class="store-block store-header" data-store-block="header" data-show-cart="true" data-sticky="false" style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding:16px 24px;background:#fff;border-bottom:1px solid #e5e7eb;font-family:sans-serif;">
+      <a href="#home" class="store-header-name" style="font-weight:800;font-size:18px;color:#111827;text-decoration:none;">Store</a>
+      <nav class="store-header-nav" style="display:flex;gap:20px;flex:1;justify-content:center;flex-wrap:wrap;">
+        <span style="color:#9ca3af;font-size:13px;">Loading menu…</span>
+      </nav>
+      <a href="#cart" class="store-header-cart" style="display:flex;align-items:center;gap:6px;color:#111827;text-decoration:none;font-weight:700;font-size:13px;">
+        ${ICONS.cart}
+        <span class="store-header-cart-count">0</span>
+      </a>
+    </header>
+    <script>
+    (function () {
+      ${runtimeHelpers(apiBase, storeId)}
+      function renderCartCount(el) {
+        var countEl = el.querySelector('.store-header-cart-count');
+        if (!countEl) return;
+        var items = readCart();
+        countEl.textContent = items.reduce(function (n, i) { return n + (i.quantity || 1); }, 0);
+      }
+      function hydrate(el) {
+        if (el.dataset.hydrated) return;
+        el.dataset.hydrated = '1';
+        if (el.dataset.sticky === 'true') { el.style.position = 'sticky'; el.style.top = '0'; el.style.zIndex = '30'; }
+        var cartLink = el.querySelector('.store-header-cart');
+        if (cartLink && el.dataset.showCart === 'false') cartLink.style.display = 'none';
+        renderCartCount(el);
+        window.addEventListener('store-cart-updated', function () { renderCartCount(el); });
+        fetchJson(API_BASE + '/store/' + STORE_ID + '/info').then(function (store) {
+          el.querySelectorAll('.store-header-name').forEach(function (n) { n.textContent = store.name || 'Store'; });
+        }).catch(function () {});
+        fetchJson(API_BASE + '/store/' + STORE_ID + '/pages').then(function (pages) {
+          var nav = el.querySelector('.store-header-nav');
+          if (!pages.length) { nav.innerHTML = ''; return; }
+          nav.innerHTML = pages.map(function (p) {
+            return '<a href="' + (p.isHome ? '#home' : '#' + p.slug) + '" style="color:#374151;text-decoration:none;font-size:14px;font-weight:600;">' + p.name + '</a>';
+          }).join('');
+        }).catch(function () { el.querySelector('.store-header-nav').innerHTML = ''; });
+      }
+      document.querySelectorAll('[data-store-block="header"]').forEach(hydrate);
+    })();
+    <\/script>
+  `;
+  return block({ id: 'store-header', label: 'Header', iconSvg: ICONS.header, content });
+}
+
+// ── 0b. Menu ─────────────────────────────────────────────────────────────
+function menuBlock(apiBase, storeId) {
+  const content = `
+    <nav class="store-block store-menu" data-store-block="menu" data-alignment="center" data-limit="8" style="display:flex;gap:24px;padding:14px 24px;font-family:sans-serif;">
+      <span style="color:#9ca3af;font-size:13px;">Loading menu…</span>
+    </nav>
+    <script>
+    (function () {
+      ${runtimeHelpers(apiBase, storeId)}
+      function hydrate(el) {
+        if (el.dataset.hydrated) return;
+        el.dataset.hydrated = '1';
+        var alignment = el.dataset.alignment || 'center';
+        var limit = parseInt(el.dataset.limit) || 8;
+        var justifyMap = { left: 'flex-start', center: 'center', right: 'flex-end' };
+        el.style.justifyContent = justifyMap[alignment] || 'center';
+        fetchJson(API_BASE + '/store/' + STORE_ID + '/pages').then(function (pages) {
+          pages = pages.slice(0, limit);
+          el.innerHTML = pages.length ? pages.map(function (p) {
+            return '<a href="' + (p.isHome ? '#home' : '#' + p.slug) + '" style="color:#111827;text-decoration:none;font-size:14px;font-weight:600;">' + p.name + '</a>';
+          }).join('') : '<span style="color:#9ca3af;font-size:13px;">No published pages yet.</span>';
+        }).catch(function () { el.innerHTML = '<span style="color:#ef4444;font-size:13px;">Could not load menu.</span>'; });
+      }
+      document.querySelectorAll('[data-store-block="menu"]').forEach(hydrate);
+    })();
+    <\/script>
+  `;
+  return block({ id: 'store-menu', label: 'Menu', iconSvg: ICONS.menu, content });
+}
 
 // ── 1. Hero ──────────────────────────────────────────────────────────────
 function heroBlock(apiBase, storeId) {
@@ -210,6 +311,56 @@ function productGridBlock(apiBase, storeId) {
   return block({ id: 'store-product-grid', label: 'Product Grid', iconSvg: ICONS.grid, content });
 }
 
+// ── 2b. Latest Products ──────────────────────────────────────────────────
+function latestProductsBlock(apiBase, storeId) {
+  const content = `
+    <section class="store-block store-latest-products" data-store-block="latest-products" data-limit="8" data-columns="4" data-show-price="true" data-show-button="true" style="padding:48px 24px;font-family:sans-serif;">
+      <h2 style="margin:0 0 20px;font-size:24px;font-weight:800;color:#111827;">New arrivals</h2>
+      <div class="store-latest-products-items" style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px;">
+        <div style="color:#6b7280;">Loading products…</div>
+      </div>
+    </section>
+    <script>
+    (function () {
+      ${runtimeHelpers(apiBase, storeId)}
+      function card(p, opts) {
+        var img = p.image ? '<img src="' + p.image + '" alt="" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;background:#f3f4f6;">' :
+          '<div style="width:100%;aspect-ratio:1/1;border-radius:8px;background:#f3f4f6;"></div>';
+        var price = opts.showPrice ? '<div style="color:#374151;font-weight:600;">' + money(p.price, p.currency) + '</div>' : '';
+        var button = opts.showButton ? '<button type="button" data-add-to-cart="' + p.id + '" style="border:none;border-radius:6px;background:#111827;color:#fff;padding:8px 10px;font-weight:700;cursor:pointer;">Add to cart</button>' : '';
+        return '<div style="display:flex;flex-direction:column;gap:8px;">' + img +
+          '<div style="font-weight:700;color:#111827;font-size:14px;">' + (p.title || '') + '</div>' +
+          price + button +
+          '</div>';
+      }
+      function hydrate(el) {
+        if (el.dataset.hydrated) return;
+        el.dataset.hydrated = '1';
+        var wrap = el.querySelector('.store-latest-products-items');
+        var limit = parseInt(el.dataset.limit) || 8;
+        var columns = parseInt(el.dataset.columns) || 4;
+        var showPrice = el.dataset.showPrice !== 'false';
+        var showButton = el.dataset.showButton !== 'false';
+        wrap.style.gridTemplateColumns = 'repeat(' + columns + ',1fr)';
+        fetchJson(API_BASE + '/store/' + STORE_ID + '/products/latest?limit=' + limit).then(function (products) {
+          if (!products.length) { wrap.innerHTML = '<div style="color:#6b7280;">No products yet.</div>'; return; }
+          wrap.innerHTML = products.map(function (p) { return card(p, { showPrice: showPrice, showButton: showButton }); }).join('');
+          wrap.addEventListener('click', function (e) {
+            var btn = e.target.closest('[data-add-to-cart]');
+            if (!btn) return;
+            addToCart(btn.getAttribute('data-add-to-cart'), 1);
+            btn.textContent = 'Added ✓';
+            setTimeout(function () { btn.textContent = 'Add to cart'; }, 1200);
+          });
+        }).catch(function () { wrap.innerHTML = '<div style="color:#ef4444;">Could not load products.</div>'; });
+      }
+      document.querySelectorAll('[data-store-block="latest-products"]').forEach(hydrate);
+    })();
+    <\/script>
+  `;
+  return block({ id: 'store-latest-products', label: 'Latest Products', iconSvg: ICONS.latest, content });
+}
+
 // ── 3. Featured Product ──────────────────────────────────────────────────
 function featuredProductBlock(apiBase, storeId) {
   const content = `
@@ -262,6 +413,56 @@ function featuredProductBlock(apiBase, storeId) {
   return block({ id: 'store-featured-product', label: 'Featured Product', iconSvg: ICONS.featured, content });
 }
 
+// ── 3b. Featured Products (grid) ─────────────────────────────────────────
+function featuredProductsBlock(apiBase, storeId) {
+  const content = `
+    <section class="store-block store-featured-products" data-store-block="featured-products" data-limit="8" data-columns="4" data-show-price="true" data-show-button="true" style="padding:48px 24px;font-family:sans-serif;">
+      <h2 style="margin:0 0 20px;font-size:24px;font-weight:800;color:#111827;">Featured products</h2>
+      <div class="store-featured-products-items" style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px;">
+        <div style="color:#6b7280;">Loading products…</div>
+      </div>
+    </section>
+    <script>
+    (function () {
+      ${runtimeHelpers(apiBase, storeId)}
+      function card(p, opts) {
+        var img = p.image ? '<img src="' + p.image + '" alt="" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;background:#f3f4f6;">' :
+          '<div style="width:100%;aspect-ratio:1/1;border-radius:8px;background:#f3f4f6;"></div>';
+        var price = opts.showPrice ? '<div style="color:#374151;font-weight:600;">' + money(p.price, p.currency) + '</div>' : '';
+        var button = opts.showButton ? '<button type="button" data-add-to-cart="' + p.id + '" style="border:none;border-radius:6px;background:#111827;color:#fff;padding:8px 10px;font-weight:700;cursor:pointer;">Add to cart</button>' : '';
+        return '<div style="display:flex;flex-direction:column;gap:8px;">' + img +
+          '<div style="font-weight:700;color:#111827;font-size:14px;">' + (p.title || '') + '</div>' +
+          price + button +
+          '</div>';
+      }
+      function hydrate(el) {
+        if (el.dataset.hydrated) return;
+        el.dataset.hydrated = '1';
+        var wrap = el.querySelector('.store-featured-products-items');
+        var limit = parseInt(el.dataset.limit) || 8;
+        var columns = parseInt(el.dataset.columns) || 4;
+        var showPrice = el.dataset.showPrice !== 'false';
+        var showButton = el.dataset.showButton !== 'false';
+        wrap.style.gridTemplateColumns = 'repeat(' + columns + ',1fr)';
+        fetchJson(API_BASE + '/store/' + STORE_ID + '/products/featured?limit=' + limit).then(function (products) {
+          if (!products.length) { wrap.innerHTML = '<div style="color:#6b7280;">No featured products yet.</div>'; return; }
+          wrap.innerHTML = products.map(function (p) { return card(p, { showPrice: showPrice, showButton: showButton }); }).join('');
+          wrap.addEventListener('click', function (e) {
+            var btn = e.target.closest('[data-add-to-cart]');
+            if (!btn) return;
+            addToCart(btn.getAttribute('data-add-to-cart'), 1);
+            btn.textContent = 'Added ✓';
+            setTimeout(function () { btn.textContent = 'Add to cart'; }, 1200);
+          });
+        }).catch(function () { wrap.innerHTML = '<div style="color:#ef4444;">Could not load products.</div>'; });
+      }
+      document.querySelectorAll('[data-store-block="featured-products"]').forEach(hydrate);
+    })();
+    <\/script>
+  `;
+  return block({ id: 'store-featured-products', label: 'Featured Products', iconSvg: ICONS.featuredGrid, content });
+}
+
 // ── 4. Collection ────────────────────────────────────────────────────────
 function collectionBlock(apiBase, storeId) {
   const content = `
@@ -300,7 +501,7 @@ function collectionBlock(apiBase, storeId) {
     })();
     <\/script>
   `;
-  return block({ id: 'store-collection', label: 'Collection', iconSvg: ICONS.collection, content });
+  return block({ id: 'store-collection', label: 'Collection Grid', iconSvg: ICONS.collection, content });
 }
 
 // ── 5. Category Grid ────────────────────────────────────────────────────
@@ -396,6 +597,52 @@ function testimonialsBlock(apiBase, storeId) {
     <\/script>
   `;
   return block({ id: 'store-testimonials', label: 'Testimonials', iconSvg: ICONS.testimonials, content });
+}
+
+// ── 6b. Blog ──────────────────────────────────────────────────────────────
+function blogBlock(apiBase, storeId) {
+  const content = `
+    <section class="store-block store-blog" data-store-block="blog" data-limit="3" data-columns="3" data-show-excerpt="true" style="padding:48px 24px;font-family:sans-serif;">
+      <h2 style="margin:0 0 20px;font-size:24px;font-weight:800;color:#111827;">From the blog</h2>
+      <div class="store-blog-items" style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;">
+        <div style="color:#6b7280;">Loading posts…</div>
+      </div>
+    </section>
+    <script>
+    (function () {
+      ${runtimeHelpers(apiBase, storeId)}
+      function formatDate(d) {
+        if (!d) return '';
+        try { return new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); }
+        catch (e) { return ''; }
+      }
+      function card(post, showExcerpt) {
+        var excerpt = showExcerpt && post.excerpt ? '<p style="margin:8px 0 0;color:#4b5563;font-size:13px;line-height:1.6;">' + post.excerpt + '</p>' : '';
+        var date = formatDate(post.publishedAt);
+        return '<a href="' + (post.url || '#') + '" style="text-decoration:none;color:inherit;display:block;border:1px solid #e5e7eb;border-radius:10px;padding:18px;">' +
+          (post.category ? '<div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">' + post.category + '</div>' : '') +
+          '<div style="font-weight:800;color:#111827;font-size:16px;line-height:1.4;">' + (post.title || '') + '</div>' +
+          excerpt +
+          (date ? '<div style="margin-top:10px;font-size:12px;color:#9ca3af;">' + date + '</div>' : '') +
+          '</a>';
+      }
+      function hydrate(el) {
+        if (el.dataset.hydrated) return;
+        el.dataset.hydrated = '1';
+        var wrap = el.querySelector('.store-blog-items');
+        var limit = parseInt(el.dataset.limit) || 3;
+        var columns = parseInt(el.dataset.columns) || 3;
+        var showExcerpt = el.dataset.showExcerpt !== 'false';
+        wrap.style.gridTemplateColumns = 'repeat(' + columns + ',1fr)';
+        fetchJson(API_BASE + '/store/' + STORE_ID + '/blog/posts?limit=' + limit).then(function (posts) {
+          wrap.innerHTML = posts.length ? posts.map(function (p) { return card(p, showExcerpt); }).join('') : '<div style="color:#6b7280;">No blog posts yet.</div>';
+        }).catch(function () { wrap.innerHTML = '<div style="color:#ef4444;">Could not load blog posts.</div>'; });
+      }
+      document.querySelectorAll('[data-store-block="blog"]').forEach(hydrate);
+    })();
+    <\/script>
+  `;
+  return block({ id: 'store-blog', label: 'Blog', iconSvg: ICONS.blog, content });
 }
 
 // ── 7. Search ─────────────────────────────────────────────────────────────
@@ -649,7 +896,7 @@ function footerBlock(apiBase, storeId) {
 }
 
 /**
- * Registers all 9 store blocks into the given GrapesJS editor's
+ * Registers every Store theme block into the given GrapesJS editor's
  * BlockManager under the "Store" category. Safe to call more than once
  * (BlockManager.add upserts by id).
  */
@@ -657,12 +904,17 @@ export function registerStoreBlocks(editor, { apiBase, storeId }) {
   if (!editor?.BlockManager || !storeId) return;
 
   const builders = [
+    headerBlock,
+    menuBlock,
     heroBlock,
     productGridBlock,
+    latestProductsBlock,
     featuredProductBlock,
+    featuredProductsBlock,
     collectionBlock,
     categoryGridBlock,
     testimonialsBlock,
+    blogBlock,
     searchBlock,
     cartBlock,
     checkoutBlock,

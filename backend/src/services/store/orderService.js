@@ -3,19 +3,33 @@
 /**
  * orderService.js — Order Service
  *
+ * The single place that orchestrates everything that must happen when a
+ * customer buys: create the order, reduce inventory, roll the sale into
+ * the customer's history, and send the confirmation. Nothing outside this
+ * file decrements stock, writes ordersCount/totalSpent, or sends a
+ * transactional email — every one of those is delegated to its own
+ * service (InventoryService / CustomerService / NotificationService) and
+ * called from exactly one place: here. Analytics and the admin Orders
+ * Module read the same `StoreOrder` records this function writes (see
+ * analyticsController.getAnalytics and orderController.js) rather than a
+ * denormalized copy, so both reflect a new order automatically, with no
+ * separate "sync" step required.
+ *
  * Owns every business rule around StoreOrder:
  *   - Admin-facing List / View / Update Status / Delete (previously
  *     orderController.js).
  *   - The storefront checkout flow — re-pricing every line server-side,
  *     checking/decrementing stock via InventoryService, resolving a
- *     coupon code via DiscountService, and rolling the order into the
- *     customer's history via CustomerService (previously
+ *     coupon code via DiscountService, rolling the order into the
+ *     customer's history via CustomerService, and sending the order
+ *     confirmation via NotificationService (previously
  *     storeStorefrontController.createOrder, which duplicated pricing
- *     logic and never touched inventory or the customer record at all).
+ *     logic and never touched inventory, the customer record, or a
+ *     confirmation email at all).
  *
  * Centralizing checkout here means there is exactly one place "how is an
- * order priced and what happens to stock when one is placed" is decided,
- * instead of that logic living only inside a single controller function.
+ * order priced and what happens when one is placed" is decided, instead
+ * of that logic living only inside a single controller function.
  */
 
 const StoreOrder = require('../../models/store/StoreOrder');
@@ -26,6 +40,7 @@ const inventoryService = require('./inventoryService');
 const discountService = require('./discountService');
 const customerService = require('./customerService');
 const productService = require('./productService');
+const notificationService = require('./notificationService');
 const { emitStoreEvent } = require('./storeEvents');
 
 // Payment methods a shopper can choose at the Payment step of checkout —
@@ -108,6 +123,24 @@ async function updateOrderStatus(storeId, id, status) {
   }
 
   emitStoreEvent(storeId, 'order.updated', { orderId: order._id, status: order.status });
+
+  // Shipped/Cancelled are the two merchant-driven transitions a customer
+  // actually needs to hear about — routed through the same
+  // NotificationService.resolveAndSend() checkout uses for the initial
+  // confirmation, so there is still exactly one implementation of
+  // "compose + deliver a transactional email," not a second copy living
+  // here. Never blocks or fails the status update itself.
+  if (status === 'Shipped' || status === 'Cancelled') {
+    try {
+      const customer = order.customerId
+        ? await StoreCustomer.findOne({ _id: order.customerId, storeId }).lean()
+        : null;
+      await notificationService.sendOrderStatusEmail(storeId, order, customer, status);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[OrderService] status notification failed for order', order._id, err);
+    }
+  }
 
   return order;
 }
@@ -219,11 +252,13 @@ async function createOrder(storeId, body) {
     console.error('[OrderService] inventory decrement failed for order', order._id, err);
   }
 
+  // A signed-in shopper's own account is the customer of record; a guest
+  // checkout falls back to find-or-create-by-email exactly as before.
+  // Hoisted above the try block (rather than declared inside it) so the
+  // confirmation-email step below can use whichever customer record was
+  // resolved here, instead of re-deriving it a second time.
+  let customer = null;
   try {
-    // A signed-in shopper's own account is the customer of record; a
-    // guest checkout falls back to find-or-create-by-email exactly as
-    // before.
-    let customer = null;
     if (body?.customerId) {
       customer = await StoreCustomer.findOne({ _id: body.customerId, storeId, isDeleted: false });
       if (customer) {
@@ -246,6 +281,21 @@ async function createOrder(storeId, body) {
 
   if (discountResult?.discountId) {
     await discountService.markUsed(discountResult.discountId);
+  }
+
+  // Send Confirmation — the last leg of the sync loop. Routed through
+  // NotificationService rather than composing/sending anything here, so
+  // OrderService stays the *orchestrator* (decide when a confirmation
+  // goes out) while NotificationService remains the only place that knows
+  // *how* to render a template and deliver it. A delivery failure is
+  // logged and recorded on the order (see NotificationService), never
+  // thrown — a shopper's order is complete the moment it's created,
+  // regardless of whether the email round-trips.
+  try {
+    await notificationService.sendOrderConfirmation(storeId, order, customer);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[OrderService] confirmation email failed for order', order._id, err);
   }
 
   // Feeds the Inventory step's real-time fan-out (already wired via

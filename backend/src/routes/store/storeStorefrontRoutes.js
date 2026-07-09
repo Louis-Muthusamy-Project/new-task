@@ -7,9 +7,13 @@ const { storeReadCache } = require('../../middlewares/storeCache');
 const router = express.Router();
 
 // Mounted under /api/store
-// Public, read-only data used by the GrapesJS "Dynamic Blocks"
-// (Hero, Product Grid, Featured Product, Collection, Testimonials, Search,
-// Cart, Checkout, Footer) — see storeDynamicBlocks.js on the frontend.
+// Public, read-only data used by the GrapesJS "Dynamic Blocks" — the
+// Shopify-style theme sections a merchant drops onto a page (Header, Menu,
+// Hero, Product Grid, Latest Products, Featured Products, Collection Grid,
+// Testimonials, Blog, Search, Cart, Checkout, Footer) — see
+// storeDynamicBlocks.js on the frontend. Every block is a small HTML shell
+// + script that reads from these routes at render time; none of them save
+// product/collection/post data into the page itself.
 //
 // Caching: these reads are the highest-traffic part of a live storefront
 // (every page load re-fetches info/products/collections/testimonials) and
@@ -43,6 +47,8 @@ router.get('/:storeId/collections', cache, asyncHandler(storeStorefrontControlle
 router.get('/:storeId/collections/:collectionId', cache, asyncHandler(storeStorefrontController.getCollection));
 
 router.get('/:storeId/testimonials', cache, asyncHandler(storeStorefrontController.listTestimonials));
+
+router.get('/:storeId/blog/posts', cache, asyncHandler(storeStorefrontController.listBlogPosts));
 
 router.get('/:storeId/search', asyncHandler(storeStorefrontController.search));
 
