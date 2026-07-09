@@ -14,6 +14,7 @@
 const StoreDiscount = require('../../models/store/StoreDiscount');
 const Store = require('../../models/store/Store');
 const { notFoundError, badRequestError } = require('./errors');
+const { emitStoreEvent } = require('./storeEvents');
 
 const DISCOUNT_TYPES = ['Percentage', 'Flat', 'FreeShipping'];
 
@@ -83,11 +84,19 @@ async function createDiscount(storeId, body) {
   const existing = await StoreDiscount.findOne({ storeId, code: updates.code, isDeleted: false }).lean();
   if (existing) throw badRequestError('A discount with this coupon code already exists.');
 
-  return StoreDiscount.create({
+  const created = await StoreDiscount.create({
     storeId,
     isActive: true,
     ...updates,
   });
+
+  // Storefront-visible effect: a new active coupon can immediately change
+  // what a shopper's already-open cart/checkout would total if they apply
+  // it. No public listing of discount codes exists (codes are never
+  // browsable), so this mainly matters for CartContext re-validating a
+  // code a shopper already typed in.
+  emitStoreEvent(storeId, 'discount.created', { discountId: created._id, code: created.code });
+  return created;
 }
 
 async function updateDiscount(storeId, id, body) {
@@ -115,6 +124,14 @@ async function updateDiscount(storeId, id, body) {
 
   Object.assign(discount, updates);
   await discount.save();
+  // Covers every admin edit that can change checkout math for a shopper
+  // already holding this code applied: value, type, isActive (toggled
+  // off), date window, minimum order amount.
+  emitStoreEvent(storeId, 'discount.updated', {
+    discountId: discount._id,
+    code: discount.code,
+    isActive: discount.isActive,
+  });
   return discount;
 }
 
@@ -125,6 +142,7 @@ async function deleteDiscount(storeId, id) {
     { new: true }
   );
   if (!discount) throw notFoundError('Discount not found.');
+  emitStoreEvent(storeId, 'discount.deleted', { discountId: discount._id, code: discount.code });
   return discount;
 }
 

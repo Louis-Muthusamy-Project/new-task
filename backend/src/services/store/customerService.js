@@ -12,6 +12,7 @@
 const StoreCustomer = require('../../models/store/StoreCustomer');
 const Store = require('../../models/store/Store');
 const { notFoundError, badRequestError } = require('./errors');
+const { emitStoreEvent } = require('./storeEvents');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ALLOWED_FIELDS = ['firstName', 'lastName', 'email', 'phone', 'addresses', 'tags'];
@@ -78,7 +79,13 @@ async function createCustomer(storeId, body) {
     if (existing) throw badRequestError('A customer with this email already exists.');
   }
 
-  return StoreCustomer.create({ storeId, ...updates });
+  const created = await StoreCustomer.create({ storeId, ...updates });
+  // Not publicly listed on the storefront (no public customer directory),
+  // but broadcast anyway: an already-signed-in shopper's own "my account"
+  // view and every open Admin tab/user both benefit from this landing
+  // without a manual refresh.
+  emitStoreEvent(storeId, 'customer.created', { customerId: created._id });
+  return created;
 }
 
 async function updateCustomer(storeId, id, body) {
@@ -102,6 +109,7 @@ async function updateCustomer(storeId, id, body) {
 
   Object.assign(customer, updates);
   await customer.save();
+  emitStoreEvent(storeId, 'customer.updated', { customerId: customer._id });
   return customer;
 }
 
@@ -112,6 +120,7 @@ async function deleteCustomer(storeId, id) {
     { new: true }
   );
   if (!customer) throw notFoundError('Customer not found.');
+  emitStoreEvent(storeId, 'customer.deleted', { customerId: customer._id });
   return customer;
 }
 
@@ -144,6 +153,10 @@ async function recordOrder(storeId, { name, email }, orderTotal) {
   customer.ordersCount += 1;
   customer.totalSpent += orderTotal || 0;
   await customer.save();
+  // Keeps an open Admin Customers tab's ordersCount/totalSpent columns
+  // live the moment a checkout completes, same as everywhere else a
+  // customer record changes.
+  emitStoreEvent(storeId, 'customer.updated', { customerId: customer._id });
   return customer;
 }
 

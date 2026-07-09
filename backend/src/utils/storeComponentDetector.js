@@ -211,6 +211,20 @@ function classify($, el) {
     }
   }
 
+  // ── Widget Area (WordPress sidebar/footer widgets — "Widgets" in the
+  //    import scope) — recognized by WordPress's own conventions
+  //    (`.widget`/`.widget-area`/`.sidebar` class, `<aside>`, or
+  //    `role="complementary"`). Tagged and left completely untouched
+  //    (PASSTHROUGH_TYPES) since a widget's content is arbitrary static
+  //    theme HTML, not a product/collection listing to hydrate ────────
+  if (
+    tag === 'aside' ||
+    $el.attr('role') === 'complementary' ||
+    /\b(widget-area|widget|sidebar)\b/i.test(cls)
+  ) {
+    return { type: 'widget-area', score: 0.75 };
+  }
+
   // ── Product Grid vs Category Grid: both are repeating-sibling grids;
   //    Product Grid items have a price, Category Grid items don't ────────
   const repeaters = repeatingChildren($, el, 3);

@@ -14,6 +14,7 @@ const COMPONENT_LABELS = {
   search: 'Search Box',
   'cart-button': 'Cart Button',
   'checkout-button': 'Checkout Button',
+  'widget-area': 'Widget',
 };
 
 
@@ -27,7 +28,48 @@ const AUTO_CONVERTIBLE_TYPES = new Set([
   'search',
   'cart-button',
   'checkout-button',
+  // Widget areas (WordPress sidebar/footer widgets) are confidently
+  // classifiable but intentionally NOT swapped for a live data-driven
+  // component — a widget's content is arbitrary static theme HTML (a
+  // text blob, a social-links list, a hand-placed image), not a
+  // product/collection listing, so there is nothing dynamic to hydrate.
+  // "Auto-convertible" here just means "recognized and taggable with
+  // confidence" — see PASSTHROUGH_TYPES below for how the frontend
+  // treats it differently from the data-driven types.
+  'widget-area',
 ]);
+
+/**
+ * Types that ARE auto-tagged (so they show up in the operator-facing
+ * summary and carry a stable `data-store-block` attribute) but whose
+ * original markup should render byte-for-byte as-is — no React component
+ * mounted in their place. Only `widget-area` today; kept as its own set
+ * (rather than folding this logic into AUTO_CONVERTIBLE_TYPES) so a
+ * future passthrough type doesn't have to be reasoned about alongside
+ * the data-driven ones above.
+ */
+const PASSTHROUGH_TYPES = new Set(['widget-area']);
+
+/**
+ * type -> live React component this block hydrates into on the
+ * storefront/preview (see frontend/.../storefront/ThemeRenderer.jsx,
+ * which is the single place this mapping is actually consumed — kept
+ * here too as documented source of truth for anything backend-side that
+ * needs to describe the pipeline's behavior, e.g. import warnings).
+ * `null` means "render the original markup untouched" (PASSTHROUGH_TYPES).
+ */
+const THEME_COMPONENT_MAP = {
+  header: 'Header',
+  footer: 'Footer',
+  navigation: 'Menu',
+  search: 'SearchBar',
+  'product-grid': 'ImportedProductGrid',
+  'category-grid': 'CollectionsGrid',
+  'cart-button': 'CartButton',
+  'checkout-button': 'CheckoutButton',
+  hero: null,
+  'widget-area': null,
+};
 
 /**
  * Types with no store-scoped backend surface to wire into today (see
@@ -63,5 +105,7 @@ module.exports = {
   COMPONENT_LABELS,
   AUTO_CONVERTIBLE_TYPES,
   MANUAL_MAPPING_TYPES,
+  PASSTHROUGH_TYPES,
+  THEME_COMPONENT_MAP,
   resolveStoreBlockPlaceholders,
 };

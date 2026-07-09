@@ -58,7 +58,7 @@ function makeGuestToken() {
 }
 
 export function CartProvider({ children }) {
-  const { storeId } = useStorefront();
+  const { storeId, subscribeToStoreEvents } = useStorefront();
 
   const [guestToken, setGuestToken] = useState(null);
   // { token, customer } | null -- null means "shopping as a guest"
@@ -117,6 +117,28 @@ export function CartProvider({ children }) {
   useEffect(() => {
     if (sessionLoaded) refreshCart();
   }, [sessionLoaded, refreshCart]);
+
+  // Real-time re-pricing — a cart's totals depend on live product prices,
+  // inventory (an item can sell out from under a shopper), and any
+  // applied discount code's current validity. Rather than each of those
+  // three concerns re-fetching separately, one subscription reloads the
+  // single CartView the server already recomputes from scratch on every
+  // fetch (cartService.getCartView), so this always converges on the
+  // same truth the real checkout would charge.
+  const hasCart = !!cart;
+  useEffect(() => {
+    if (!hasCart) return undefined; // nothing to keep in sync yet
+    const unsubscribe = subscribeToStoreEvents((event) => {
+      if (
+        event.type.startsWith('product.') ||
+        event.type === 'inventory.updated' ||
+        event.type.startsWith('discount.')
+      ) {
+        refreshCart();
+      }
+    });
+    return unsubscribe;
+  }, [hasCart, subscribeToStoreEvents, refreshCart]);
 
   // Wraps every mutation so callers get the freshly-updated cart back and
   // the shared `cart` state stays in sync, without every call site

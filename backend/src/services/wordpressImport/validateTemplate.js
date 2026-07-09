@@ -51,6 +51,21 @@ const BLOCKED_PATH_SEGMENTS = new Set(['wp-content/uploads', 'wp-content/plugins
 
 const WORDPRESS_MARKERS = ['wp-content/', 'wp-includes/', 'wp-json/'];
 
+// Path substrings that indicate commerce *data* (products/orders/
+// customers) rather than theme/layout files — out of scope for this
+// pipeline by design (see the scope-guard check in
+// validateWordPressStructure below).
+const COMMERCE_DATA_MARKERS = [
+  'wp-json/wc/',
+  'woocommerce_schema',
+  'wc-order-export',
+  'wc-product-export',
+  'wc-customer-export',
+  '/exports/orders',
+  '/exports/products',
+  '/exports/customers',
+];
+
 // Uncompressed-total ceiling. Bounded well above the existing 200 MB multer
 // (compressed) limit so it only ever fires on a genuinely anomalous archive.
 // The WordPress Simply Static exports we support often include a large number
@@ -212,6 +227,22 @@ async function validateWordPressStructure(zip) {
     const lowerPath = zipPath.toLowerCase();
     if (WORDPRESS_MARKERS.some((marker) => lowerPath.includes(marker))) {
       detectedAsWordPress = true;
+    }
+
+    // ── Scope guard: this pipeline imports a Theme only (layout, HTML,
+    // CSS, assets, sections, header/footer, menus, widgets) — never
+    // product, order, or customer data. A Simply Static export never
+    // contains these, but a WooCommerce (or similar plugin) data dump
+    // occasionally gets zipped up alongside a theme export by mistake.
+    // Any such file is skipped and reported — not read, not mapped onto
+    // StoreTemplate.pages, and never turned into a StoreProduct/
+    // StoreOrder/StoreCustomer record. ──────────────────────────────────
+    if (COMMERCE_DATA_MARKERS.some((marker) => lowerPath.includes(marker))) {
+      warnings.push(
+        `Skipped "${zipPath}" — this import brings in the Theme only (layout/HTML/CSS/assets/sections); ` +
+          `product, order, and customer data is never imported.`
+      );
+      continue;
     }
 
     totalUncompressedBytes += uncompressedSize;

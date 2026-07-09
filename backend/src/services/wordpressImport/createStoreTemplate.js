@@ -69,7 +69,14 @@ async function createStoreTemplateDocument({
     uploadedByRole,
     uploadedBy: uploadedBy || null,
     source: 'wordpress-import',
-    sourceMeta: sourceMeta || null,
+    // `assetKind: 'theme'` makes explicit (in the document itself, not
+    // just in code comments) that a WordPress import is a Theme —
+    // layout/HTML/CSS/assets/sections/header/footer/menus/widgets — and
+    // never carries product/order/customer records. Every Store created
+    // from it starts with zero commerce data regardless of what the
+    // source WordPress site had; a merchant adds their own
+    // products/collections afterward through the normal Store admin.
+    sourceMeta: { ...(sourceMeta || {}), assetKind: 'theme' },
   });
 }
 

@@ -65,10 +65,35 @@ const DEMO_PRODUCT_SEED = [
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /api/store/create-from-template
-// Body: { templateId, storeName, currency, status, installDemo, description }
+// createStoreFromTemplateDocument — reusable core
+//
+// The actual "clone a StoreTemplate into a live Store" logic (steps 1-6),
+// extracted out of the route handler so it can be called from a second
+// entry point: the WordPress live-import route
+// (routes/wordpressImportRoutes.js POST /upload-live), which imports a ZIP
+// straight into a StoreTemplate (via importWordPressZip) and then wants a
+// live Store created from that template in the same request — without
+// duplicating any of Choose/Clone/Create/Default-Pages/Demo-Products here.
+//
+// Takes plain option values (not req/res) and either returns the created
+// records or throws an Error with `.statusCode` set, so both callers (the
+// HTTP route below and the WordPress live-import route) can handle errors
+// the same way asyncHandler/errorMiddleware already do everywhere else.
+//
+// @param {Object} opts
+// @param {string} opts.templateId
+// @param {string} [opts.storeName]
+// @param {string} [opts.name]              alias for storeName
+// @param {string} [opts.currency]
+// @param {string} [opts.status]
+// @param {boolean|string} [opts.installDemo]
+// @param {string} [opts.description]
+// @param {string} [opts.domain]
+// @param {string} [opts.category]
+// @param {string|import('mongoose').Types.ObjectId|null} [opts.ownerId]
+// @returns {Promise<{ store, pages, products, collections, discount }>}
 // ─────────────────────────────────────────────────────────────────────────────
-const createStoreFromTemplate = asyncHandler(async (req, res) => {
+async function createStoreFromTemplateDocument(opts = {}) {
   const {
     templateId,
     storeName,
@@ -79,21 +104,28 @@ const createStoreFromTemplate = asyncHandler(async (req, res) => {
     description,
     domain,
     category,
-  } = req.body || {};
+    ownerId = null,
+  } = opts;
 
   if (!templateId) {
-    return res.status(400).json({ success: false, error: 'templateId is required.' });
+    const error = new Error('templateId is required.');
+    error.statusCode = 400;
+    throw error;
   }
 
   const resolvedName = (storeName || name || '').trim();
   if (!resolvedName) {
-    return res.status(400).json({ success: false, error: 'storeName is required.' });
+    const error = new Error('storeName is required.');
+    error.statusCode = 400;
+    throw error;
   }
 
   // ── 1. Choose Template ──────────────────────────────────────────────────
   const template = await StoreTemplate.findById(templateId);
   if (!template || template.status === 'Archived') {
-    return res.status(404).json({ success: false, error: 'Store template not found.' });
+    const error = new Error('Store template not found.');
+    error.statusCode = 404;
+    throw error;
   }
 
   // ── 2. Clone Template ────────────────────────────────────────────────────
@@ -103,8 +135,6 @@ const createStoreFromTemplate = asyncHandler(async (req, res) => {
   const clonedTheme = deepClone(template.theme) || {};
 
   // ── 3. Create Store ──────────────────────────────────────────────────────
-  const ownerId = req?.user?.id || req?.user?._id || null;
-
   const store = await Store.create({
     user: ownerId,
     ownerId,
@@ -223,16 +253,53 @@ const createStoreFromTemplate = asyncHandler(async (req, res) => {
     .populate('collections')
     .populate('discounts');
 
-  return res.status(201).json({
-    success: true,
-    data: {
-      store: populatedStore,
-      pages: createdPages,
-      products: createdProducts,
-      collections: createdCollections,
-      discount: createdDiscount,
-    },
+  return {
+    store: populatedStore,
+    pages: createdPages,
+    products: createdProducts,
+    collections: createdCollections,
+    discount: createdDiscount,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/store/create-from-template
+// Body: { templateId, storeName, currency, status, installDemo, description }
+//
+// Thin HTTP wrapper around createStoreFromTemplateDocument — parses the
+// request, delegates to the reusable core, and shapes the response. All
+// Choose/Clone/Create/Default-Pages/Demo-Products logic lives in the core
+// function above.
+// ─────────────────────────────────────────────────────────────────────────────
+const createStoreFromTemplate = asyncHandler(async (req, res) => {
+  const {
+    templateId,
+    storeName,
+    name,
+    currency,
+    status,
+    installDemo,
+    description,
+    domain,
+    category,
+  } = req.body || {};
+
+  const ownerId = req?.user?.id || req?.user?._id || null;
+
+  const result = await createStoreFromTemplateDocument({
+    templateId,
+    storeName,
+    name,
+    currency,
+    status,
+    installDemo,
+    description,
+    domain,
+    category,
+    ownerId,
   });
+
+  return res.status(201).json({ success: true, data: result });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -344,4 +411,14 @@ const previewStore = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { createStoreFromTemplate, createStore, listStores, previewStore };
+module.exports = {
+  createStoreFromTemplate,
+  createStore,
+  listStores,
+  previewStore,
+  // Reused by routes/wordpressImportRoutes.js POST /upload-live so a
+  // WordPress ZIP can be imported straight into a live Store (Template ->
+  // Store, in one request) without duplicating the Choose/Clone/Create/
+  // Default-Pages/Demo-Products logic above.
+  createStoreFromTemplateDocument,
+};

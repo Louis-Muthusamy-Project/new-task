@@ -16,6 +16,7 @@
 
 const Store = require('../../models/store/Store');
 const { notFoundError } = require('./errors');
+const { emitStoreEvent } = require('./storeEvents');
 
 const DEFAULT_THEME = {
   colors: { primary: '#111827', secondary: '#6B7280', background: '#FFFFFF', text: '#111827' },
@@ -46,6 +47,12 @@ async function updateTheme(storeId, patch = {}) {
   const nextTheme = mergeTheme(mergeTheme(DEFAULT_THEME, store.theme || {}), patch);
   store.theme = nextTheme;
   await store.save();
+  // The live storefront (StorefrontContext) re-fetches the compiled CSS
+  // variables and re-applies them to the document root on this event, so
+  // a color/font/layout change shows up on an already-open storefront tab
+  // without a reload — the same "no manual refresh" contract every other
+  // admin-editable entity gets via storeEvents.js.
+  emitStoreEvent(storeId, 'theme.updated', { theme: nextTheme });
   return nextTheme;
 }
 

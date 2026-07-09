@@ -7,7 +7,7 @@ const StoreVisit = require('../../models/store/StoreVisit');
 const StoreShipping = require('../../models/store/StoreShipping');
 const StorePayment = require('../../models/store/StorePayment');
 const Blog = require('../../models/Blog');
-const { productService, collectionService, orderService, inventoryService, pageService, cartService } = require('../../services/store');
+const { productService, collectionService, orderService, inventoryService, pageService, cartService, themeService } = require('../../services/store');
 const cartController = require('./cartController');
 const { subscribe } = require('../../services/store/storeEvents');
 const { optimizeImageUrl, optimizeImageList } = require('../../utils/storeImageOptimizer');
@@ -242,6 +242,63 @@ exports.listPages = async (req, res) => {
   res.status(200).json({
     success: true,
     data: pages.map((p) => ({ id: p._id, name: p.name, slug: p.slug, isHome: p.isHome })),
+  });
+};
+
+/**
+ * GET /api/store/:storeId/pages/:slug
+ * Published-only, full page content (html/css/headLinks) — the read path
+ * `ThemeRenderer` (frontend/.../storefront/ThemeRenderer.jsx) uses so a
+ * store's *actual* themed markup (hand-built in GrapesJS, or produced by
+ * the WordPress Import pipeline) renders on the live storefront/preview,
+ * with only its `data-store-block` regions swapped for live React
+ * sections — instead of every store showing the same hardcoded generic
+ * layout regardless of what it was built or imported as. Request slug
+ * `home` to fetch the home page without knowing its real slug.
+ */
+exports.getPageBySlug = async (req, res) => {
+  const { storeId, slug } = req.params;
+  requireValidId(storeId, 'storeId');
+
+  const page = await pageService.getPublicPageBySlug(storeId, slug === 'home' ? null : slug);
+  if (!page) throw notFoundError('Page not found.');
+
+  res.status(200).json({
+    success: true,
+    data: {
+      id: page._id,
+      name: page.name,
+      slug: page.slug,
+      isHome: page.isHome,
+      content: {
+        html: page.content?.html || '',
+        css: page.content?.css || '',
+        headLinks: page.content?.headLinks || '',
+      },
+    },
+  });
+};
+
+/**
+ * GET /api/store/:storeId/theme
+ * Public, unauthenticated, read-only — the compiled CSS custom-property
+ * map (`themeService.compileToCssVariables`) for the storefront to apply
+ * to its document root. This is the read path the storefront's
+ * `StorefrontContext` uses on load and again every time it receives a
+ * `theme.updated` real-time event, so a color/font/layout change an
+ * admin makes on the Theme tab shows up on an already-open storefront
+ * tab without a reload — the same live-sync contract every other
+ * admin-editable entity (Product/Collection/Discount/Customer/Order)
+ * already gets via storeEvents.js.
+ */
+exports.getTheme = async (req, res) => {
+  const { storeId } = req.params;
+  requireValidId(storeId, 'storeId');
+
+  const theme = await themeService.getTheme(storeId);
+  res.status(200).json({
+    success: true,
+    data: { theme, cssVariables: themeService.compileToCssVariables(theme) },
   });
 };
 

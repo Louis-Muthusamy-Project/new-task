@@ -31,7 +31,14 @@ router.get('/:storeId/events', asyncHandler(storeStorefrontController.streamEven
 
 router.get('/:storeId/info', cache, asyncHandler(storeStorefrontController.getStoreInfo));
 
+// Theme tokens compiled to CSS variables — cached like every other
+// low-write, high-read public GET here; invalidated the same way (a
+// `theme.updated` event on the SSE stream tells the client to refetch,
+// which naturally busts the short-TTL cache on the next request).
+router.get('/:storeId/theme', cache, asyncHandler(storeStorefrontController.getTheme));
+
 router.get('/:storeId/pages', cache, asyncHandler(storeStorefrontController.listPages));
+router.get('/:storeId/pages/:slug', cache, asyncHandler(storeStorefrontController.getPageBySlug));
 
 // Specific /products/* routes must be registered before the /products/:productId
 // param route below, or Express would treat "featured"/"latest"/"bestsellers"

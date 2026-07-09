@@ -125,4 +125,24 @@ async function listPublicPages(storeId) {
     .lean();
 }
 
-module.exports = { getPageById, updatePage, listPages, listPublicPages };
+/**
+ * Public single-page fetch, by slug — Published only, full `content`
+ * (html/css/headLinks) included. This is what lets a themed page (built
+ * in GrapesJS, or produced by the WordPress Import pipeline — see
+ * services/wordpressImport/*) render its actual markup on the live
+ * storefront/preview instead of only ever showing the generic hardcoded
+ * layout: `listPublicPages` above intentionally omits `content` (it only
+ * backs nav), this is the counterpart that returns it for the page the
+ * shopper is actually on.
+ */
+async function getPublicPageBySlug(storeId, slug) {
+  const query = { storeId, isDeleted: false, status: 'Published' };
+  if (slug === '__home__' || !slug) {
+    query.isHome = true;
+  } else {
+    query.slug = slug;
+  }
+  return StorePage.findOne(query).select('name slug isHome content').lean();
+}
+
+module.exports = { getPageById, updatePage, listPages, listPublicPages, getPublicPageBySlug };

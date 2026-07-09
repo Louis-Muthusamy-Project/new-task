@@ -14,6 +14,7 @@ import { productApi, storeApi, collectionApi, customerApi, orderApi, ORDER_STATU
 import DiscountFormModal from "./DiscountFormModal";
 import ShippingZoneModal from "./ShippingZoneModal";
 import { optimizeStoreImageUrl } from "../utils/storeImageCdn";
+import { useStoreSocket } from "../../../hooks/useStoreSocket";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -194,11 +195,16 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
   };
 
   const handleDeleteProduct = async (product) => {
+    // Optimistic update: remove immediately so the Admin doesn't wait on
+    // the network round-trip to see the list change, then roll back if
+    // the delete actually fails server-side.
+    const previous = products;
+    setProducts((prev) => prev.filter((p) => p._id !== product._id));
     try {
       await productApi.remove(storeId, product._id);
       message.success("Product deleted.");
-      loadProducts();
     } catch (err) {
+      setProducts(previous);
       message.error(err.message || "Failed to delete product.");
     }
   };
@@ -230,12 +236,18 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
   }, [activeSubTab, storeId, orderStatusFilter]);
 
   const handleOrderStatusChange = async (order, status) => {
+    const previous = orders;
     setUpdatingOrderId(order._id);
+    // Optimistic update: the status pill flips immediately; if the
+    // request fails, the exact previous list (not just this one order)
+    // is restored so nothing else drifts out of sync.
+    setOrders((prev) => prev.map((o) => (o._id === order._id ? { ...o, status } : o)));
     try {
       const updated = await orderApi.updateStatus(storeId, order._id, status);
       setOrders((prev) => prev.map((o) => (o._id === order._id ? { ...o, ...updated } : o)));
       message.success(`Order marked as ${status}.`);
     } catch (err) {
+      setOrders(previous);
       message.error(err.message || "Failed to update order status.");
     } finally {
       setUpdatingOrderId(null);
@@ -243,11 +255,13 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
   };
 
   const handleDeleteOrder = async (order) => {
+    const previous = orders;
+    setOrders((prev) => prev.filter((o) => o._id !== order._id));
     try {
       await orderApi.remove(storeId, order._id);
       message.success("Order deleted.");
-      loadOrders();
     } catch (err) {
+      setOrders(previous);
       message.error(err.message || "Failed to delete order.");
     }
   };
@@ -295,11 +309,13 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
   };
 
   const handleDeleteDiscount = async (discount) => {
+    const previous = discounts;
+    setDiscounts((prev) => prev.filter((d) => d._id !== discount._id));
     try {
       await discountApi.remove(storeId, discount._id);
       message.success("Discount deleted.");
-      loadDiscounts();
     } catch (err) {
+      setDiscounts(previous);
       message.error(err.message || "Failed to delete discount.");
     }
   };
@@ -600,11 +616,13 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
   };
 
   const handleDeleteCollection = async (collection) => {
+    const previous = collections;
+    setCollections((prev) => prev.filter((c) => c._id !== collection._id));
     try {
       await collectionApi.remove(storeId, collection._id);
       message.success("Collection deleted.");
-      loadCollections();
     } catch (err) {
+      setCollections(previous);
       message.error(err.message || "Failed to delete collection.");
     }
   };
@@ -652,14 +670,65 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
   };
 
   const handleDeleteCustomer = async (customer) => {
+    const previous = customers;
+    setCustomers((prev) => prev.filter((c) => c._id !== customer._id));
     try {
       await customerApi.remove(storeId, customer._id);
       message.success("Customer deleted.");
-      loadCustomers();
     } catch (err) {
+      setCustomers(previous);
       message.error(err.message || "Failed to delete customer.");
     }
   };
+
+  // ── Real-time sync (Socket.io) ──────────────────────────────────────────
+  // One connection per store, shared by every module below. Rather than
+  // each module polling on an interval, the backend pushes an event the
+  // instant a write commits (see storeEvents.js / storeSocket.js) and
+  // this dispatches it to whichever module's list is affected — reusing
+  // the exact same load* functions the manual "Save"/"Delete" flows
+  // already call, so there is exactly one code path per module that
+  // fetches its data, not a duplicated "live" version and a "manual"
+  // version. This is also what keeps two admins (or two tabs) on the
+  // same store's dashboard in sync with each other, not just with the
+  // storefront.
+  const { subscribe: subscribeToStoreSocket, connected: realtimeConnected } = useStoreSocket(storeId);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToStoreSocket((event) => {
+      const { type } = event;
+      // Only reload the module that's actually on screen right now —
+      // switching to a different subtab already triggers that module's
+      // own load* effect above, so there is no staleness risk from
+      // skipping a reload here; this just avoids firing a network
+      // request for a list nobody can currently see.
+      if ((type.startsWith("product.") || type === "inventory.updated") && activeSubTab === "products") {
+        loadProducts();
+      } else if (type.startsWith("collection.") && activeSubTab === "collections") {
+        loadCollections();
+      } else if (
+        (type.startsWith("product.") || type === "inventory.updated" || type.startsWith("collection.")) &&
+        activeSubTab === "collections"
+      ) {
+        // A product's collectionIds/status change can change a visible
+        // collection's productCount even though the event type itself
+        // is product.*, not collection.*.
+        loadCollections();
+      } else if (type.startsWith("discount.") && activeSubTab === "discounts") {
+        loadDiscounts();
+      } else if (type.startsWith("order.") && activeSubTab === "orders") {
+        loadOrders();
+      } else if (type.startsWith("customer.") && activeSubTab === "customers") {
+        loadCustomers();
+      }
+      // 'theme.updated' has no dedicated Admin list to reload here today
+      // (the Theme tab reads Store.theme directly on open); the live
+      // storefront is what actually needs to react to it, via
+      // StorefrontContext.
+    });
+    return unsubscribe;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subscribeToStoreSocket, activeSubTab]);
 
   const renderHome = () => (
     <motion.div variants={itemVariants} className="store-manage-content">

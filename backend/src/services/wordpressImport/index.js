@@ -169,7 +169,10 @@ async function importWordPressZip(zipBuffer, meta = {}) {
     existing.pages = pageDefinitions;
     existing.version = nextVersion;
     existing.source = 'wordpress-import';
-    existing.sourceMeta = { ...report.meta, componentSummary };
+    // See createStoreTemplate.js's comment on `assetKind: 'theme'` — kept
+    // consistent here so a re-imported (updated) template is labeled the
+    // same way as one created fresh.
+    existing.sourceMeta = { ...report.meta, componentSummary, assetKind: 'theme' };
 
     // Seed/add the new version in history
     existing.versions.push({

@@ -123,8 +123,21 @@ export const storefrontApi = {
   // GET /api/store/:storeId/info
   getStoreInfo: async (storeId) => unwrap(await requestJson(`/store/${storeId}/info`)).data,
 
+  // GET /api/store/:storeId/theme — compiled CSS custom-property map,
+  // re-fetched by StorefrontContext on load and again on every
+  // `theme.updated` real-time event so a Theme tab edit shows up on an
+  // already-open storefront tab live.
+  getTheme: async (storeId) => unwrap(await requestJson(`/store/${storeId}/theme`)).data,
+
   // GET /api/store/:storeId/pages — Published pages only, for Menu/Footer nav
   listPages: async (storeId) => unwrap(await requestJson(`/store/${storeId}/pages`)).data,
+
+  // GET /api/store/:storeId/pages/:slug — full content.html/css for one
+  // Published page (slug 'home' fetches the home page). Powers
+  // ThemeRenderer.jsx, which is what lets a GrapesJS-built or WordPress-
+  // imported theme's actual markup render on the live storefront/preview.
+  getPage: async (storeId, slug = 'home') =>
+    unwrap(await requestJson(`/store/${storeId}/pages/${encodeURIComponent(slug)}`)).data,
 
   // GET /api/store/:storeId/products
   listProducts: async (storeId, params = {}) => {

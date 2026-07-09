@@ -106,6 +106,36 @@ export function StorefrontProvider({ storeId, children }) {
 
   const { subscribe: subscribeToStoreEvents, connected: realtimeConnected } = useStoreEventSource(storeId);
 
+  // Theme tokens — fetched once on load, then kept live via the same
+  // event stream every other storefront surface uses. Applied as CSS
+  // custom properties on the document root so any component's CSS can
+  // reference var(--color-primary) etc. without threading theme state
+  // through props; a Theme tab edit lands here the instant `theme.updated`
+  // arrives, no reload needed.
+  const applyThemeVariables = useCallback((cssVariables) => {
+    if (!cssVariables || typeof document === 'undefined') return;
+    const root = document.documentElement;
+    for (const [name, value] of Object.entries(cssVariables)) {
+      root.style.setProperty(name, value);
+    }
+  }, []);
+
+  const { data: themeData, reload: reloadTheme } = useStorefrontQuery(
+    () => (storeId ? storefrontApi.getTheme(storeId) : Promise.resolve(null)),
+    [storeId]
+  );
+
+  useEffect(() => {
+    if (themeData?.cssVariables) applyThemeVariables(themeData.cssVariables);
+  }, [themeData, applyThemeVariables]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToStoreEvents((event) => {
+      if (event.type === 'theme.updated') reloadTheme();
+    });
+    return unsubscribe;
+  }, [subscribeToStoreEvents, reloadTheme]);
+
   const value = useMemo(
     () => ({
       storeId,
@@ -113,6 +143,7 @@ export function StorefrontProvider({ storeId, children }) {
       storeInfoLoading,
       storeInfoError,
       currency: storeInfo?.currency || 'USD',
+      theme: themeData?.theme || null,
       view,
       navigate,
       goHome,
@@ -129,6 +160,7 @@ export function StorefrontProvider({ storeId, children }) {
       storeInfo,
       storeInfoLoading,
       storeInfoError,
+      themeData,
       view,
       navigate,
       goHome,

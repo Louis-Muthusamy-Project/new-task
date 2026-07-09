@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StorefrontProvider, useStorefront } from './StorefrontContext';
 import { CartProvider } from './CartContext';
 import Header from './components/Header';
@@ -12,6 +12,7 @@ import SearchResultsPage from './pages/SearchResultsPage';
 import CheckoutPage from './pages/CheckoutPage';
 import OrderConfirmationPage from './pages/OrderConfirmationPage';
 import { storefrontApi } from '../../../api/storefrontApi';
+import ThemeRenderer, { hasThemedContent } from './ThemeRenderer';
 
 // StorefrontApp.jsx — the dynamic storefront preview. Replaces the old
 // static-HTML iframe (buildPreviewHtml over a stored StorePage snapshot)
@@ -27,7 +28,33 @@ import { storefrontApi } from '../../../api/storefrontApi';
 // mutation round-trips to the persisted StoreCart on the backend); this
 // component just wires the provider in and renders the 'checkout' /
 // 'confirmation' views alongside the existing product-browsing ones.
-function StorefrontScreens() {
+// Checked once per store (see `useThemedHome` below): does this store have
+// an actual themed home page (GrapesJS-authored, or produced by the
+// WordPress Import pipeline) worth rendering via ThemeRenderer, instead of
+// the generic hardcoded Home section? `null` = "still checking", so the
+// generic screens don't flash before the check resolves.
+function useThemedHome(storeId) {
+  const [themed, setThemed] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    storefrontApi
+      .getPage(storeId, 'home')
+      .then((page) => {
+        if (!cancelled) setThemed(hasThemedContent(page));
+      })
+      .catch(() => {
+        if (!cancelled) setThemed(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [storeId]);
+
+  return themed;
+}
+
+function StorefrontScreens({ storeId, themedHome }) {
   const { view } = useStorefront();
 
   switch (view.name) {
@@ -43,7 +70,14 @@ function StorefrontScreens() {
       return <OrderConfirmationPage order={view.order} />;
     case 'home':
     default:
-      return <HomePage />;
+      // A themed home page (its own header/footer/nav baked in per the
+      // Simply-Static/GrapesJS document convention) replaces the generic
+      // Header/HomePage/Footer stack entirely for this view — see
+      // ThemeRenderer.jsx. Every other view keeps the generic Store
+      // sections today; extending themed rendering to Category/Product/
+      // Search is straightforward follow-up (same ThemeRenderer, a
+      // different page slug) once those pages exist as themed content.
+      return themedHome ? <ThemeRenderer storeId={storeId} slug="home" /> : <HomePage />;
   }
 }
 
@@ -68,6 +102,22 @@ function VisitTracker({ storeId }) {
   return null;
 }
 
+function StorefrontChrome({ storeId }) {
+  const { view } = useStorefront();
+  const themedHome = useThemedHome(storeId);
+  // Only the 'home' view can currently be themed (see StorefrontScreens);
+  // every other view keeps the generic Header/Footer chrome around it.
+  const showGenericChrome = !(view.name === 'home' && themedHome);
+
+  return (
+    <>
+      {showGenericChrome && <Header />}
+      <StorefrontScreens storeId={storeId} themedHome={themedHome} />
+      {showGenericChrome && <Footer />}
+    </>
+  );
+}
+
 export default function StorefrontApp({ storeId }) {
   if (!storeId) return null;
 
@@ -75,9 +125,7 @@ export default function StorefrontApp({ storeId }) {
     <StorefrontProvider storeId={storeId}>
       <CartProvider storeId={storeId}>
         <div style={{ minHeight: '100%', background: '#fff', fontFamily: 'Inter, Segoe UI, sans-serif' }}>
-          <Header />
-          <StorefrontScreens />
-          <Footer />
+          <StorefrontChrome storeId={storeId} />
           <CartDrawer />
           <AuthModal />
           <VisitTracker storeId={storeId} />
