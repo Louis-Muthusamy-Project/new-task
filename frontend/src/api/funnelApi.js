@@ -211,6 +211,23 @@ export const funnelApi = {
     return json.data;
   },
 
+  // POST /api/funnel-templates — add a template to the library from a
+  // JSON blueprint (used by the "Upload template" flow in
+  // FunnelTemplateLibraryModal, the funnel-module counterpart of
+  // storeTemplateApi.createStoreTemplate). Unlike the store pipeline this
+  // has no ZIP/asset parsing — a funnel template is just structured JSON
+  // (name/category/steps), so it maps 1:1 onto the existing createTemplate
+  // controller endpoint with no backend changes required.
+  createTemplate: async ({ name, description, category, thumbnailUrl, steps, tags, isSystem } = {}) => {
+    const json = unwrap(
+      await requestJson('/funnel-templates', {
+        method: 'POST',
+        body: { name, description, category, thumbnailUrl, steps, tags, isSystem },
+      })
+    );
+    return json.data;
+  },
+
   saveAsTemplate: async (payload) => {
     const json = unwrap(
       await requestJson('/funnel-templates/save-from-funnel', { method: 'POST', body: payload })

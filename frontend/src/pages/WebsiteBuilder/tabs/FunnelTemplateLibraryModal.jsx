@@ -1,17 +1,25 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Modal, Input, Button, Typography, Space, Row, Col, Card, Tag, message } from "antd";
-import { LayoutTemplate, Search as SearchIcon, CheckCircle, X as CloseIcon } from "lucide-react";
+import { LayoutTemplate, Search as SearchIcon, CheckCircle, X as CloseIcon, UploadCloud } from "lucide-react";
 import { funnelApi } from "../../../api/funnelApi";
+import { useAuth } from "../../../contexts/AuthContext";
 
 const { Title, Text } = Typography;
 
 const FunnelTemplateLibraryModal = ({ open, onCancel, onCreate, initialFunnelName }) => {
+  const { role } = useAuth();
+  // Only admins and super admins are allowed to upload funnel templates to
+  // the library — mirrors StoreTemplateLibraryModal's canUploadTemplate gate.
+  const canUploadTemplate = role === "admin" || role === "superadmin";
+
   const [funnelName, setFunnelName] = useState(initialFunnelName || "");
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activeCategory, setActiveCategory] = useState("All");
   const [searchText, setSearchText] = useState("");
+  const fileInputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
 
   const categories = [
     "All",
@@ -46,6 +54,60 @@ const FunnelTemplateLibraryModal = ({ open, onCancel, onCreate, initialFunnelNam
       message.error(err.message || "Failed to load templates.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Funnel templates are structured JSON (name/category/steps) rather than
+  // HTML/asset bundles, so "upload" here means a .json blueprint file,
+  // parsed client-side and persisted via funnelApi.createTemplate — no
+  // multipart/ZIP pipeline needed, unlike the Store template importer.
+  const handleUploadClick = () => {
+    if (!canUploadTemplate) return;
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !canUploadTemplate) return;
+
+    if (!/\.json$/i.test(file.name)) {
+      message.error("Please upload a .json funnel template file.");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const text = await file.text();
+      let parsed;
+      try {
+        parsed = JSON.parse(text);
+      } catch (parseErr) {
+        throw new Error("That file isn't valid JSON.");
+      }
+
+      const name = parsed.name || file.name.replace(/\.[^/.]+$/, "");
+      if (!Array.isArray(parsed.steps) || parsed.steps.length === 0) {
+        throw new Error("The template JSON must include a non-empty \"steps\" array.");
+      }
+
+      const saved = await funnelApi.createTemplate({
+        name,
+        description: parsed.description || "",
+        category: parsed.category || "Other",
+        thumbnailUrl: parsed.thumbnailUrl || "",
+        steps: parsed.steps,
+        tags: parsed.tags || [],
+        isSystem: false,
+      });
+
+      setTemplates((prev) => [saved, ...prev]);
+      message.success(`"${saved.name}" was uploaded to the funnel template library.`);
+    } catch (err) {
+      console.error("Failed to upload funnel template", err);
+      message.error(err.message || `Couldn't upload "${file.name}".`);
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -126,6 +188,25 @@ const FunnelTemplateLibraryModal = ({ open, onCancel, onCreate, initialFunnelNam
                 <Text type="secondary">Prebuilt funnel structures & templates</Text>
               </div>
               <Space>
+                {canUploadTemplate && (
+                  <>
+                    <Button
+                      icon={<UploadCloud size={16} />}
+                      onClick={handleUploadClick}
+                      loading={uploading}
+                      style={{ borderRadius: 8, height: 40, fontWeight: 600, borderColor: "var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)" }}
+                    >
+                      Upload template
+                    </Button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".json"
+                      onChange={handleFileSelected}
+                      style={{ display: "none" }}
+                    />
+                  </>
+                )}
                 <Input 
                   placeholder="Search templates..." 
                   prefix={<SearchIcon size={16} color="var(--text-tertiary)"/>} 
