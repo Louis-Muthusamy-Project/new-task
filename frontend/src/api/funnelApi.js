@@ -136,6 +136,34 @@ export const funnelApi = {
     return json.data;
   },
 
+  // ── Offers (Store Product → Funnel Offer → Checkout) ─────────────────────────
+  getOffer: async (funnelId, stepId) => {
+    const json = unwrap(await requestJson(`/funnels/${funnelId}/steps/${stepId}/offer`));
+    return json.data; // { offer, preview }
+  },
+
+  saveOffer: async (funnelId, stepId, payload) => {
+    const json = unwrap(
+      await requestJson(`/funnels/${funnelId}/steps/${stepId}/offer`, { method: 'PUT', body: payload })
+    );
+    return json.data;
+  },
+
+  deleteOffer: async (funnelId, stepId) => {
+    const json = unwrap(
+      await requestJson(`/funnels/${funnelId}/steps/${stepId}/offer`, { method: 'DELETE' })
+    );
+    return json.data;
+  },
+
+  // ── Checkout (public — used by the live funnel renderer) ─────────────────────
+  checkoutStep: async (funnelId, stepId, payload) => {
+    const json = unwrap(
+      await requestJson(`/funnels/${funnelId}/steps/${stepId}/checkout`, { method: 'POST', body: payload })
+    );
+    return json.data; // { order, nextStepId, redirectUrl }
+  },
+
   // ── Contacts ────────────────────────────────────────────────────────────────
   listContacts: async (funnelId, { search, stepId, page = 1, limit = 20 } = {}) => {
     const params = new URLSearchParams();
@@ -160,8 +188,11 @@ export const funnelApi = {
   },
 
   // ── Analytics ───────────────────────────────────────────────────────────────
-  getAnalytics: async (funnelId) => {
-    const json = unwrap(await requestJson(`/funnels/${funnelId}/analytics`));
+  getAnalytics: async (funnelId, { days } = {}) => {
+    const params = new URLSearchParams();
+    if (days) params.set('days', days);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const json = unwrap(await requestJson(`/funnels/${funnelId}/analytics${qs}`));
     return json.data;
   },
 

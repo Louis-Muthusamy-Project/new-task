@@ -120,7 +120,7 @@ const CreateFunnelModal = ({ open, onCancel, onCreate }) => {
 };
 
 // ── STEP SETTINGS MODAL ──────────────────────────────────────────────────────
-const StepSettingsModal = ({ open, step, onCancel, onSave }) => {
+const StepSettingsModal = ({ open, step, funnelId, onCancel, onSave }) => {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [type, setType] = useState("landing");
@@ -128,6 +128,19 @@ const StepSettingsModal = ({ open, step, onCancel, onSave }) => {
   const [products, setProducts] = useState([]);
   const [selectedStoreId, setSelectedStoreId] = useState("");
   const [selectedProductId, setSelectedProductId] = useState("");
+
+  // Offer layer (Store Product → Funnel Offer → Checkout). Saved via its
+  // own endpoint, independent of the step's own Save/OK button, since an
+  // offer is a separate resource (FunnelOffer) — see funnelOfferService.
+  const [offerLoading, setOfferLoading] = useState(false);
+  const [offerSaving, setOfferSaving] = useState(false);
+  const [offerHeadline, setOfferHeadline] = useState("");
+  const [offerDescription, setOfferDescription] = useState("");
+  const [offerDisplayPrice, setOfferDisplayPrice] = useState("");
+  const [offerCompareAtPrice, setOfferCompareAtPrice] = useState("");
+  const [offerBadgeText, setOfferBadgeText] = useState("");
+  const [offerCountdownEnabled, setOfferCountdownEnabled] = useState(false);
+  const [offerCountdownEndsAt, setOfferCountdownEndsAt] = useState("");
 
   useEffect(() => {
     if (step) {
@@ -151,6 +164,12 @@ const StepSettingsModal = ({ open, step, onCancel, onSave }) => {
     }
   }, [selectedStoreId]);
 
+  useEffect(() => {
+    if (step?.type === "checkout" && step?._id && funnelId) {
+      loadOffer();
+    }
+  }, [step?._id, funnelId]);
+
   const loadStores = async () => {
     try {
       const data = await storeApi.list();
@@ -164,6 +183,53 @@ const StepSettingsModal = ({ open, step, onCancel, onSave }) => {
       setProducts(data || []);
     } catch (_) {}
   };
+
+  const loadOffer = async () => {
+    setOfferLoading(true);
+    try {
+      const { offer } = await funnelApi.getOffer(funnelId, step._id);
+      if (offer) {
+        setOfferHeadline(offer.headline || "");
+        setOfferDescription(offer.description || "");
+        setOfferDisplayPrice(offer.displayPrice ?? "");
+        setOfferCompareAtPrice(offer.compareAtPrice ?? "");
+        setOfferBadgeText(offer.badgeText || "");
+        setOfferCountdownEnabled(!!offer.countdown?.enabled);
+        setOfferCountdownEndsAt(offer.countdown?.endsAt ? offer.countdown.endsAt.slice(0, 16) : "");
+      }
+    } catch (_) {
+      // No offer yet is expected for most steps — stay on defaults.
+    } finally {
+      setOfferLoading(false);
+    }
+  };
+
+  const handleSaveOffer = async () => {
+    if (!selectedStoreId || !selectedProductId) {
+      return message.warning("Select a store and product before saving an offer.");
+    }
+    setOfferSaving(true);
+    try {
+      await funnelApi.saveOffer(funnelId, step._id, {
+        storeId: selectedStoreId,
+        productId: selectedProductId,
+        headline: offerHeadline,
+        description: offerDescription,
+        displayPrice: offerDisplayPrice === "" ? null : Number(offerDisplayPrice),
+        compareAtPrice: offerCompareAtPrice === "" ? null : Number(offerCompareAtPrice),
+        badgeText: offerBadgeText,
+        countdown: { enabled: offerCountdownEnabled, endsAt: offerCountdownEndsAt || null },
+      });
+      message.success("Offer saved.");
+    } catch (err) {
+      message.error(err.message || "Failed to save offer.");
+    } finally {
+      setOfferSaving(false);
+    }
+  };
+
+  const selectedProduct = products.find((p) => p._id === selectedProductId);
+  const isOutOfStock = selectedProduct && selectedProduct.trackInventory && (selectedProduct.inventoryQuantity || 0) <= 0;
 
   const handleSave = () => {
     onSave({
@@ -234,6 +300,84 @@ const StepSettingsModal = ({ open, step, onCancel, onSave }) => {
                 >
                   {products.map(p => <Option key={p._id} value={p._id}>{p.title} (${p.price})</Option>)}
                 </Select>
+                {selectedProduct && (
+                  <Tag color={isOutOfStock ? "red" : "green"} style={{ marginTop: 8 }}>
+                    {isOutOfStock ? "Out of stock" : selectedProduct.trackInventory ? `${selectedProduct.inventoryQuantity} in stock` : "Not tracked"}
+                  </Tag>
+                )}
+              </div>
+            )}
+
+            {selectedStoreId && selectedProductId && (
+              <div style={{ borderTop: "1px solid var(--border-color)", paddingTop: 12, marginTop: 4 }}>
+                <Text type="secondary" style={{ fontSize: 12, fontWeight: 600 }}>
+                  FUNNEL OFFER <span style={{ fontWeight: 400 }}>(optional — overrides display only, never the product itself)</span>
+                </Text>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
+                  <Input
+                    placeholder="Headline (defaults to product title)"
+                    value={offerHeadline}
+                    onChange={(e) => setOfferHeadline(e.target.value)}
+                    disabled={offerLoading}
+                  />
+                  <TextArea
+                    placeholder="Offer description (defaults to product description)"
+                    value={offerDescription}
+                    onChange={(e) => setOfferDescription(e.target.value)}
+                    rows={2}
+                    disabled={offerLoading}
+                  />
+                  <Row gutter={8}>
+                    <Col span={12}>
+                      <Input
+                        type="number"
+                        placeholder="Display price"
+                        value={offerDisplayPrice}
+                        onChange={(e) => setOfferDisplayPrice(e.target.value)}
+                        disabled={offerLoading}
+                      />
+                    </Col>
+                    <Col span={12}>
+                      <Input
+                        type="number"
+                        placeholder="Compare-at price"
+                        value={offerCompareAtPrice}
+                        onChange={(e) => setOfferCompareAtPrice(e.target.value)}
+                        disabled={offerLoading}
+                      />
+                    </Col>
+                  </Row>
+                  <Input
+                    placeholder="Badge text (e.g. Limited Time)"
+                    value={offerBadgeText}
+                    onChange={(e) => setOfferBadgeText(e.target.value)}
+                    disabled={offerLoading}
+                  />
+                  <Row gutter={8} align="middle">
+                    <Col span={12}>
+                      <Select
+                        value={offerCountdownEnabled}
+                        onChange={setOfferCountdownEnabled}
+                        style={{ width: "100%" }}
+                        disabled={offerLoading}
+                      >
+                        <Option value={false}>Countdown off</Option>
+                        <Option value={true}>Countdown on</Option>
+                      </Select>
+                    </Col>
+                    <Col span={12}>
+                      <Input
+                        type="datetime-local"
+                        value={offerCountdownEndsAt}
+                        onChange={(e) => setOfferCountdownEndsAt(e.target.value)}
+                        disabled={offerLoading || !offerCountdownEnabled}
+                      />
+                    </Col>
+                  </Row>
+                  <Button onClick={handleSaveOffer} loading={offerSaving} disabled={offerLoading}>
+                    Save Offer
+                  </Button>
+                </div>
               </div>
             )}
           </div>
@@ -254,6 +398,7 @@ const ManageFunnelView = ({ activeFunnel, setView, itemVariants }) => {
   const [contacts, setContacts] = useState([]);
   const [contactsMeta, setContactsMeta] = useState({ page: 1, limit: 10, total: 0 });
   const [analytics, setAnalytics] = useState(null);
+  const [analyticsDays, setAnalyticsDays] = useState(30);
 
   // Settings tab states
   const [funnelName, setFunnelName] = useState(activeFunnel.name);
@@ -266,6 +411,10 @@ const ManageFunnelView = ({ activeFunnel, setView, itemVariants }) => {
     loadSteps();
     loadAnalytics();
   }, [activeFunnel._id]);
+
+  useEffect(() => {
+    loadAnalytics();
+  }, [analyticsDays]);
 
   useEffect(() => {
     if (activeTab === "contacts") {
@@ -295,7 +444,7 @@ const ManageFunnelView = ({ activeFunnel, setView, itemVariants }) => {
 
   const loadAnalytics = async () => {
     try {
-      const res = await funnelApi.getAnalytics(activeFunnel._id);
+      const res = await funnelApi.getAnalytics(activeFunnel._id, { days: analyticsDays });
       setAnalytics(res);
     } catch (_) {}
   };
@@ -552,14 +701,26 @@ const ManageFunnelView = ({ activeFunnel, setView, itemVariants }) => {
         {/* ANALYTICS TAB */}
         {activeTab === "analytics" && (
           <div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+              <Select value={analyticsDays} onChange={setAnalyticsDays} style={{ width: 140 }}>
+                <Option value={7}>Last 7 days</Option>
+                <Option value={30}>Last 30 days</Option>
+                <Option value={90}>Last 90 days</Option>
+                <Option value={365}>Last 12 months</Option>
+              </Select>
+            </div>
             <Row gutter={16} style={{ marginBottom: 24 }}>
               {[
                 { label: "Total Views", val: analytics?.summary?.views || 0, icon: <Eye /> },
                 { label: "Unique Visitors", val: analytics?.summary?.visitors || 0, icon: <Users /> },
                 { label: "Conversions", val: analytics?.summary?.conversions || 0, icon: <CheckCircle2 /> },
                 { label: "Conversion Rate", val: `${(analytics?.summary?.conversionRate || 0).toFixed(2)}%`, icon: <TrendingUp /> },
+                // Revenue / Orders / AOV — sourced from StoreOrder only, see
+                // funnelAnalyticsController.getFunnelAnalytics.
+                { label: "Revenue", val: `$${(analytics?.summary?.revenue || 0).toFixed(2)}`, icon: <TrendingUp /> },
+                { label: "Avg. Order Value", val: `$${(analytics?.summary?.averageOrderValue || 0).toFixed(2)}`, icon: <TrendingUp /> },
               ].map((kpi, i) => (
-                <Col span={6} key={i}>
+                <Col span={8} key={i} style={{ marginBottom: 16 }}>
                   <Card style={{ borderRadius: 8 }}>
                     <Space size={12}>
                       <div style={{ color: "var(--accent-primary)" }}>{kpi.icon}</div>
@@ -586,6 +747,8 @@ const ManageFunnelView = ({ activeFunnel, setView, itemVariants }) => {
                       { title: "Views", dataIndex: "views", key: "views" },
                       { title: "Conversions", dataIndex: "conversions", key: "conversions" },
                       { title: "Conversion Rate", dataIndex: "conversionRate", key: "conversionRate", render: (v) => `${(v || 0).toFixed(2)}%` },
+                      { title: "Orders", dataIndex: "orders", key: "orders" },
+                      { title: "Revenue", dataIndex: "revenue", key: "revenue", render: (v) => `$${(v || 0).toFixed(2)}` },
                     ]}
                   />
                 </Card>
@@ -664,6 +827,7 @@ const ManageFunnelView = ({ activeFunnel, setView, itemVariants }) => {
       <StepSettingsModal 
         open={!!editingStep} 
         step={editingStep} 
+        funnelId={activeFunnel._id}
         onCancel={() => setEditingStep(null)} 
         onSave={handleSaveStepSettings} 
       />

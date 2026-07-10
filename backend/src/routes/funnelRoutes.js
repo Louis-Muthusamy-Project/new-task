@@ -5,6 +5,8 @@ const funnelStepController = require('../controllers/funnelStepController');
 const funnelContactController = require('../controllers/funnelContactController');
 const funnelPublishController = require('../controllers/funnelPublishController');
 const funnelAnalyticsController = require('../controllers/funnelAnalyticsController');
+const funnelOfferController = require('../controllers/funnelOfferController');
+const funnelCheckoutController = require('../controllers/funnelCheckoutController');
 const asyncHandler = require('../utils/asyncHandler');
 
 // ── Funnels CRUD ─────────────────────────────────────────────────────────────
@@ -25,6 +27,17 @@ router.post('/:funnelId/steps/reorder', asyncHandler(funnelStepController.reorde
 router.get('/steps/:id', asyncHandler(funnelStepController.getStep));
 router.put('/steps/:id', asyncHandler(funnelStepController.updateStep));
 router.delete('/steps/:id', asyncHandler(funnelStepController.deleteStep));
+
+// ── Offers (Store Product → Funnel Offer → Checkout) ─────────────────────────
+// One offer per checkout step. Admin-only (same ownership rules as Steps).
+router.get('/:funnelId/steps/:stepId/offer', asyncHandler(funnelOfferController.getOffer));
+router.put('/:funnelId/steps/:stepId/offer', asyncHandler(funnelOfferController.upsertOffer));
+router.delete('/:funnelId/steps/:stepId/offer', asyncHandler(funnelOfferController.deleteOffer));
+
+// ── Checkout (public — hit by a live funnel, not the admin) ──────────────────
+// Controller → FunnelCheckoutService → orderService. See funnelCheckoutService.js
+// for why pricing/offer/upsell/coupon logic lives there, not here or in orderService.
+router.post('/:funnelId/steps/:stepId/checkout', asyncHandler(funnelCheckoutController.checkoutStep));
 
 // ── Contacts ──────────────────────────────────────────────────────────────────
 // Public contact submission

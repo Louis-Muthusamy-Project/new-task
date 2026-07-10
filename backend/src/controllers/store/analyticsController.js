@@ -32,6 +32,7 @@ const StoreVisit = require('../../models/store/StoreVisit');
 const StoreAnalyticsEvent = require('../../models/store/StoreAnalyticsEvent');
 const StoreProduct = require('../../models/store/StoreProduct');
 const StoreCustomer = require('../../models/store/StoreCustomer');
+const { resolveAnalyticsDays } = require('../../utils/dateRange');
 
 const notFoundError = (message) => {
   const err = new Error(message);
@@ -66,8 +67,7 @@ exports.getAnalytics = async (req, res) => {
   const store = await Store.findOne({ _id: storeId, isDeleted: false }).lean();
   if (!store) throw notFoundError('Store not found.');
 
-  const days = Math.min(Math.max(parseInt(req.query.days, 10) || 30, 1), 365);
-  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const { days, since } = resolveAnalyticsDays(req.query);
 
   const [orders, visitorIds] = await Promise.all([
     StoreOrder.find({

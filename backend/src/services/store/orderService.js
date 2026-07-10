@@ -163,6 +163,21 @@ async function deleteOrder(storeId, id) {
  * customer's history via CustomerService.
  *
  * Body shape: { items: [{ productId, quantity }], customer?: { name, email }, discountCode? }
+ *
+ * Funnel attribution (optional, additive — Store's own storefront checkout
+ * never sets these, so existing callers are unaffected):
+ *   - funnelId / stepId / funnelSource: written straight onto StoreOrder.
+ *     Purely descriptive — never changes what's charged. This is what lets
+ *     Analytics later query StoreOrder directly for funnel revenue/orders/
+ *     AOV instead of a separate event log.
+ *   - priceOverrides: { [productId]: number } — an authoritative, *server-
+ *     resolved* price per line, supplied only by trusted server-side
+ *     callers (e.g. FunnelCheckoutService, after resolving a FunnelOffer
+ *     via funnelOfferService — never a client-supplied product.price).
+ *     This still isn't "trusting a client-supplied price": the override
+ *     itself is computed from a database-stored FunnelOffer, the same way
+ *     discountCode's amount is computed by DiscountService rather than
+ *     trusted from the request. Omit for the normal live-StoreProduct price.
  */
 async function createOrder(storeId, body) {
   const items = Array.isArray(body?.items) ? body.items : [];
@@ -178,6 +193,7 @@ async function createOrder(storeId, body) {
   // Availability check also gives us the resolved product docs so pricing
   // and stock-checking share a single product lookup.
   const productMap = await inventoryService.checkAvailability(storeId, items);
+  const priceOverrides = body?.priceOverrides || null;
 
   const orderItems = [];
   let subtotal = 0;
@@ -186,7 +202,8 @@ async function createOrder(storeId, body) {
     const product = productMap.get(String(line.productId));
     if (!product) continue;
     const quantity = Math.max(parseInt(line.quantity, 10) || 1, 1);
-    const price = product.price || 0;
+    const override = priceOverrides ? priceOverrides[String(product._id)] : null;
+    const price = override != null ? Number(override) : (product.price || 0);
     subtotal += price * quantity;
     orderItems.push({
       productId: product._id,
@@ -239,6 +256,12 @@ async function createOrder(storeId, body) {
     paymentStatus: isCod ? 'Pending' : 'Paid',
     fulfillmentStatus: 'Unfulfilled',
     status: isCod ? 'Pending' : 'Paid',
+    // Funnel attribution — optional, additive. Undefined/null for every
+    // non-funnel order (Store's own storefront checkout), so this is a
+    // pure extension of the existing shape, not a behavior change.
+    funnelId: body?.funnelId || null,
+    stepId: body?.stepId || null,
+    funnelSource: body?.funnelSource || null,
   });
 
   // Deduct stock and roll the order into the customer's history. Neither

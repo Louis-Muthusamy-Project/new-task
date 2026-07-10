@@ -1,6 +1,7 @@
 const Funnel = require('../models/Funnel');
 const FunnelStep = require('../models/FunnelStep');
 const { slugify, generateUniqueFunnelStepSlug } = require('../utils/slugUtils');
+const funnelOfferService = require('./funnelOfferService');
 
 /**
  * Generates a unique name for duplicated funnels.
@@ -99,6 +100,26 @@ const duplicateFunnel = async (sourceId, ownerCtx = {}) => {
 
     const inserted = await FunnelStep.insertMany(stepDocs);
     stepCount = inserted.length;
+
+    // Clone each source step's Funnel Offer (if any) onto its duplicate and
+    // repoint settings.offerId — a duplicated funnel must never share (and
+    // let admins accidentally edit) the original funnel's offer.
+    // insertMany preserves input order, so sourceSteps[i] <-> inserted[i].
+    for (let i = 0; i < sourceSteps.length; i++) {
+      const sourceStep = sourceSteps[i];
+      const newStep = inserted[i];
+      if (!sourceStep.settings?.offerId) continue;
+
+      const newOfferId = await funnelOfferService.cloneOfferForStep(
+        sourceStep._id,
+        newFunnel._id,
+        newStep._id
+      );
+      if (newOfferId) {
+        newStep.settings = { ...(newStep.settings || {}), offerId: newOfferId };
+        await newStep.save();
+      }
+    }
   }
 
   return { funnel: newFunnel, stepCount };

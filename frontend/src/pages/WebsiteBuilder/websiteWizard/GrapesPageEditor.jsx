@@ -202,7 +202,7 @@ function normalizeToBodyAndCss(rawHtml = '', rawCss = '', rawHeadLinks = '') {
 
   try {
     const parser = new DOMParser();
-    const doc    = parser.parseFromString(`${headLinks} n${html}`, 'text/html');
+    const doc    = parser.parseFromString(`${headLinks} ${html}`, 'text/html');
 
     // ── 1. Collect external stylesheet / font / icon links ────────────────
     // These must be injected into the canvas iframe, not fed to setStyle().

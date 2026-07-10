@@ -85,6 +85,11 @@ const FunnelStepSchema = new Schema(
       // Always a reference — never a copy. The Store owns the product.
       storeId: { type: Schema.Types.ObjectId, ref: 'Store', default: null },
       productId: { type: Schema.Types.ObjectId, ref: 'StoreProduct', default: null },
+      // Optional Funnel Offer overriding this step's display price,
+      // compare-at price, headline, description, badge, and countdown.
+      // Never overrides the product itself — see FunnelOffer.js /
+      // funnelOfferService.js. Null = show the product as-is.
+      offerId: { type: Schema.Types.ObjectId, ref: 'FunnelOffer', default: null },
       // After a form submit or purchase, redirect to this step (by stepId)
       // or an external URL. Leave null to advance to the next step by position.
       nextStepId: { type: Schema.Types.ObjectId, ref: 'FunnelStep', default: null },

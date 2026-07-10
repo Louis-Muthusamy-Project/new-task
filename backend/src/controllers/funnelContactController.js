@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const FunnelContact = require('../models/FunnelContact');
 const Funnel = require('../models/Funnel');
 const FunnelStep = require('../models/FunnelStep');
+const { emitFunnelEvent } = require('../services/funnelEvents');
 
 const notFoundError = (message = 'Contact not found.') => {
   const error = new Error(message);
@@ -53,6 +54,15 @@ exports.submitContact = async (req, res) => {
     },
     referrer: referrer || '',
     tags: tags || [],
+  });
+
+  // Integration hook — see funnelEvents.js. No subscriber exists yet;
+  // this is the point a future CRM/Automation/Email/Webhook module
+  // attaches to without this controller needing to know about it.
+  emitFunnelEvent(funnelId, 'contact.created', {
+    contactId: contact._id,
+    stepId: contact.stepId,
+    email: contact.email,
   });
 
   res.status(201).json({
