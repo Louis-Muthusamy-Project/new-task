@@ -266,6 +266,17 @@ const AppRoutes = () => {
             path="stores/:storeId/pages/:pageId"
             element={<BccBuilder />}
           />
+
+          {/*
+            Funnel-module counterpart of the routes above. Reuses the same
+            GrapesJS builder (BccBuilder) — only the data it loads/saves
+            differs (FunnelStep instead of WebsitePage/StorePage), which
+            BccBuilder detects from the :funnelId param.
+          */}
+          <Route
+            path="funnels/:funnelId/steps/:pageId"
+            element={<BccBuilder />}
+          />
         </Route>
 
 

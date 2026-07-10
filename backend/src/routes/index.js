@@ -91,4 +91,8 @@ router.use('/store', require('./store/analyticsRoutes'));
 // SEO Workspace routes
 router.use('/seo', require('./seoRoutes'));
 
+// Funnels module routes
+router.use('/funnels', require('./funnelRoutes'));
+router.use('/funnel-templates', require('./funnelTemplateRoutes'));
+
 module.exports = router;

@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { websiteWizardApi } from "../../../api/websiteWizardApi";
 import { storeWizardApi } from "../../../api/storeWizardApi";
+import { funnelWizardApi } from "../../../api/funnelWizardApi";
 
 import GrapesPageEditor from "./GrapesPageEditor";
 import useUnsavedChangesWarning from "../utils/useUnsavedChangesWarning";
@@ -30,8 +31,8 @@ const isMongoId = (s) => typeof s === "string" && /^[a-f\d]{24}$/i.test(s);
 
 /**
  * Persist the full page record to sessionStorage so refresh works.
- * Keyed by entity kind ("website" | "store") as well as pageId so a
- * website page and a store page never collide, even if their ids matched.
+ * Keyed by entity kind ("website" | "store" | "funnel") as well as pageId so a
+ * website page, a store page and a funnel step never collide.
  */
 const STORAGE_KEY = (entityKind, pageId) => `jeema_page_${entityKind}_${pageId}`;
 
@@ -120,13 +121,15 @@ const BccBuilder = () => {
   // Route params determine which entity this page belongs to:
   //   /websites/:websiteId/pages/:pageId  → WebsitePage (default)
   //   /stores/:storeId/pages/:pageId      → StorePage
+  //   /funnels/:funnelId/steps/:pageId    → FunnelStep
   // Only the data source (API + cache) changes based on this — the
   // GrapesJS builder UI/logic below is shared as-is.
-  const { websiteId, storeId, pageId } = useParams();
+  const { websiteId, storeId, funnelId, pageId } = useParams();
   const isStore = !!storeId;
-  const entityId = isStore ? storeId : websiteId;
-  const entityKind = isStore ? "store" : "website";
-  const pageApi = isStore ? storeWizardApi : websiteWizardApi;
+  const isFunnel = !!funnelId;
+  const entityId = isStore ? storeId : (isFunnel ? funnelId : websiteId);
+  const entityKind = isStore ? "store" : (isFunnel ? "funnel" : "website");
+  const pageApi = isStore ? storeWizardApi : (isFunnel ? funnelWizardApi : websiteWizardApi);
 
   const location = useLocation();
   const navigate = useNavigate();

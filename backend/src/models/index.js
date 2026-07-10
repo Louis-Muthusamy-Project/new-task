@@ -26,4 +26,11 @@ module.exports = {
   SeoStrategy: require('./seo/SeoStrategy'),
   SeoContent: require('./seo/SeoContent'),
   SeoHistory: require('./seo/SeoHistory'),
-};
+  // ── Funnels ──────────────────────────────────────────────────────────────
+  Funnel: require('./Funnel'),
+  FunnelStep: require('./FunnelStep'),
+  FunnelTemplate: require('./FunnelTemplate'),
+  FunnelContact: require('./FunnelContact'),
+  FunnelAnalyticsEvent: require('./FunnelAnalyticsEvent'),
+  FunnelPublishHistory: require('./FunnelPublishHistory'),
+};

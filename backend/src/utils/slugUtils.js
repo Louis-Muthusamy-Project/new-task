@@ -126,4 +126,44 @@ const generateUniqueStorePageSlug = async (baseSlug, storeId, excludePageId = nu
   return `${baseSlug}-${n}`;
 };
 
-module.exports = { slugify, generateUniqueSlug, generateUniqueStorePageSlug };
+/**
+ * Funnel-module counterpart of generateUniqueSlug. Scoped to FunnelStep
+ * documents under a given funnelId.
+ *
+ * @param {string}              baseSlug      - Already-slugified base (e.g. "landing")
+ * @param {ObjectId|string}     funnelId
+ * @param {ObjectId|string|null} [excludeStepId] - Own step id when called from updateStep.
+ * @returns {Promise<string>}
+ */
+const generateUniqueFunnelStepSlug = async (baseSlug, funnelId, excludeStepId = null) => {
+  const FunnelStep = require('../models/FunnelStep');
+  const escaped = baseSlug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`^${escaped}(-\\d+)?$`);
+
+  const filter = {
+    funnelId,
+    slug: pattern,
+  };
+  if (excludeStepId) {
+    filter._id = { $ne: excludeStepId };
+  }
+
+  const existing = await FunnelStep.find(filter, { slug: 1 }).lean();
+
+  if (existing.length === 0) {
+    return baseSlug;
+  }
+
+  const taken = new Set();
+  for (const doc of existing) {
+    const match = doc.slug.match(/-(\d+)$/);
+    taken.add(match ? parseInt(match[1], 10) : 0);
+  }
+
+  let n = 1;
+  while (taken.has(n)) n++;
+
+  return `${baseSlug}-${n}`;
+};
+
+module.exports = { slugify, generateUniqueSlug, generateUniqueStorePageSlug, generateUniqueFunnelStepSlug };

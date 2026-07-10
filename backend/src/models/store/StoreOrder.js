@@ -70,6 +70,24 @@ const StoreOrderSchema = new Schema(
       ],
       default: [],
     },
+    // ── Funnel attribution (optional) ──────────────────────────────────────
+    // Set by the checkout flow when an order originates from a funnel step.
+    // Funnels orchestrate; they never own orders — these are reference links.
+    funnelId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Funnel',
+      default: null,
+      index: true,
+    },
+    stepId: {
+      type: Schema.Types.ObjectId,
+      ref: 'FunnelStep',
+      default: null,
+    },
+    funnelSource: {
+      type: String,
+      default: null, // e.g. 'funnel_checkout'
+    },
     isDeleted: { type: Boolean, default: false, index: true },
   },
   { timestamps: true }
