@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import React from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Typography, Row, Col, Card, Button, Select, Table, Tag, Input } from 'antd';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LayoutGrid, Globe, Store, FileText, LayoutTemplate, Smartphone, QrCode, MessageCircle, Link2, Plus, ExternalLink, Sparkles, Code, Activity, ChevronDown } from 'lucide-react';
@@ -17,20 +17,24 @@ import DomainsTab from './tabs/DomainsTab';
 const { Title, Text } = Typography;
 
 const WebsiteBuilder = () => {
-  // Read the wildcard sub-path so the Stores manage view can survive a
-  // browser refresh. The route is mounted as "workspace/website/*" in
-  // App.jsx, so useParams()['*'] gives us the sub-path, e.g.:
-  //   "stores"             → list view
-  //   "stores/<mongoId>"   → manage view for that store
-  const params = useParams();
-  const subPath = params['*'] || '';
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  // Derive the active tab and (optionally) the store ID from the URL.
+  // FIX: Derive the active tab (and, for Stores, the storeId) directly from
+  // the live URL on every render instead of a one-time useState snapshot.
+  // The route is mounted as "workspace/website/*" in App.jsx; useLocation()
+  // re-renders this component whenever the URL changes, so navigating with
+  // goToTab() below keeps the URL, browser refresh, and back/forward all in
+  // sync with the visible tab — matching the pattern Stores already used
+  // for its own list/manage sub-view.
+  const subPath = location.pathname.split('/workspace/website/')[1] || location.pathname.split('/workspace/website')[1] || '';
   const urlSegments = subPath.split('/').filter(Boolean);
-  const urlTab = urlSegments[0] || 'overview';
-  const urlStoreId = urlTab === 'stores' && urlSegments[1] ? urlSegments[1] : null;
+  const activeTab = urlSegments[0] || 'overview';
+  const urlStoreId = activeTab === 'stores' && urlSegments[1] ? urlSegments[1] : null;
 
-  const [activeTab, setActiveTab] = useState(urlTab);
+  const goToTab = (tabId) => {
+    navigate(tabId === 'overview' ? '/workspace/website' : `/workspace/website/${tabId}`);
+  };
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -151,7 +155,7 @@ const WebsiteBuilder = () => {
                     <Title level={5} style={{ margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-primary)', fontSize: 18 }}><Sparkles size={22} color="var(--accent-secondary)" /> Generate with AI</Title>
                     <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 20, fontWeight: 500 }}>Describe the website you want. Our AI builds it in under 60 seconds — full pages, copy, layout, and images.</Text>
                     <Input.TextArea rows={4} placeholder="e.g. A luxury real estate landing page for Prestige estates with hero, features, gallery, and lead form..." style={{ borderRadius: 12, marginBottom: 20, fontSize: 14, padding: 12 }} />
-                    <Button type="primary" icon={<Sparkles size={18} />} onClick={() => setActiveTab('websites')} style={{ width: '100%', borderRadius: 12, background: 'var(--accent-secondary)', height: 48, marginTop: 'auto', fontWeight: 700, fontSize: 15, border: 'none', boxShadow: 'var(--shadow-md)' }}>Generate Site</Button>
+                    <Button type="primary" icon={<Sparkles size={18} />} onClick={() => goToTab('websites')} style={{ width: '100%', borderRadius: 12, background: 'var(--accent-secondary)', height: 48, marginTop: 'auto', fontWeight: 700, fontSize: 15, border: 'none', boxShadow: 'var(--shadow-md)' }}>Generate Site</Button>
                   </Card>
                 </motion.div>
               </Col>
@@ -162,7 +166,7 @@ const WebsiteBuilder = () => {
                     <Title level={5} style={{ margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-primary)', fontSize: 18 }}><LayoutTemplate size={22} color="var(--accent-info)" /> Start from a Template</Title>
                     <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 24, fontWeight: 500 }}>100+ professionally designed templates. Filter by industry and customize everything.</Text>
                     
-                    <div style={{ height: 160, border: '2px dashed var(--border-color)', borderRadius: 12, display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: 24, background: 'rgba(59, 130, 246, 0.05)', cursor: 'pointer', transition: 'all 0.2s', marginTop: 'auto' }} onClick={() => setActiveTab('websites')}>
+                    <div style={{ height: 160, border: '2px dashed var(--border-color)', borderRadius: 12, display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: 24, background: 'rgba(59, 130, 246, 0.05)', cursor: 'pointer', transition: 'all 0.2s', marginTop: 'auto' }} onClick={() => goToTab('websites')}>
                       <Button type="link" style={{ fontSize: 16, fontWeight: 600, color: 'var(--accent-info)' }}>Browse Templates →</Button>
                     </div>
                   </Card>
@@ -175,7 +179,7 @@ const WebsiteBuilder = () => {
                     <Title level={5} style={{ margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-primary)', fontSize: 18 }}><Code size={22} color="var(--accent-warning)" /> Import or Upload Code</Title>
                     <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 24, fontWeight: 500 }}>Upload HTML/CSS/JS files, paste code, or import from Webflow, Figma, or WordPress.</Text>
                     
-                    <div style={{ height: 160, border: '2px dashed var(--border-color)', borderRadius: 12, display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: 24, background: 'rgba(245, 158, 11, 0.05)', cursor: 'pointer', transition: 'all 0.2s', marginTop: 'auto' }} onClick={() => setActiveTab('websites')}>
+                    <div style={{ height: 160, border: '2px dashed var(--border-color)', borderRadius: 12, display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: 24, background: 'rgba(245, 158, 11, 0.05)', cursor: 'pointer', transition: 'all 0.2s', marginTop: 'auto' }} onClick={() => goToTab('websites')}>
                       <Button type="link" style={{ fontSize: 16, fontWeight: 600, color: 'var(--accent-warning)' }}>Import Site →</Button>
                     </div>
                   </Card>
@@ -238,7 +242,7 @@ const WebsiteBuilder = () => {
         {tabs.map((tab) => (
           <div 
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => goToTab(tab.id)}
             style={{ 
               padding: '12px 16px', 
               color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)',
