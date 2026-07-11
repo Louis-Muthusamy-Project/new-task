@@ -656,7 +656,15 @@ export function registerStoreTraits(editor) {
     },
     model: {
       defaults: {
-        traits: [],
+        traits: [
+          createTrait({
+            name: 'data-redirect-url',
+            label: 'Redirect after order (next step URL)',
+            type: 'text',
+            default: '',
+            placeholder: '/confirmed',
+          }),
+        ],
       },
     },
   });

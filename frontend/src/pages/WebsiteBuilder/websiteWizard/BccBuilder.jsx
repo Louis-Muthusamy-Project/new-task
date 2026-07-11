@@ -637,6 +637,7 @@ const BccBuilder = () => {
               pageKey={pageId}
               websiteId={entityId}
               isStore={isStore}
+              isFunnel={isFunnel}
               initialHtml={html}
               initialCss={css}
               initialHeadLinks={headLinks}

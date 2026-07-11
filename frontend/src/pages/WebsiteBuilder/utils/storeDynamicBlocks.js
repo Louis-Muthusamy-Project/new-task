@@ -54,8 +54,32 @@ const esc = (s) =>
  */
 const runtimeHelpers = (apiBase, storeId) => `
     var API_BASE = ${JSON.stringify(apiBase)};
-    var STORE_ID = ${JSON.stringify(storeId)};
-    var CART_KEY = 'jeema_store_cart_' + STORE_ID;
+    var FIXED_STORE_ID = ${JSON.stringify(storeId)};
+    // The store id baked in at block-registration time is only reliable on
+    // a real StorePage. On a Funnel step it's actually the funnel's own id
+    // (GrapesPageEditor has no per-funnel "store" concept — a Funnel
+    // Checkout step can sell a product from ANY store, chosen per-product
+    // via the Store tool's "insert single product" flow). That flow always
+    // records which real store id "Add to cart" was last used with — see
+    // addToCart() below and buildStoreProductHtml() in GrapesPageEditor.jsx.
+    //
+    // IMPORTANT: this must be resolved fresh every time it's needed, NOT
+    // once when this script first runs — a shopper who lands on the page,
+    // then clicks "Add to cart" a moment later, updates this AFTER this
+    // script has already executed. A single top-level "var STORE_ID = ..."
+    // would capture the pre-click (wrong) value forever for the rest of
+    // the page's life, which is exactly what made Cart/Checkout blocks get
+    // permanently stuck pointed at the wrong store. activeStoreId() below
+    // is called at the moment of every cart read/write instead.
+    function activeStoreId() {
+      try { return localStorage.getItem('jeema_active_store_id') || FIXED_STORE_ID; }
+      catch (e) { return FIXED_STORE_ID; }
+    }
+    // Kept for blocks that show ONE specific store's catalog regardless of
+    // cart state (Product Grid, Header, etc.) — those should still use the
+    // store id they were actually configured with, not whichever store a
+    // shopper's cart happens to belong to.
+    var STORE_ID = FIXED_STORE_ID;
     var CACHE_KEY = 'jeema_store_cache_';
     var CACHE_TTL = 60000; // 60 seconds
     function money(amount, currency) {
@@ -89,15 +113,16 @@ const runtimeHelpers = (apiBase, storeId) => `
       });
     }
     function readCart() {
-      try { return JSON.parse(localStorage.getItem(CART_KEY) || '[]'); } catch (e) { return []; }
+      try { return JSON.parse(localStorage.getItem('jeema_store_cart_' + activeStoreId()) || '[]'); } catch (e) { return []; }
     }
     function writeCart(items) {
       try {
-        localStorage.setItem(CART_KEY, JSON.stringify(items));
+        localStorage.setItem('jeema_store_cart_' + activeStoreId(), JSON.stringify(items));
         window.dispatchEvent(new CustomEvent('store-cart-updated', { detail: { items: items } }));
       } catch (e) {}
     }
     function addToCart(productId, quantity) {
+      try { localStorage.setItem('jeema_active_store_id', STORE_ID); } catch (e) {}
       var items = readCart();
       var existing = items.find(function (i) { return i.productId === productId; });
       if (existing) existing.quantity += (quantity || 1);
@@ -725,7 +750,7 @@ function cartBlock(apiBase, storeId) {
           return;
         }
         Promise.all(items.map(function (i) {
-          return fetchJson(API_BASE + '/store/' + STORE_ID + '/products/' + i.productId)
+          return fetchJson(API_BASE + '/store/' + activeStoreId() + '/products/' + i.productId)
             .then(function (p) { return { product: p, quantity: i.quantity }; })
             .catch(function () { return null; });
         })).then(function (rows) {
@@ -770,7 +795,7 @@ function cartBlock(apiBase, storeId) {
 // ── 8. Checkout ──────────────────────────────────────────────────────────
 function checkoutBlock(apiBase, storeId) {
   const content = `
-    <section class="store-block store-checkout" data-store-block="checkout" style="padding:48px 24px;font-family:sans-serif;max-width:520px;margin:0 auto;">
+    <section id="checkout" class="store-block store-checkout" data-store-block="checkout" data-redirect-url="" style="padding:48px 24px;font-family:sans-serif;max-width:520px;margin:0 auto;">
       <h1 style="margin:0 0 20px;font-size:26px;font-weight:800;color:#111827;">Checkout</h1>
       <div class="store-checkout-summary" style="margin-bottom:20px;color:#6b7280;">Loading order summary…</div>
       <form class="store-checkout-form" style="display:flex;flex-direction:column;gap:12px;">
@@ -789,15 +814,21 @@ function checkoutBlock(apiBase, storeId) {
         var summary = el.querySelector('.store-checkout-summary');
         var form = el.querySelector('.store-checkout-form');
         var msg = el.querySelector('.store-checkout-message');
-        var cartItems = readCart();
 
         function loadSummary() {
+          // Read fresh every time this runs — NOT captured once at hydrate
+          // — so an "Add to cart" click that happens after this script
+          // already ran (the normal case: shopper adds an item, then
+          // scrolls down to this same Checkout section) is picked up
+          // instead of this section staying stuck on a cart snapshot from
+          // before that click ever happened.
+          var cartItems = readCart();
           if (!cartItems.length) {
             summary.textContent = 'Your cart is empty.';
             return;
           }
           Promise.all(cartItems.map(function (i) {
-            return fetchJson(API_BASE + '/store/' + STORE_ID + '/products/' + i.productId)
+            return fetchJson(API_BASE + '/store/' + activeStoreId() + '/products/' + i.productId)
               .then(function (p) { return { product: p, quantity: i.quantity }; })
               .catch(function () { return null; });
           })).then(function (rows) {
@@ -811,14 +842,18 @@ function checkoutBlock(apiBase, storeId) {
           }).catch(function () { summary.textContent = 'Could not load order summary.'; });
         }
         loadSummary();
+        // Keep the summary in sync with the cart in real time — same event
+        // the Cart block already listens for.
+        window.addEventListener('store-cart-updated', loadSummary);
 
         form.addEventListener('submit', function (e) {
           e.preventDefault();
+          var cartItems = readCart();
           if (!cartItems.length) { msg.style.color = '#ef4444'; msg.textContent = 'Your cart is empty.'; return; }
           var submitBtn = form.querySelector('button[type="submit"]');
           submitBtn.disabled = true;
           submitBtn.textContent = 'Placing order…';
-          fetch(API_BASE + '/store/' + STORE_ID + '/orders', {
+          fetch(API_BASE + '/store/' + activeStoreId() + '/orders', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ items: cartItems, customer: { name: form.name.value, email: form.email.value } })
@@ -828,6 +863,16 @@ function checkoutBlock(apiBase, storeId) {
             msg.style.color = '#16a34a';
             msg.textContent = 'Order ' + json.data.orderNumber + ' placed! Total ' + money(json.data.total, json.data.currency) + '.';
             form.style.display = 'none';
+            // Advance to whatever page comes next (e.g. a Funnel's
+            // Confirmation/Thank You step) — configured per-block via the
+            // "Redirect after order" trait (data-redirect-url) in the
+            // Settings panel. Left empty, the shopper just sees the
+            // confirmation message on this same page, same as before.
+            var redirectUrl = el.dataset.redirectUrl;
+            if (redirectUrl) {
+              msg.textContent += ' Redirecting…';
+              setTimeout(function () { window.location.href = redirectUrl; }, 1200);
+            }
           }).catch(function (err) {
             msg.style.color = '#ef4444';
             msg.textContent = err.message || 'Could not place order.';

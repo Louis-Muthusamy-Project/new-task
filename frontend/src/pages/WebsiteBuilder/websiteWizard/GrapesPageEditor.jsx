@@ -663,6 +663,11 @@ function buildStoreProductHtml(storeId, product = {}) {
         } catch (e) {}
       }
       function addToCart(storeId, productId, quantity) {
+        // Lets the Checkout/Cart blocks (storeDynamicBlocks.js) find this
+        // exact store's cart even when they were registered with a
+        // different id (e.g. a Funnel step's id) — see runtimeHelpers()
+        // there for the reader side of this same key.
+        try { localStorage.setItem('jeema_active_store_id', storeId); } catch (e) {}
         var items = readCart(storeId);
         var existing = items.find(function (i) { return i.productId === productId; });
         if (existing) existing.quantity += (quantity || 1);
@@ -721,6 +726,7 @@ const GrapesPageEditor = ({
   pageKey,
   websiteId,
   isStore = false,
+  isFunnel = false,
   height = '100%',
   initialHtml = '',
   initialCss = '',
@@ -766,6 +772,9 @@ const GrapesPageEditor = ({
 
   const isStoreRef = useRef(isStore);
   useEffect(() => { isStoreRef.current = isStore; }, [isStore]);
+
+  const isFunnelRef = useRef(isFunnel);
+  useEffect(() => { isFunnelRef.current = isFunnel; }, [isFunnel]);
 
   useEffect(() => {
     if (activeTool === 'forms') {
@@ -1411,13 +1420,18 @@ const GrapesPageEditor = ({
 
       await fetchFormTools(editor);
 
-      // Store pages get an extra "Store" block category (Header, Menu, Hero,
-      // Product Grid, Latest Products, Featured Product(s), Collection Grid,
-      // Testimonials, Blog, Search, Cart, Checkout, Footer) that render live
-      // data from the storefront API. Registered once per editor instance —
-      // websiteId here is the storeId for store pages (see BccBuilder, which
-      // passes storeId through as websiteId).
-      if (isStoreRef.current && websiteIdRef.current) {
+      // Store pages — AND Funnel steps, which sell a StoreProduct the same
+      // way (see FunnelStep.settings.productId) — get an extra "Store"
+      // block category (Header, Menu, Hero, Product Grid, Latest Products,
+      // Featured Product(s), Collection Grid, Testimonials, Blog, Search,
+      // Cart, Checkout, Footer) that render live data from the storefront
+      // API. Registered once per editor instance — websiteId here is the
+      // storeId for store pages (see BccBuilder, which passes storeId
+      // through as websiteId) or the funnelId for funnel steps (Cart/
+      // Checkout resolve the real store id themselves at runtime — see
+      // runtimeHelpers() in storeDynamicBlocks.js — so a funnel step
+      // working with products from any store still works correctly).
+      if ((isStoreRef.current || isFunnelRef.current) && websiteIdRef.current) {
         try {
           registerStoreBlocks(editor, { apiBase: API_BASE, storeId: websiteIdRef.current });
           registerStoreTraits(editor);

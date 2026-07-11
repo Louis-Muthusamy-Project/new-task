@@ -830,7 +830,7 @@ const ManageFunnelView = ({ activeFunnel, setView, itemVariants }) => {
                         <Space>
                           <Button 
                             icon={<Edit3 size={14} />} 
-                            onClick={() => window.open(`/funnels/${activeFunnel._id}/steps/${step._id}`, "_blank")}
+                            onClick={() => window.open(`/funnels/${activeFunnel._id}/steps/${step._id}`)}
                           >
                             Edit Page
                           </Button>
