@@ -6,16 +6,27 @@ import {
 import { 
   FolderPlus, Plus, Search, CheckCircle2, ChevronRight, BarChart3, 
   Edit3, Eye, Trash2, Smartphone, Monitor, ArrowLeft, ArrowRight,
-  TrendingUp, Users, DollarSign, Globe, Settings, FileText, Share2, Copy
+  TrendingUp, Users, DollarSign, Globe, Settings, FileText, Share2, Copy,
+  Star, ArrowUpDown, Filter as FilterIcon
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import FunnelTemplateLibraryModal from "./FunnelTemplateLibraryModal";
 import { funnelApi } from "../../../api/funnelApi";
 import { storeApi, productApi } from "../../../api/storeApi";
+import { useAuth } from "../../../contexts/AuthContext";
+import FunnelStatusBadge from "./funnels/FunnelStatusBadge";
+import FunnelTagsEditor from "./funnels/FunnelTagsEditor";
+import FunnelQuickActions from "./funnels/FunnelQuickActions";
+import FunnelBulkActionBar from "./funnels/FunnelBulkActionBar";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 const { TextArea } = Input;
+
+const formatCurrency = (n) =>
+  `$${(Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const formatNumber = (n) => (Number(n) || 0).toLocaleString();
+const formatPercent = (n) => `${(Number(n) || 0).toFixed(1)}%`;
 
 // ── CREATE FUNNEL MODAL ──────────────────────────────────────────────────────
 const CreateFunnelModal = ({ open, onCancel, onCreate }) => {
@@ -837,29 +848,59 @@ const ManageFunnelView = ({ activeFunnel, setView, itemVariants }) => {
 
 // ── MAIN FUNNELS TAB ─────────────────────────────────────────────────────────
 const FunnelsTab = ({ itemVariants }) => {
+  const { role } = useAuth();
   const [funnels, setFunnels] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activeFunnel, setActiveFunnel] = useState(null);
   const [view, setView] = useState("list");
   
   const [searchText, setSearchText] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all"); // all | Draft | Published | Archived
+  const [sortBy, setSortBy] = useState("updated"); // newest | oldest | updated | name
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [tagFilter, setTagFilter] = useState(undefined);
+  const [tagOptions, setTagOptions] = useState([]);
+  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
+  const [bulkLoading, setBulkLoading] = useState(false);
+
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [pendingFunnelName, setPendingFunnelName] = useState("");
+  const [cloneTarget, setCloneTarget] = useState(null);
+  const [cloneName, setCloneName] = useState("");
 
   useEffect(() => {
     loadFunnels();
-  }, []);
+    loadTags();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, sortBy, favoritesOnly, tagFilter]);
 
   const loadFunnels = async () => {
     setLoading(true);
     try {
-      const data = await funnelApi.list({ search: searchText || undefined });
+      const data = await funnelApi.list({
+        search: searchText || undefined,
+        status: statusFilter === "all" ? undefined : statusFilter,
+        sort: sortBy,
+        favorite: favoritesOnly || undefined,
+        tag: tagFilter || undefined,
+        includeStats: true,
+      });
       setFunnels(data || []);
+      setSelectedRowKeys([]);
     } catch (_) {
       message.error("Failed to load funnels list.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadTags = async () => {
+    try {
+      const tags = await funnelApi.listTags();
+      setTagOptions(tags || []);
+    } catch (_) {
+      // Non-critical — the tag filter just stays empty.
     }
   };
 
@@ -875,6 +916,7 @@ const FunnelsTab = ({ itemVariants }) => {
       const created = await funnelApi.create({
         name: data.name,
         templateId: data.templateId || undefined,
+        createdBy: role ? role.charAt(0).toUpperCase() + role.slice(1) : undefined,
       });
       message.success("Funnel created successfully.");
       setIsCreateModalOpen(false);
@@ -887,27 +929,141 @@ const FunnelsTab = ({ itemVariants }) => {
     }
   };
 
-  const handleDuplicate = async (id) => {
+  const handleDuplicate = async (funnel) => {
     try {
-      await funnelApi.duplicate(id);
+      await funnelApi.duplicate(funnel._id);
       message.success("Funnel duplicated.");
       loadFunnels();
-    } catch (_) {}
+    } catch (_) {
+      message.error("Failed to duplicate funnel.");
+    }
   };
 
-  const handleDelete = async (id) => {
+  // "Clone as new" reuses the exact same duplicate endpoint as Duplicate,
+  // it just immediately offers to rename the copy via the existing PATCH
+  // /:id (update) endpoint — no new backend logic.
+  const handleClone = async (funnel) => {
     try {
-      await funnelApi.delete(id);
+      const cloned = await funnelApi.duplicate(funnel._id);
+      setCloneTarget(cloned);
+      setCloneName(cloned?.name || "");
+      loadFunnels();
+    } catch (_) {
+      message.error("Failed to clone funnel.");
+    }
+  };
+
+  const handleConfirmCloneRename = async () => {
+    if (!cloneTarget) return;
+    try {
+      if (cloneName.trim() && cloneName.trim() !== cloneTarget.name) {
+        await funnelApi.update(cloneTarget._id, { name: cloneName.trim() });
+      }
+      message.success("Funnel cloned.");
+    } catch (_) {
+      message.error("Cloned, but renaming failed.");
+    } finally {
+      setCloneTarget(null);
+      setCloneName("");
+      loadFunnels();
+    }
+  };
+
+  const handleDelete = async (funnel) => {
+    try {
+      await funnelApi.delete(funnel._id);
       message.success("Funnel deleted.");
       loadFunnels();
-    } catch (_) {}
+    } catch (_) {
+      message.error("Failed to delete funnel.");
+    }
   };
+
+  const handleToggleFavorite = async (funnel) => {
+    try {
+      await funnelApi.toggleFavorite(funnel._id, !funnel.isFavorite);
+      setFunnels((prev) =>
+        prev.map((f) => (f._id === funnel._id ? { ...f, isFavorite: !funnel.isFavorite } : f))
+      );
+    } catch (_) {
+      message.error("Failed to update favorite.");
+    }
+  };
+
+  const handleSetTags = async (funnel, tags) => {
+    try {
+      await funnelApi.setTags(funnel._id, tags);
+      setFunnels((prev) => prev.map((f) => (f._id === funnel._id ? { ...f, tags } : f)));
+      loadTags();
+    } catch (_) {
+      message.error("Failed to update tags.");
+    }
+  };
+
+  const handleArchive = async (funnel) => {
+    try {
+      await funnelApi.archive(funnel._id);
+      message.success("Funnel archived.");
+      loadFunnels();
+    } catch (_) {
+      message.error("Failed to archive funnel.");
+    }
+  };
+
+  const handleRestore = async (funnel) => {
+    try {
+      await funnelApi.restore(funnel._id, "Draft");
+      message.success("Funnel restored to Draft.");
+      loadFunnels();
+    } catch (_) {
+      message.error("Failed to restore funnel.");
+    }
+  };
+
+  const runBulkAction = async (action, successMessage) => {
+    if (selectedRowKeys.length === 0) return;
+    setBulkLoading(true);
+    try {
+      const result = await funnelApi.bulkAction(selectedRowKeys, action);
+      if (result?.failed?.length) {
+        message.warning(`${result.succeeded.length} succeeded, ${result.failed.length} failed.`);
+      } else {
+        message.success(successMessage);
+      }
+      loadFunnels();
+    } catch (_) {
+      message.error("Bulk action failed.");
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const handleBulkDelete = () => runBulkAction("delete", "Selected funnels deleted.");
+  const handleBulkPublish = () => runBulkAction("publish", "Selected funnels published.");
+  const handleBulkArchive = () => runBulkAction("archive", "Selected funnels archived.");
 
   if (view === "manage" && activeFunnel) {
     return <ManageFunnelView activeFunnel={activeFunnel} setView={setView} itemVariants={itemVariants} />;
   }
 
   const columns = [
+    {
+      title: "",
+      dataIndex: "isFavorite",
+      key: "isFavorite",
+      width: 40,
+      render: (isFavorite, r) => (
+        <Star
+          size={16}
+          onClick={() => handleToggleFavorite(r)}
+          style={{
+            cursor: "pointer",
+            color: isFavorite ? "#f5a623" : "var(--text-tertiary)",
+            fill: isFavorite ? "#f5a623" : "none",
+          }}
+        />
+      ),
+    },
     {
       title: "NAME",
       dataIndex: "name",
@@ -920,14 +1076,18 @@ const FunnelsTab = ({ itemVariants }) => {
       )
     },
     {
+      title: "TAGS",
+      dataIndex: "tags",
+      key: "tags",
+      render: (tags, r) => (
+        <FunnelTagsEditor tags={tags || []} onChange={(next) => handleSetTags(r, next)} />
+      ),
+    },
+    {
       title: "STATUS",
       dataIndex: "status",
       key: "status",
-      render: (status) => (
-        <Tag color={status === "Published" ? "green" : "orange"} style={{ borderRadius: 12, fontWeight: 700 }}>
-          {status.toUpperCase()}
-        </Tag>
-      )
+      render: (status) => <FunnelStatusBadge status={status} />
     },
     {
       title: "STEPS",
@@ -936,35 +1096,62 @@ const FunnelsTab = ({ itemVariants }) => {
       render: t => <strong style={{ color: 'var(--text-primary)' }}>{t || 0}</strong>
     },
     {
-      title: "LAST UPDATED",
+      title: "VISITORS",
+      key: "visitors",
+      render: (_, r) => <span style={{ color: 'var(--text-primary)' }}>{formatNumber(r.stats?.visitors)}</span>,
+    },
+    {
+      title: "ORDERS",
+      key: "orders",
+      render: (_, r) => <span style={{ color: 'var(--text-primary)' }}>{formatNumber(r.stats?.orders)}</span>,
+    },
+    {
+      title: "REVENUE",
+      key: "revenue",
+      render: (_, r) => <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{formatCurrency(r.stats?.revenue)}</span>,
+    },
+    {
+      title: "CONV. RATE",
+      key: "conversionRate",
+      render: (_, r) => <Text type="secondary" style={{ fontWeight: 500 }}>{formatPercent(r.stats?.conversionRate)}</Text>,
+    },
+    {
+      title: "CREATED BY",
+      dataIndex: "createdBy",
+      key: "createdBy",
+      render: (v) => <Text type="secondary" style={{ fontWeight: 500 }}>{v || "—"}</Text>,
+    },
+    {
+      title: "LAST EDITED",
       dataIndex: "updatedAt",
       key: "updatedAt",
       render: t => <Text type="secondary" style={{ fontWeight: 500 }}>{new Date(t).toLocaleDateString()}</Text>
     },
     {
-      title: "ACTIONS",
+      title: "",
       key: "actions",
+      fixed: "right",
+      width: 60,
       render: (_, r) => (
-        <Space size="middle">
-          <span 
-            style={{ color: "var(--accent-secondary)", fontWeight: 700, cursor: "pointer", display: 'flex', alignItems: 'center', gap: 4 }}
-            onClick={() => {
-              setActiveFunnel(r);
-              setView("manage");
-            }}
-          >
-            Manage <ChevronRight size={14} />
-          </span>
-          <Tooltip title="Duplicate">
-            <Button type="text" icon={<Copy size={14} />} onClick={() => handleDuplicate(r._id)} />
-          </Tooltip>
-          <Popconfirm title="Delete funnel?" onConfirm={() => handleDelete(r._id)}>
-            <Button danger type="text" icon={<Trash2 size={14} />} />
-          </Popconfirm>
-        </Space>
+        <FunnelQuickActions
+          funnel={r}
+          onManage={(f) => { setActiveFunnel(f); setView("manage"); }}
+          onPreview={(f) => { setActiveFunnel(f); setView("manage"); }}
+          onDuplicate={handleDuplicate}
+          onClone={handleClone}
+          onToggleFavorite={handleToggleFavorite}
+          onArchive={handleArchive}
+          onRestore={handleRestore}
+          onDelete={handleDelete}
+        />
       )
     },
   ];
+
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: setSelectedRowKeys,
+  };
 
   return (
     <motion.div variants={itemVariants}>
@@ -978,17 +1165,65 @@ const FunnelsTab = ({ itemVariants }) => {
         </Space>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 16 }}>
-        <Input 
-          placeholder="Search for Funnels" 
-          prefix={<Search size={16} color="var(--text-tertiary)" />} 
-          value={searchText} 
-          onChange={(e) => setSearchText(e.target.value)} 
-          onPressEnter={loadFunnels}
-          style={{ width: 300, borderRadius: 8, height: 40 }} 
-        />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
+        <Space wrap>
+          <Input 
+            placeholder="Search for Funnels" 
+            prefix={<Search size={16} color="var(--text-tertiary)" />} 
+            value={searchText} 
+            onChange={(e) => setSearchText(e.target.value)} 
+            onPressEnter={loadFunnels}
+            style={{ width: 260, borderRadius: 8, height: 40 }} 
+          />
+          <Select
+            value={statusFilter}
+            onChange={setStatusFilter}
+            style={{ width: 150, height: 40 }}
+            suffixIcon={<FilterIcon size={14} />}
+          >
+            <Option value="all">All statuses</Option>
+            <Option value="Draft">Draft</Option>
+            <Option value="Published">Published</Option>
+            <Option value="Archived">Archived</Option>
+          </Select>
+          <Select
+            value={sortBy}
+            onChange={setSortBy}
+            style={{ width: 170, height: 40 }}
+            suffixIcon={<ArrowUpDown size={14} />}
+          >
+            <Option value="newest">Newest first</Option>
+            <Option value="oldest">Oldest first</Option>
+            <Option value="updated">Last updated</Option>
+            <Option value="name">Name (A–Z)</Option>
+          </Select>
+          <Select
+            allowClear
+            placeholder="Filter by tag"
+            value={tagFilter}
+            onChange={setTagFilter}
+            style={{ width: 160, height: 40 }}
+            options={tagOptions.map((t) => ({ value: t, label: t }))}
+          />
+          <Button
+            type={favoritesOnly ? "primary" : "default"}
+            icon={<Star size={14} style={{ fill: favoritesOnly ? '#fff' : 'none' }} />}
+            onClick={() => setFavoritesOnly((v) => !v)}
+            style={favoritesOnly ? { background: '#f5a623', border: 'none' } : {}}
+          >
+            Favorites
+          </Button>
+        </Space>
         <Button onClick={loadFunnels}>Refresh</Button>
       </div>
+
+      <FunnelBulkActionBar
+        selectedCount={selectedRowKeys.length}
+        onClear={() => setSelectedRowKeys([])}
+        onBulkDelete={handleBulkDelete}
+        onBulkPublish={handleBulkPublish}
+        onBulkArchive={handleBulkArchive}
+      />
 
       {loading ? (
         <div style={{ padding: 80, textAlign: "center" }}><Spin /></div>
@@ -999,6 +1234,9 @@ const FunnelsTab = ({ itemVariants }) => {
           pagination={false}
           size="middle"
           rowKey="_id"
+          scroll={{ x: 1300 }}
+          rowSelection={rowSelection}
+          loading={bulkLoading}
           locale={{
             emptyText: (
               <div style={{ padding: '60px 0', textAlign: 'center' }}>
@@ -1019,6 +1257,20 @@ const FunnelsTab = ({ itemVariants }) => {
         onCancel={() => setIsCreateModalOpen(false)}
         onCreate={handleCreateFunnel}
       />
+
+      <Modal
+        open={!!cloneTarget}
+        title="Name your cloned funnel"
+        onCancel={() => { setCloneTarget(null); setCloneName(""); }}
+        onOk={handleConfirmCloneRename}
+        okText="Save"
+      >
+        <Input
+          value={cloneName}
+          onChange={(e) => setCloneName(e.target.value)}
+          placeholder="Funnel name"
+        />
+      </Modal>
 
       <FunnelTemplateLibraryModal 
         open={isTemplateModalOpen}

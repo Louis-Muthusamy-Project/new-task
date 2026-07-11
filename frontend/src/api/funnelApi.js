@@ -57,12 +57,53 @@ function unwrap(json) {
 
 export const funnelApi = {
   // ── Funnel CRUD ────────────────────────────────────────────────────────────
-  list: async ({ search, status } = {}) => {
+  list: async ({ search, status, sort, favorite, tag, includeStats, page, limit } = {}) => {
     const params = new URLSearchParams();
     if (search) params.set('search', search);
     if (status) params.set('status', status);
+    if (sort) params.set('sort', sort);
+    if (favorite) params.set('favorite', 'true');
+    if (tag) params.set('tag', tag);
+    if (includeStats) params.set('includeStats', 'true');
+    if (page) params.set('page', page);
+    if (limit) params.set('limit', limit);
     const qs = params.toString() ? `?${params.toString()}` : '';
     const json = unwrap(await requestJson(`/funnels${qs}`));
+    return json.data;
+  },
+
+  // Distinct tags in use, for the dashboard's tag filter dropdown.
+  listTags: async () => {
+    const json = unwrap(await requestJson('/funnels/tags'));
+    return json.data;
+  },
+
+  // Favorites/Archive/Restore/Tags all reuse the existing PATCH /:id
+  // endpoint (update) — these are just convenience wrappers around it.
+  toggleFavorite: async (id, isFavorite) => {
+    const json = unwrap(await requestJson(`/funnels/${id}`, { method: 'PATCH', body: { isFavorite } }));
+    return json.data;
+  },
+
+  setTags: async (id, tags) => {
+    const json = unwrap(await requestJson(`/funnels/${id}`, { method: 'PATCH', body: { tags } }));
+    return json.data;
+  },
+
+  archive: async (id) => {
+    const json = unwrap(await requestJson(`/funnels/${id}`, { method: 'PATCH', body: { status: 'Archived' } }));
+    return json.data;
+  },
+
+  restore: async (id, status = 'Draft') => {
+    const json = unwrap(await requestJson(`/funnels/${id}`, { method: 'PATCH', body: { status } }));
+    return json.data;
+  },
+
+  // Bulk actions (Bulk Delete / Bulk Publish / Bulk Archive) — one request
+  // reusing the same per-funnel logic as the single-item endpoints.
+  bulkAction: async (ids, action) => {
+    const json = unwrap(await requestJson('/funnels/bulk', { method: 'POST', body: { ids, action } }));
     return json.data;
   },
 

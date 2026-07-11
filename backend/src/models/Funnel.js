@@ -57,6 +57,21 @@ const FunnelSchema = new Schema(
       description: { type: String, trim: true, default: '' },
       ogImageUrl: { type: String, trim: true, default: '' },
     },
+    // Dashboard organization — mirrors StoreProduct.tags for the same
+    // "array of trimmed strings" convention used across the app.
+    tags: { type: [String], default: [] },
+    // Starred/pinned funnels in the dashboard list.
+    isFavorite: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    // Snapshot display name of whoever created the funnel. There is no
+    // User collection wired up yet (admin routes carry no jwtMiddleware —
+    // see funnelRoutes.js), so this intentionally stores a plain string
+    // captured at creation time rather than a `ref: 'User'` ObjectId that
+    // could never be populated. Falls back to '' when unknown.
+    createdBy: { type: String, trim: true, default: '' },
     isDeleted: {
       type: Boolean,
       default: false,
@@ -69,5 +84,6 @@ const FunnelSchema = new Schema(
 FunnelSchema.index({ ownerId: 1, status: 1 });
 FunnelSchema.index({ teamId: 1, status: 1 });
 FunnelSchema.index({ name: 'text' });
+FunnelSchema.index({ tags: 1 });
 
 module.exports = mongoose.models.Funnel || mongoose.model('Funnel', FunnelSchema);

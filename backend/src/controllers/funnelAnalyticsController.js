@@ -21,6 +21,7 @@ const notFoundError = (message) => {
 // Store's analyticsController — so Funnel and Store analytics answer
 // "how much revenue" identically for the orders that live in both worlds.
 const COUNTED_STATUSES = ['Paid', 'Shipped', 'Delivered'];
+exports.COUNTED_STATUSES = COUNTED_STATUSES;
 
 /**
  * GET /api/funnels/:funnelId/analytics?days=30

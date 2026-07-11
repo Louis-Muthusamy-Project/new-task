@@ -12,6 +12,12 @@ const asyncHandler = require('../utils/asyncHandler');
 // ── Funnels CRUD ─────────────────────────────────────────────────────────────
 router.get('/', asyncHandler(funnelController.getFunnels));
 router.post('/', asyncHandler(funnelController.createFunnel));
+
+// Dashboard helpers — declared before '/:id' so literal paths ('tags',
+// 'bulk') are never swallowed by the ':id' param route.
+router.get('/tags', asyncHandler(funnelController.getFunnelTags));
+router.post('/bulk', asyncHandler(funnelController.bulkAction));
+
 router.get('/:id', asyncHandler(funnelController.getFunnelById));
 router.patch('/:id', asyncHandler(funnelController.updateFunnel));
 router.delete('/:id', asyncHandler(funnelController.deleteFunnel));

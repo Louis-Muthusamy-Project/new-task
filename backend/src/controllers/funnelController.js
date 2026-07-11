@@ -2,8 +2,14 @@ const mongoose = require('mongoose');
 const Funnel = require('../models/Funnel');
 const FunnelStep = require('../models/FunnelStep');
 const FunnelTemplate = require('../models/FunnelTemplate');
+const StoreOrder = require('../models/store/StoreOrder');
+const FunnelAnalyticsEvent = require('../models/FunnelAnalyticsEvent');
 const { duplicateFunnel } = require('../services/funnelDuplicateService');
+const funnelPublishService = require('../services/funnelPublishService');
 const { slugify } = require('../utils/slugUtils');
+// Reuse the exact "what counts as a completed sale" definition already
+// established in funnelAnalyticsController, instead of redefining it here.
+const { COUNTED_STATUSES } = require('./funnelAnalyticsController');
 
 const buildOwnershipFilter = (req) => {
   const ownerId = req?.user?.id || req?.user?._id || null;
@@ -29,7 +35,7 @@ const invalidIdError = () => {
  * Creates a new funnel. If templateId is provided, clones steps from the FunnelTemplate.
  */
 exports.createFunnel = async (req, res) => {
-  const { name, status, templateId, settings, seo } = req.body;
+  const { name, status, templateId, settings, seo, tags, createdBy } = req.body;
 
   if (!name) {
     return res.status(400).json({ success: false, error: 'Funnel name is required.' });
@@ -37,6 +43,10 @@ exports.createFunnel = async (req, res) => {
 
   const ownerId = req?.user?.id || req?.user?._id || null;
   const teamId = req?.user?.teamId || null;
+  // No jwtMiddleware is mounted on funnelRoutes yet, so req.user is
+  // usually empty — fall back to whatever display name the client sent
+  // (e.g. the current AuthContext role) rather than leaving it blank.
+  const createdByName = req?.user?.name || req?.user?.email || createdBy || '';
 
   const funnel = await Funnel.create({
     ownerId,
@@ -44,6 +54,8 @@ exports.createFunnel = async (req, res) => {
     name,
     slug: slugify(name),
     status: status || 'Draft',
+    tags: Array.isArray(tags) ? tags.filter(Boolean).map((t) => String(t).trim()) : [],
+    createdBy: createdByName,
     settings: settings || {
       faviconUrl: '',
       domain: '',
@@ -100,6 +112,15 @@ exports.createFunnel = async (req, res) => {
  * GET /api/funnels
  * Lists all non-deleted funnels. Supports optional search.
  */
+// Maps the dashboard's `sort` query param to a Mongo sort spec. Unknown or
+// missing values fall back to the original default (last updated first).
+const SORT_MAP = {
+  newest: { createdAt: -1 },
+  oldest: { createdAt: 1 },
+  updated: { updatedAt: -1 },
+  name: { name: 1 },
+};
+
 exports.getFunnels = async (req, res) => {
   const filter = {
     ...buildOwnershipFilter(req),
@@ -114,12 +135,22 @@ exports.getFunnels = async (req, res) => {
     filter.status = req.query.status;
   }
 
+  if (req.query.favorite === 'true') {
+    filter.isFavorite = true;
+  }
+
+  if (req.query.tag) {
+    filter.tags = req.query.tag;
+  }
+
+  const sortSpec = SORT_MAP[req.query.sort] || SORT_MAP.updated;
+
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
   const skip = (page - 1) * limit;
 
   const [funnels, total] = await Promise.all([
-    Funnel.find(filter).sort({ updatedAt: -1 }).skip(skip).limit(limit).lean(),
+    Funnel.find(filter).sort(sortSpec).skip(skip).limit(limit).lean(),
     Funnel.countDocuments(filter),
   ]);
 
@@ -141,20 +172,94 @@ exports.getFunnels = async (req, res) => {
     }
   }
 
-  const funnelsWithStepCount = funnels.map((f) => ({
+  // Optional dashboard KPIs (Total Visitors / Orders / Revenue / Conversion
+  // Rate) per funnel row. Opt-in via ?includeStats=true since it costs two
+  // extra aggregations — everything else that calls GET /funnels (e.g. the
+  // "From templates" picker) doesn't need it. Reuses the exact same
+  // StoreOrder / FunnelAnalyticsEvent sources and COUNTED_STATUSES
+  // definition as funnelAnalyticsController.getFunnelAnalytics, just
+  // summarized across all-time rather than a single funnel + day range.
+  let statsMap = {};
+  if (req.query.includeStats === 'true' && funnelIds.length > 0) {
+    try {
+      const [orderStats, eventStats] = await Promise.all([
+        StoreOrder.aggregate([
+          {
+            $match: {
+              funnelId: { $in: funnelIds },
+              isDeleted: false,
+              status: { $in: COUNTED_STATUSES },
+            },
+          },
+          { $group: { _id: '$funnelId', orders: { $sum: 1 }, revenue: { $sum: '$total' } } },
+        ]),
+        FunnelAnalyticsEvent.aggregate([
+          { $match: { funnelId: { $in: funnelIds } } },
+          {
+            $group: {
+              _id: '$funnelId',
+              uniqueSessions: { $addToSet: '$sessionId' },
+              formSubmits: { $sum: { $cond: [{ $eq: ['$eventType', 'form_submit'] }, 1, 0] } },
+            },
+          },
+        ]),
+      ]);
+
+      const orderMap = new Map(orderStats.map((o) => [String(o._id), o]));
+      const eventMap = new Map(eventStats.map((e) => [String(e._id), e]));
+
+      for (const id of funnelIds) {
+        const key = String(id);
+        const ord = orderMap.get(key) || { orders: 0, revenue: 0 };
+        const ev = eventMap.get(key) || { uniqueSessions: [], formSubmits: 0 };
+        const visitors = (ev.uniqueSessions || []).filter(Boolean).length;
+        const conversions = (ev.formSubmits || 0) + ord.orders;
+        statsMap[key] = {
+          visitors,
+          orders: ord.orders,
+          revenue: ord.revenue,
+          conversionRate: visitors > 0 ? (conversions / visitors) * 100 : 0,
+        };
+      }
+    } catch (err) {
+      console.warn('[getFunnels] stats aggregation failed:', err.message);
+    }
+  }
+
+  const funnelsWithExtras = funnels.map((f) => ({
     ...f,
     stepCount: stepCountMap[String(f._id)] || 0,
+    ...(req.query.includeStats === 'true'
+      ? { stats: statsMap[String(f._id)] || { visitors: 0, orders: 0, revenue: 0, conversionRate: 0 } }
+      : {}),
   }));
 
   res.status(200).json({
     success: true,
-    data: funnelsWithStepCount,
+    data: funnelsWithExtras,
     meta: {
       page,
       limit,
       total,
       totalPages: Math.ceil(total / limit),
     },
+  });
+};
+
+/**
+ * GET /api/funnels/tags
+ * Returns the distinct set of tags in use, for populating the dashboard's
+ * tag filter dropdown. Reuses the Funnel model only — no new collection.
+ */
+exports.getFunnelTags = async (req, res) => {
+  const tags = await Funnel.distinct('tags', {
+    ...buildOwnershipFilter(req),
+    isDeleted: false,
+  });
+
+  res.status(200).json({
+    success: true,
+    data: tags.filter(Boolean).sort(),
   });
 };
 
@@ -201,6 +306,8 @@ exports.updateFunnel = async (req, res) => {
     'status',
     'settings',
     'seo',
+    'tags',
+    'isFavorite',
   ];
 
   const updates = {};
@@ -212,6 +319,12 @@ exports.updateFunnel = async (req, res) => {
 
   if (updates.name) {
     updates.slug = slugify(updates.name);
+  }
+
+  if (updates.tags) {
+    updates.tags = Array.isArray(updates.tags)
+      ? updates.tags.filter(Boolean).map((t) => String(t).trim())
+      : [];
   }
 
   const funnel = await Funnel.findOneAndUpdate(
@@ -271,6 +384,71 @@ exports.deleteFunnel = async (req, res) => {
   res.status(200).json({
     success: true,
     data: { id: funnel._id, deleted: true },
+  });
+};
+
+const BULK_ACTIONS = ['delete', 'publish', 'archive'];
+
+/**
+ * POST /api/funnels/bulk
+ * Body: { ids: string[], action: 'delete' | 'publish' | 'archive' }
+ *
+ * Applies one action across many funnels for the dashboard's bulk
+ * toolbar. Deliberately thin — each id is routed through the exact same
+ * logic as the corresponding single-funnel endpoint (soft-delete +
+ * cascade to steps, funnelPublishService.publishFunnel, or the same
+ * status update used by PATCH /:id) so nothing here is a second copy of
+ * that behavior. Partial failures (e.g. one funnel already archived, or
+ * not owned by this user) are collected per-id rather than aborting the
+ * whole batch.
+ */
+exports.bulkAction = async (req, res) => {
+  const { ids, action } = req.body;
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ success: false, error: 'ids must be a non-empty array.' });
+  }
+  if (!BULK_ACTIONS.includes(action)) {
+    return res.status(400).json({ success: false, error: `action must be one of: ${BULK_ACTIONS.join(', ')}` });
+  }
+
+  const validIds = ids.filter((id) => mongoose.Types.ObjectId.isValid(id));
+  const ownership = buildOwnershipFilter(req);
+  const succeeded = [];
+  const failed = [];
+
+  for (const id of validIds) {
+    try {
+      if (action === 'delete') {
+        const funnel = await Funnel.findOneAndUpdate(
+          { _id: id, ...ownership, isDeleted: false },
+          { $set: { isDeleted: true } },
+          { new: true }
+        );
+        if (!funnel) throw notFoundError();
+        await FunnelStep.updateMany({ funnelId: funnel._id }, { $set: { isDeleted: true } });
+      } else if (action === 'archive') {
+        const funnel = await Funnel.findOneAndUpdate(
+          { _id: id, ...ownership, isDeleted: false },
+          { $set: { status: 'Archived' } },
+          { new: true, runValidators: true }
+        );
+        if (!funnel) throw notFoundError();
+      } else if (action === 'publish') {
+        const owned = await Funnel.findOne({ _id: id, ...ownership, isDeleted: false });
+        if (!owned) throw notFoundError();
+        const triggeredBy = req?.user?.id || req?.user?._id || null;
+        await funnelPublishService.publishFunnel(id, triggeredBy, req);
+      }
+      succeeded.push(id);
+    } catch (err) {
+      failed.push({ id, error: err.message || 'Failed.' });
+    }
+  }
+
+  res.status(200).json({
+    success: true,
+    data: { action, succeeded, failed },
   });
 };
 
