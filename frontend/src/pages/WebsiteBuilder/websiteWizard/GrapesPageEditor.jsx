@@ -3,7 +3,7 @@ import grapesjs from 'grapesjs';
 import presetWebpage from 'grapesjs-preset-webpage';
 import axios from 'axios';
 import QRCode from 'qrcode';
-import { registerStoreBlocks } from './storeDynamicBlocks';
+import { registerStoreBlocks } from '../utils/storeDynamicBlocks';
 import { registerStoreTraits } from '../builders/store/storeBlockTraits';
 
 const API_BASE = import.meta.env?.VITE_WEBSITE_WIZARD_API_BASE || 'http://localhost:5500/api';
@@ -608,6 +608,111 @@ function buildBlogHtml(blog = {}) {
   `;
 }
 
+/**
+ * Build an insertable "single product" block for the Store tool tab.
+ *
+ * Follows the same shell + script hydration pattern as the Store theme
+ * blocks in storeDynamicBlocks.js (data-store-block, :not([data-hydrated])
+ * guard, jeema_store_cart_<storeId> localStorage cart, store-cart-updated
+ * event) so a product dropped from any store — including a store other
+ * than the one the current page belongs to — behaves exactly like the
+ * built-in Product Grid / Featured Product blocks: it never freezes a
+ * snapshot of title/price/image into the page, it re-fetches the live
+ * product from the public storefront API
+ * (backend/src/controllers/store/storeStorefrontController.js) on render,
+ * and "Add to cart" writes to that store's own cart.
+ */
+function buildStoreProductHtml(storeId, product = {}) {
+  const safeStoreId = escapeHtml(storeId || '');
+  const productId = escapeHtml(product.id || product._id || '');
+  const title = escapeHtml(product.title || 'Product');
+  const description = escapeHtml(product.description || '');
+  const image = product.image || (Array.isArray(product.images) ? product.images[0] : '') || '';
+  const initialPrice = JSON.stringify(Number(product.price || 0));
+  const initialCurrency = JSON.stringify(product.currency || 'USD');
+
+  return `
+    <div class="store-block store-single-product" data-store-block="single-product" data-store-id="${safeStoreId}" data-product-id="${productId}" style="display:grid;grid-template-columns:220px 1fr;gap:24px;align-items:center;padding:24px;border:1px solid #e5e7eb;border-radius:12px;background:#ffffff;font-family:sans-serif;max-width:640px;">
+      <div class="store-single-product-image">
+        ${image
+          ? `<img src="${image}" alt="${title}" style="width:100%;border-radius:8px;object-fit:cover;aspect-ratio:1/1;background:#f3f4f6;" />`
+          : `<div style="width:100%;border-radius:8px;aspect-ratio:1/1;background:#f3f4f6;"></div>`}
+      </div>
+      <div class="store-single-product-body">
+        <h3 class="store-single-product-title" style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827;">${title}</h3>
+        <p class="store-single-product-desc" style="margin:0 0 12px;color:#4b5563;line-height:1.5;font-size:14px;">${description}</p>
+        <div class="store-single-product-price" style="font-size:18px;font-weight:800;color:#111827;margin-bottom:14px;"></div>
+        <button type="button" class="store-single-product-cart" data-add-to-cart="${productId}" style="border:none;border-radius:8px;background:#111827;color:#ffffff;padding:10px 20px;font-weight:700;cursor:pointer;">Add to cart</button>
+      </div>
+    </div>
+    <script>
+    (function () {
+      var API_BASE = ${JSON.stringify(API_BASE)};
+      function money(amount, currency) {
+        var n = Number(amount || 0);
+        try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency || 'USD' }).format(n); }
+        catch (e) { return (currency || 'USD') + ' ' + n.toFixed(2); }
+      }
+      function readCart(storeId) {
+        try { return JSON.parse(localStorage.getItem('jeema_store_cart_' + storeId) || '[]'); } catch (e) { return []; }
+      }
+      function writeCart(storeId, items) {
+        try {
+          localStorage.setItem('jeema_store_cart_' + storeId, JSON.stringify(items));
+          window.dispatchEvent(new CustomEvent('store-cart-updated', { detail: { items: items } }));
+        } catch (e) {}
+      }
+      function addToCart(storeId, productId, quantity) {
+        var items = readCart(storeId);
+        var existing = items.find(function (i) { return i.productId === productId; });
+        if (existing) existing.quantity += (quantity || 1);
+        else items.push({ productId: productId, quantity: quantity || 1 });
+        writeCart(storeId, items);
+      }
+      function hydrate(el) {
+        if (el.dataset.hydrated) return;
+        el.dataset.hydrated = '1';
+        var storeId = el.dataset.storeId;
+        var productId = el.dataset.productId;
+        var priceEl = el.querySelector('.store-single-product-price');
+        if (priceEl) priceEl.textContent = money(${initialPrice}, ${initialCurrency});
+
+        var btn = el.querySelector('[data-add-to-cart]');
+        if (btn) {
+          btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            addToCart(storeId, productId, 1);
+            btn.textContent = 'Added ✓';
+            setTimeout(function () { btn.textContent = 'Add to cart'; }, 1200);
+          });
+        }
+
+        if (!storeId || !productId) return;
+        // Refresh with live data so price/stock/title always reflect the
+        // database at render time, not the moment the block was inserted.
+        fetch(API_BASE + '/store/' + storeId + '/products/' + productId)
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (json) {
+            var p = json && json.data;
+            if (!p) return;
+            var titleEl = el.querySelector('.store-single-product-title');
+            var descEl = el.querySelector('.store-single-product-desc');
+            var imgWrap = el.querySelector('.store-single-product-image');
+            if (titleEl && p.title) titleEl.textContent = p.title;
+            if (descEl) descEl.textContent = p.description || '';
+            if (priceEl) priceEl.textContent = money(p.price, p.currency);
+            if (imgWrap && p.image) {
+              imgWrap.innerHTML = '<img src="' + p.image + '" alt="" style="width:100%;border-radius:8px;object-fit:cover;aspect-ratio:1/1;background:#f3f4f6;">';
+            }
+          })
+          .catch(function () {});
+      }
+      document.querySelectorAll('[data-store-block="single-product"]:not([data-hydrated])').forEach(hydrate);
+    })();
+    <\/script>
+  `;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GrapesPageEditor component
 // ─────────────────────────────────────────────────────────────────────────────
@@ -639,6 +744,14 @@ const GrapesPageEditor = ({
   const [qrItems, setQrItems] = useState([]);
   const [qrsLoading, setQrsLoading] = useState(false);
   const [qrsError, setQrsError] = useState('');
+  // Store tool tab: every store in the Store module, split store-by-store,
+  // with that store's products loaded (and cached) lazily per store when
+  // expanded — mirrors Forms/Blogs/QR but nested one level (store -> products).
+  const [storeList, setStoreList] = useState([]);
+  const [storesLoading, setStoresLoading] = useState(false);
+  const [storesError, setStoresError] = useState('');
+  const [storeProductsById, setStoreProductsById] = useState({});
+  const [expandedStoreId, setExpandedStoreId] = useState(null);
   const [activeTool, setActiveTool] = useState('basic');
 
   const canvasReadyRef    = useRef(false);
@@ -675,6 +788,13 @@ const GrapesPageEditor = ({
       }
       return;
     }
+
+    if (activeTool === 'store') {
+      if (!storesLoading && storeList.length === 0) {
+        fetchStoreList();
+      }
+      return;
+    }
   }, [activeTool]);
 
   const fetchBlogTools = async () => {
@@ -705,6 +825,82 @@ const GrapesPageEditor = ({
     } finally {
       setQrsLoading(false);
     }
+  };
+
+  // GET /api/store — every store in the Store module (StoresTab.jsx's "All
+  // stores" list), each row already carrying a productCount so the sidebar
+  // can show it before any products are fetched.
+  const fetchStoreList = async () => {
+    setStoresLoading(true);
+    setStoresError('');
+    try {
+      const response = await axios.get(`${API_BASE}/store`);
+      const data = Array.isArray(response.data?.data) ? response.data.data : [];
+      setStoreList(data);
+    } catch (err) {
+      console.warn('[GrapesPageEditor] Error fetching stores:', err);
+      setStoresError('Stores could not be loaded.');
+    } finally {
+      setStoresLoading(false);
+    }
+  };
+
+  // GET /api/store/:storeId/products — the same public storefront route the
+  // Product Grid / Latest Products dynamic blocks call, so what's offered
+  // here for insertion is exactly what's really in that store's catalog.
+  const fetchStoreProducts = async (storeId) => {
+    if (!storeId) return;
+    setStoreProductsById((prev) => ({
+      ...prev,
+      [storeId]: { ...(prev[storeId] || {}), loading: true, error: '' },
+    }));
+    try {
+      const response = await axios.get(`${API_BASE}/store/${storeId}/products`, {
+        params: { limit: 50 },
+      });
+      const items = Array.isArray(response.data?.data) ? response.data.data : [];
+      setStoreProductsById((prev) => ({ ...prev, [storeId]: { loading: false, error: '', items } }));
+    } catch (err) {
+      console.warn('[GrapesPageEditor] Error fetching products for store', storeId, err);
+      setStoreProductsById((prev) => ({
+        ...prev,
+        [storeId]: { loading: false, error: 'Products could not be loaded.', items: prev[storeId]?.items || [] },
+      }));
+    }
+  };
+
+  const toggleStoreExpand = (storeId) => {
+    setExpandedStoreId((prev) => {
+      const next = prev === storeId ? null : storeId;
+      if (next && !storeProductsById[storeId]) {
+        fetchStoreProducts(storeId);
+      }
+      return next;
+    });
+  };
+
+  const insertStoreProduct = (storeId, product) => {
+    const editor = editorRef.current;
+    if (!editor || !product) return;
+
+    const htmlToInsert = buildStoreProductHtml(storeId, product);
+    const selected = editor.getSelected?.();
+
+    isSyncingRef.current = true;
+    try {
+      if (selected && typeof selected.append === 'function') {
+        selected.append(htmlToInsert);
+      } else {
+        editor.addComponents(htmlToInsert);
+      }
+      editor.refresh();
+    } catch (err) {
+      console.warn('[GrapesPageEditor] insertStoreProduct failed:', err);
+    } finally {
+      isSyncingRef.current = false;
+    }
+
+    onChange?.({ html: editor.getHtml(), css: editor.getCss() });
   };
 
   const fetchFormTools = async (editor) => {
@@ -779,6 +975,11 @@ const GrapesPageEditor = ({
   };
 
   const insertBasicBlock = (type) => {
+    if (type === 'button') {
+      insertCtaButton();
+      return;
+    }
+
     const editor = editorRef.current;
     if (!editor) return;
 
@@ -786,7 +987,6 @@ const GrapesPageEditor = ({
       section: '<section style="padding: 56px 32px; background: #f8fafc;"><div style="max-width: 960px; margin: 0 auto;"><h2 style="margin: 0 0 12px; font-family: sans-serif; color: #111827;">New section</h2><p style="margin: 0; font-family: sans-serif; color: #4b5563; line-height: 1.6;">Add your website content here.</p></div></section>',
       text: '<div style="padding: 16px 0; font-family: sans-serif; color: #111827;"><h3 style="margin: 0 0 8px;">Heading</h3><p style="margin: 0; color: #4b5563; line-height: 1.6;">Write your content here.</p></div>',
       image: '<div style="padding: 16px 0;"><img src="/placeholder-image.png" alt="Placeholder" style="display: block; width: 100%; max-width: 640px; min-height: 220px; object-fit: cover; border-radius: 8px; background: #e5e7eb;" /></div>',
-      button: '<a href="#" style="display: inline-block; padding: 12px 22px; border-radius: 8px; background: #2563eb; color: #ffffff; text-decoration: none; font-family: sans-serif; font-weight: 700;">Call to action</a>',
     };
 
     isSyncingRef.current = true;
@@ -795,6 +995,36 @@ const GrapesPageEditor = ({
       editor.refresh();
     } catch (err) {
       console.warn('[GrapesPageEditor] insertBasicBlock failed:', err);
+    } finally {
+      isSyncingRef.current = false;
+    }
+
+    onChange?.({ html: editor.getHtml(), css: editor.getCss() });
+  };
+
+  // Button block, made properly clickable: prompts for the destination URL
+  // up front (falling back to '#' if left blank/cancelled), builds it as a
+  // real <a href> so the click event actually navigates wherever the page
+  // is published, and tags it data-gjs-type="cta-button" so GrapesJS picks
+  // it up as the component type registered in the init effect above (gives
+  // it the "Edit link" toolbar icon so the URL can be changed again later).
+  const insertCtaButton = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const rawUrl = window.prompt('Where should this button link to?', 'https://');
+    if (rawUrl === null) return; // cancelled — don't insert anything
+    const href = rawUrl.trim() || '#';
+    const openInNewTab = href !== '#' && window.confirm('Open this link in a new tab?');
+
+    const html = `<a href="${escapeHtml(href)}" data-gjs-type="cta-button"${openInNewTab ? ' target="_blank" rel="noopener noreferrer"' : ''} style="display: inline-block; padding: 12px 22px; border-radius: 8px; background: #2563eb; color: #ffffff; text-decoration: none; font-family: sans-serif; font-weight: 700;">Call to action</a>`;
+
+    isSyncingRef.current = true;
+    try {
+      editor.addComponents(html);
+      editor.refresh();
+    } catch (err) {
+      console.warn('[GrapesPageEditor] insertCtaButton failed:', err);
     } finally {
       isSyncingRef.current = false;
     }
@@ -1097,6 +1327,50 @@ const GrapesPageEditor = ({
     canvasReadyRef.current    = false;
     pendingContentRef.current = null;
 
+    // ── CTA Button component ────────────────────────────────────────────
+    // A real <a href> button whose click event opens a configurable URL.
+    // Registered once per editor instance so it applies both to buttons
+    // freshly inserted from the Basic tab (see insertCtaButton below) and
+    // to buttons already saved in a page's HTML when it's reloaded.
+    // The "Edit link" toolbar icon lets the URL be changed again later
+    // (via window.prompt) without deleting and re-inserting the block —
+    // this app doesn't wire up GrapesJS's Trait Manager panel, so the
+    // `href`/`target` traits below are there for when it does, and the
+    // toolbar icon is the actual day-to-day way to edit the link now.
+    try {
+      editor.DomComponents.addType('cta-button', {
+        isComponent: (el) =>
+          !!(el?.tagName === 'A' && el.getAttribute && el.getAttribute('data-gjs-type') === 'cta-button'),
+        model: {
+          defaults: {
+            traits: [
+              { type: 'text', name: 'href', label: 'Link URL' },
+              { type: 'checkbox', name: 'target', label: 'Open in new tab', valueTrue: '_blank', valueFalse: '' },
+            ],
+            toolbar: [
+              { attributes: { class: 'fa fa-link', title: 'Edit link' }, command: 'cta-button:edit-link' },
+              { attributes: { class: 'fa fa-arrows' }, command: 'tlb-move' },
+              { attributes: { class: 'fa fa-clone' }, command: 'tlb-clone' },
+              { attributes: { class: 'fa fa-trash-o' }, command: 'tlb-delete' },
+            ],
+          },
+        },
+      });
+
+      editor.Commands.add('cta-button:edit-link', {
+        run(ed) {
+          const comp = ed.getSelected();
+          if (!comp) return;
+          const current = comp.getAttributes?.()?.href || '#';
+          const rawUrl = window.prompt('Where should this button link to?', current);
+          if (rawUrl === null) return; // cancelled — leave the existing link untouched
+          comp.addAttributes({ href: rawUrl.trim() || '#' });
+        },
+      });
+    } catch (e) {
+      console.warn('[GrapesPageEditor] cta-button component registration failed:', e);
+    }
+
     setMountEpoch((n) => n + 1);
 
     editor.on('load', async () => {
@@ -1275,6 +1549,7 @@ const GrapesPageEditor = ({
             { key: 'forms', label: 'Forms' },
             { key: 'blogs', label: 'Blogs' },
             { key: 'qrs', label: 'QR' },
+            { key: 'store', label: 'Store' },
           ].map((tool) => (
             <button
               key={tool.key}
@@ -1454,6 +1729,148 @@ const GrapesPageEditor = ({
                     )}
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        ) : activeTool === 'store' ? (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-tertiary)' }}>
+                STORE PRODUCTS
+              </div>
+              <button
+                type="button"
+                onClick={fetchStoreList}
+                disabled={storesLoading}
+                style={{
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--bg-primary)',
+                  color: 'var(--text-secondary)',
+                  borderRadius: 6,
+                  padding: '5px 8px',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: storesLoading ? 'default' : 'pointer',
+                }}
+              >
+                {storesLoading ? 'Loading' : 'Refresh'}
+              </button>
+            </div>
+
+            {storesError && (
+              <div style={{ border: '1px solid rgba(239, 68, 68, 0.25)', background: 'rgba(239, 68, 68, 0.08)', color: 'var(--accent-danger)', borderRadius: 8, padding: 10, fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
+                {storesError}
+              </div>
+            )}
+
+            {!storesLoading && !storesError && storeList.length === 0 && (
+              <div style={{ border: '1px dashed var(--border-color)', color: 'var(--text-secondary)', borderRadius: 8, padding: 14, fontSize: 13, lineHeight: 1.5 }}>
+                No stores yet.
+              </div>
+            )}
+
+            {storeList.length > 0 && (
+              <div style={{ display: 'grid', gap: 10 }}>
+                {storeList.map((store) => {
+                  const storeId = store._id || store.id;
+                  const isExpanded = expandedStoreId === storeId;
+                  const productsState = storeProductsById[storeId] || {};
+                  const products = productsState.items || [];
+
+                  return (
+                    <div key={storeId} style={{ border: '1px solid var(--border-color)', borderRadius: 10, background: 'var(--bg-primary)', overflow: 'hidden' }}>
+                      <button
+                        type="button"
+                        onClick={() => toggleStoreExpand(storeId)}
+                        style={{
+                          width: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 10,
+                          border: 'none',
+                          background: 'transparent',
+                          color: 'var(--text-primary)',
+                          padding: 12,
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 800 }}>{store.storeName || store.name || 'Untitled store'}</div>
+                          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
+                            {store.productCount ?? products.length ?? 0} products
+                          </div>
+                        </div>
+                        <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 700 }}>
+                          {isExpanded ? '▲' : '▼'}
+                        </span>
+                      </button>
+
+                      {isExpanded && (
+                        <div style={{ borderTop: '1px solid var(--border-color)', padding: 12 }}>
+                          {productsState.loading && (
+                            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Loading products…</div>
+                          )}
+
+                          {productsState.error && (
+                            <div style={{ border: '1px solid rgba(239, 68, 68, 0.25)', background: 'rgba(239, 68, 68, 0.08)', color: 'var(--accent-danger)', borderRadius: 8, padding: 10, fontSize: 12, fontWeight: 700 }}>
+                              {productsState.error}
+                            </div>
+                          )}
+
+                          {!productsState.loading && !productsState.error && products.length === 0 && (
+                            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>No products in this store yet.</div>
+                          )}
+
+                          {!productsState.loading && !productsState.error && products.length > 0 && (
+                            <div style={{ display: 'grid', gap: 8 }}>
+                              {products.map((product) => (
+                                <div
+                                  key={product.id || product._id}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 10,
+                                    border: '1px solid var(--border-color)',
+                                    borderRadius: 8,
+                                    padding: 8,
+                                    background: 'var(--bg-secondary)',
+                                  }}
+                                >
+                                  {product.image ? (
+                                    <img
+                                      src={product.image}
+                                      alt=""
+                                      style={{ width: 36, height: 36, borderRadius: 6, objectFit: 'cover', background: 'var(--bg-primary)', flexShrink: 0 }}
+                                    />
+                                  ) : (
+                                    <div style={{ width: 36, height: 36, borderRadius: 6, background: 'var(--bg-primary)', flexShrink: 0 }} />
+                                  )}
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {product.title || 'Untitled product'}
+                                    </div>
+                                    <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                                      {new Intl.NumberFormat(undefined, { style: 'currency', currency: product.currency || 'USD' }).format(Number(product.price || 0))}
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => insertStoreProduct(storeId, product)}
+                                    style={{ border: 'none', borderRadius: 8, background: 'var(--accent-primary)', color: '#fff', padding: '7px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 700, flexShrink: 0 }}
+                                  >
+                                    Insert
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
