@@ -26,7 +26,12 @@ async function requestJson(path, { method = 'GET', body } = {}) {
 
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      throw new Error(`API ${method} ${path} failed: ${res.status} ${text}`);
+      let parsedMessage = '';
+      try {
+        const parsed = JSON.parse(text);
+        parsedMessage = parsed?.error || '';
+      } catch (_) {}
+      throw new Error(parsedMessage || `API ${method} ${path} failed: ${res.status} ${text}`);
     }
     return res.json();
   })();
@@ -135,6 +140,25 @@ export const funnelApi = {
   preview: async (id) => {
     const json = unwrap(await requestJson(`/funnels/${id}/preview`));
     return json.data;
+  },
+
+  // Uploads a single image (thumbnail, icon, social image, favicon, etc.)
+  // via the shared media library endpoint — same Cloudinary pipeline the
+  // page builder's asset manager and store product images already use.
+  uploadImage: async (file) => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${API_BASE}/website-builder/media/upload`, {
+      method: 'POST',
+      body: form,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Image upload failed: ${res.status} ${text}`);
+    }
+    const json = await res.json();
+    if (!json?.success) throw new Error(json?.error || 'Image upload failed');
+    return json.data; // { src, name, width, height, id }
   },
 
   // ── Steps CRUD ──────────────────────────────────────────────────────────────

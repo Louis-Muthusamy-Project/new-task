@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from "react";
 import { 
   Button, Input, Radio, Table, Typography, Space, Modal, Card, 
-  Select, Row, Col, Tag, message, Popconfirm, Form, Tooltip, Empty, Spin
+  Select, Row, Col, Tag, message, Popconfirm, Form, Tooltip, Empty, Spin,
+  Tabs, Switch, Upload, Divider
 } from "antd";
 import { 
   FolderPlus, Plus, Search, CheckCircle2, ChevronRight, BarChart3, 
   Edit3, Eye, Trash2, Smartphone, Monitor, ArrowLeft, ArrowRight,
   TrendingUp, Users, DollarSign, Globe, Settings, FileText, Share2, Copy,
-  Star, ArrowUpDown, Filter as FilterIcon
+  Star, ArrowUpDown, Filter as FilterIcon, Image as ImageIcon, Lock,
+  Wrench, Languages, Code2, UploadCloud
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import FunnelTemplateLibraryModal from "./FunnelTemplateLibraryModal";
@@ -398,7 +400,64 @@ const StepSettingsModal = ({ open, step, funnelId, onCancel, onSave }) => {
   );
 };
 
-// ── MANAGE FUNNEL VIEW ───────────────────────────────────────────────────────
+// ── IMAGE FIELD (url input + upload, reused across General/SEO settings) ────
+const ImageField = ({ label, value, onChange, hint, previewShape = "square" }) => {
+  const [uploading, setUploading] = useState(false);
+
+  const handleFile = async (file) => {
+    setUploading(true);
+    try {
+      const data = await funnelApi.uploadImage(file);
+      onChange(data.src);
+      message.success(`${label} uploaded.`);
+    } catch (err) {
+      message.error(err.message || "Upload failed.");
+    } finally {
+      setUploading(false);
+    }
+    return false; // prevent antd Upload's own auto-submit
+  };
+
+  return (
+    <div>
+      <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>{label}</label>
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <div
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: previewShape === "round" ? "50%" : 8,
+            border: "1px dashed var(--border-color)",
+            background: "var(--bg-secondary)",
+            flexShrink: 0,
+            overflow: "hidden",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {value ? (
+            <img src={value} alt={label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          ) : (
+            <ImageIcon size={16} color="var(--text-tertiary)" />
+          )}
+        </div>
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="https://…"
+          style={{ flex: 1 }}
+        />
+        <Upload showUploadList={false} beforeUpload={handleFile} accept="image/*">
+          <Button icon={<UploadCloud size={14} />} loading={uploading}>Upload</Button>
+        </Upload>
+      </div>
+      {hint && <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 4 }}>{hint}</div>}
+    </div>
+  );
+};
+
+
 const ManageFunnelView = ({ activeFunnel, setView, itemVariants }) => {
   const [activeTab, setActiveTab] = useState("steps");
   const [steps, setSteps] = useState([]);
@@ -411,12 +470,49 @@ const ManageFunnelView = ({ activeFunnel, setView, itemVariants }) => {
   const [analytics, setAnalytics] = useState(null);
   const [analyticsDays, setAnalyticsDays] = useState(30);
 
-  // Settings tab states
-  const [funnelName, setFunnelName] = useState(activeFunnel.name);
+  // ── Settings tab state ──────────────────────────────────────────────────
+  // General
+  const [funnelName, setFunnelName] = useState(activeFunnel.name || "");
+  const [description, setDescription] = useState(activeFunnel.description || "");
+  const [thumbnailUrl, setThumbnailUrl] = useState(activeFunnel.thumbnailUrl || "");
+  const [iconUrl, setIconUrl] = useState(activeFunnel.iconUrl || "");
+
+  // Publishing
+  const [customSlug, setCustomSlug] = useState(activeFunnel.slug || "");
   const [funnelDomain, setFunnelDomain] = useState(activeFunnel.settings?.domain || "");
+  const [passwordEnabled, setPasswordEnabled] = useState(!!activeFunnel.publishing?.passwordProtection?.enabled);
+  const [hasPassword, setHasPassword] = useState(!!activeFunnel.publishing?.passwordProtection?.hasPassword);
+  const [newPassword, setNewPassword] = useState("");
+  const [maintenanceEnabled, setMaintenanceEnabled] = useState(!!activeFunnel.publishing?.maintenanceMode?.enabled);
+  const [maintenanceMessage, setMaintenanceMessage] = useState(
+    activeFunnel.publishing?.maintenanceMode?.message || "This funnel is temporarily down for maintenance. Please check back soon."
+  );
+
+  // SEO (Meta Pixel / GA4 / GTM stay part of this tab too, unchanged)
+  const [seoTitle, setSeoTitle] = useState(activeFunnel.seo?.title || "");
+  const [seoDescription, setSeoDescription] = useState(activeFunnel.seo?.description || "");
+  const [seoKeywords, setSeoKeywords] = useState(activeFunnel.seo?.keywords || []);
+  const [canonicalUrl, setCanonicalUrl] = useState(activeFunnel.seo?.canonicalUrl || "");
+  const [ogEnabled, setOgEnabled] = useState(activeFunnel.seo?.ogEnabled !== false);
+  const [twitterCard, setTwitterCard] = useState(activeFunnel.seo?.twitterCard || "summary_large_image");
+  const [socialImage, setSocialImage] = useState(activeFunnel.seo?.ogImageUrl || "");
+  const [faviconUrl, setFaviconUrl] = useState(activeFunnel.settings?.faviconUrl || "");
   const [metaPixel, setMetaPixel] = useState(activeFunnel.settings?.tracking?.metaPixelId || "");
   const [ga4Id, setGa4Id] = useState(activeFunnel.settings?.tracking?.ga4Id || "");
   const [gtmId, setGtmId] = useState(activeFunnel.settings?.tracking?.gtmId || "");
+
+  // Localization
+  const [language, setLanguage] = useState(activeFunnel.localization?.language || "en");
+  const [timezone, setTimezone] = useState(activeFunnel.localization?.timezone || "UTC");
+  const [currency, setCurrency] = useState(activeFunnel.localization?.currency || "USD");
+
+  // Advanced
+  const [headerScripts, setHeaderScripts] = useState(activeFunnel.advanced?.headerScripts || "");
+  const [footerScripts, setFooterScripts] = useState(activeFunnel.advanced?.footerScripts || "");
+  const [customCss, setCustomCss] = useState(activeFunnel.advanced?.customCss || "");
+  const [customJs, setCustomJs] = useState(activeFunnel.advanced?.customJs || "");
+
+  const [savingSection, setSavingSection] = useState("");
 
   useEffect(() => {
     loadSteps();
@@ -524,22 +620,112 @@ const ManageFunnelView = ({ activeFunnel, setView, itemVariants }) => {
     }
   };
 
-  const handleSaveSettings = async () => {
+  // Applies a successful update response to the local activeFunnel object
+  // and mirrors it into React state so the header (name/slug/status) and
+  // other tabs stay in sync without a full reload.
+  const applyFunnelUpdate = (updated) => {
+    Object.assign(activeFunnel, updated);
+    if (updated.publishing?.passwordProtection) {
+      setHasPassword(!!updated.publishing.passwordProtection.hasPassword);
+    }
+    setNewPassword("");
+  };
+
+  const handleSaveGeneral = async () => {
+    if (!funnelName.trim()) return message.warning("Funnel name is required.");
+    setSavingSection("general");
     try {
-      await funnelApi.update(activeFunnel._id, {
+      const updated = await funnelApi.update(activeFunnel._id, {
         name: funnelName,
-        settings: {
-          domain: funnelDomain,
-          tracking: {
-            metaPixelId: metaPixel,
-            ga4Id,
-            gtmId,
-          }
-        }
+        description,
+        thumbnailUrl,
+        iconUrl,
       });
-      message.success("Funnel settings updated.");
+      applyFunnelUpdate(updated);
+      setCustomSlug(updated.slug || customSlug);
+      message.success("General settings saved.");
     } catch (err) {
-      message.error(err.message);
+      message.error(err.message || "Failed to save general settings.");
+    } finally {
+      setSavingSection("");
+    }
+  };
+
+  const handleSavePublishing = async () => {
+    setSavingSection("publishing");
+    try {
+      const publishing = {
+        passwordProtection: { enabled: passwordEnabled },
+        maintenanceMode: { enabled: maintenanceEnabled, message: maintenanceMessage },
+      };
+      if (newPassword) {
+        publishing.passwordProtection.password = newPassword;
+      }
+      const updated = await funnelApi.update(activeFunnel._id, {
+        slug: customSlug,
+        settings: { domain: funnelDomain },
+        publishing,
+      });
+      applyFunnelUpdate(updated);
+      message.success("Publishing settings saved.");
+    } catch (err) {
+      message.error(err.message || "Failed to save publishing settings.");
+    } finally {
+      setSavingSection("");
+    }
+  };
+
+  const handleSaveSeo = async () => {
+    setSavingSection("seo");
+    try {
+      const updated = await funnelApi.update(activeFunnel._id, {
+        settings: { faviconUrl, tracking: { metaPixelId: metaPixel, ga4Id, gtmId } },
+        seo: {
+          title: seoTitle,
+          description: seoDescription,
+          keywords: seoKeywords,
+          canonicalUrl,
+          ogEnabled,
+          twitterCard,
+          ogImageUrl: socialImage,
+        },
+      });
+      applyFunnelUpdate(updated);
+      message.success("SEO settings saved.");
+    } catch (err) {
+      message.error(err.message || "Failed to save SEO settings.");
+    } finally {
+      setSavingSection("");
+    }
+  };
+
+  const handleSaveLocalization = async () => {
+    setSavingSection("localization");
+    try {
+      const updated = await funnelApi.update(activeFunnel._id, {
+        localization: { language, timezone, currency },
+      });
+      applyFunnelUpdate(updated);
+      message.success("Localization settings saved.");
+    } catch (err) {
+      message.error(err.message || "Failed to save localization settings.");
+    } finally {
+      setSavingSection("");
+    }
+  };
+
+  const handleSaveAdvanced = async () => {
+    setSavingSection("advanced");
+    try {
+      const updated = await funnelApi.update(activeFunnel._id, {
+        advanced: { headerScripts, footerScripts, customCss, customJs },
+      });
+      applyFunnelUpdate(updated);
+      message.success("Advanced settings saved.");
+    } catch (err) {
+      message.error(err.message || "Failed to save advanced settings.");
+    } finally {
+      setSavingSection("");
     }
   };
 
@@ -801,36 +987,334 @@ const ManageFunnelView = ({ activeFunnel, setView, itemVariants }) => {
 
         {/* SETTINGS TAB */}
         {activeTab === "settings" && (
-          <Card title="Funnel Settings & Customizations" style={{ borderRadius: 12 }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 500 }}>
-              <div>
-                <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>Funnel Name</label>
-                <Input value={funnelName} onChange={(e) => setFunnelName(e.target.value)} />
-              </div>
-              <div>
-                <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>Custom Domain</label>
-                <Input value={funnelDomain} onChange={(e) => setFunnelDomain(e.target.value)} placeholder="e.g. sales.mybrand.com" />
-              </div>
-              <div>
-                <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>Meta Pixel ID</label>
-                <Input value={metaPixel} onChange={(e) => setMetaPixel(e.target.value)} />
-              </div>
-              <div>
-                <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>GA4 Tracking ID</label>
-                <Input value={ga4Id} onChange={(e) => setGa4Id(e.target.value)} />
-              </div>
-              <div>
-                <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>Google Tag Manager ID</label>
-                <Input value={gtmId} onChange={(e) => setGtmId(e.target.value)} />
-              </div>
+          <Card
+            title="Funnel Settings & Customizations"
+            style={{ borderRadius: 12 }}
+            extra={
+              <Popconfirm title="Delete this funnel?" description="This cannot be undone." onConfirm={handleDeleteFunnel}>
+                <Button danger icon={<Trash2 size={14} />}>Delete Funnel</Button>
+              </Popconfirm>
+            }
+          >
+            <Tabs
+              tabPosition="left"
+              items={[
+                {
+                  key: "general",
+                  label: <Space size={6}><FileText size={14} /> General</Space>,
+                  children: (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 560 }}>
+                      <div>
+                        <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>Funnel Name</label>
+                        <Input value={funnelName} onChange={(e) => setFunnelName(e.target.value)} placeholder="e.g. Lead Generation Campaign" />
+                      </div>
+                      <div>
+                        <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>Description</label>
+                        <Input.TextArea
+                          value={description}
+                          onChange={(e) => setDescription(e.target.value)}
+                          autoSize={{ minRows: 2, maxRows: 5 }}
+                          placeholder="What is this funnel for?"
+                        />
+                      </div>
+                      <ImageField label="Thumbnail" value={thumbnailUrl} onChange={setThumbnailUrl} hint="Shown on the funnels dashboard card." />
+                      <ImageField label="Icon" value={iconUrl} onChange={setIconUrl} previewShape="round" hint="Small square icon used to identify this funnel." />
 
-              <div style={{ marginTop: 12, display: "flex", gap: 12 }}>
-                <Button type="primary" onClick={handleSaveSettings} style={{ background: "var(--accent-primary)", border: "none" }}>Save Settings</Button>
-                <Popconfirm title="Delete this funnel?" onConfirm={handleDeleteFunnel}>
-                  <Button danger>Delete Funnel</Button>
-                </Popconfirm>
-              </div>
-            </div>
+                      <div style={{ marginTop: 4 }}>
+                        <Button
+                          type="primary"
+                          loading={savingSection === "general"}
+                          onClick={handleSaveGeneral}
+                          style={{ background: "var(--accent-primary)", border: "none" }}
+                        >
+                          Save General Settings
+                        </Button>
+                      </div>
+                    </div>
+                  ),
+                },
+                {
+                  key: "publishing",
+                  label: <Space size={6}><Globe size={14} /> Publishing</Space>,
+                  children: (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 560 }}>
+                      <div>
+                        <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>Custom Slug</label>
+                        <Input
+                          value={customSlug}
+                          onChange={(e) => setCustomSlug(e.target.value)}
+                          placeholder="e.g. summer-sale"
+                          addonBefore="/"
+                        />
+                        <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 4 }}>
+                          Used in the funnel's public URL path. Must be unique.
+                        </div>
+                      </div>
+                      <div>
+                        <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>Custom Domain</label>
+                        <Input value={funnelDomain} onChange={(e) => setFunnelDomain(e.target.value)} placeholder="e.g. sales.mybrand.com" />
+                      </div>
+
+                      <Divider style={{ margin: "4px 0" }} />
+
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                          <label style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+                            <Lock size={14} /> Password Protection
+                          </label>
+                          <Switch checked={passwordEnabled} onChange={setPasswordEnabled} />
+                        </div>
+                        {passwordEnabled && (
+                          <Input.Password
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            placeholder={hasPassword ? "Leave blank to keep the current password" : "Set a password"}
+                          />
+                        )}
+                        {hasPassword && (
+                          <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 4 }}>
+                            A password is currently set. Enter a new one to change it.
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                          <label style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+                            <Wrench size={14} /> Maintenance Mode
+                          </label>
+                          <Switch checked={maintenanceEnabled} onChange={setMaintenanceEnabled} />
+                        </div>
+                        {maintenanceEnabled && (
+                          <Input.TextArea
+                            value={maintenanceMessage}
+                            onChange={(e) => setMaintenanceMessage(e.target.value)}
+                            autoSize={{ minRows: 2, maxRows: 4 }}
+                            placeholder="Message shown to visitors while the funnel is down."
+                          />
+                        )}
+                      </div>
+
+                      <div style={{ marginTop: 4 }}>
+                        <Button
+                          type="primary"
+                          loading={savingSection === "publishing"}
+                          onClick={handleSavePublishing}
+                          style={{ background: "var(--accent-primary)", border: "none" }}
+                        >
+                          Save Publishing Settings
+                        </Button>
+                      </div>
+                    </div>
+                  ),
+                },
+                {
+                  key: "seo",
+                  label: <Space size={6}><Search size={14} /> SEO</Space>,
+                  children: (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 560 }}>
+                      <div>
+                        <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>SEO Title</label>
+                        <Input value={seoTitle} onChange={(e) => setSeoTitle(e.target.value)} placeholder="Title shown in search results" />
+                      </div>
+                      <div>
+                        <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>SEO Description</label>
+                        <Input.TextArea
+                          value={seoDescription}
+                          onChange={(e) => setSeoDescription(e.target.value)}
+                          autoSize={{ minRows: 2, maxRows: 4 }}
+                          placeholder="Description shown in search results"
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>Keywords</label>
+                        <Select
+                          mode="tags"
+                          value={seoKeywords}
+                          onChange={setSeoKeywords}
+                          style={{ width: "100%" }}
+                          placeholder="Add keyword + Enter"
+                          tokenSeparators={[","]}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>Canonical URL</label>
+                        <Input value={canonicalUrl} onChange={(e) => setCanonicalUrl(e.target.value)} placeholder="https://example.com/preferred-url" />
+                      </div>
+
+                      <Divider style={{ margin: "4px 0" }} />
+
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <label style={{ fontWeight: 600 }}>Open Graph Tags</label>
+                        <Switch checked={ogEnabled} onChange={setOgEnabled} />
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: -10 }}>
+                        Uses the SEO Title, SEO Description, and Social Image above when sharing on social platforms.
+                      </div>
+
+                      <div>
+                        <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>Twitter Card Type</label>
+                        <Select value={twitterCard} onChange={setTwitterCard} style={{ width: "100%" }}>
+                          <Option value="summary">Summary</Option>
+                          <Option value="summary_large_image">Summary with Large Image</Option>
+                        </Select>
+                      </div>
+
+                      <ImageField label="Social Image" value={socialImage} onChange={setSocialImage} hint="Shown when this funnel is shared on social media (Open Graph / Twitter)." />
+                      <ImageField label="Favicon" value={faviconUrl} onChange={setFaviconUrl} previewShape="round" hint="Small icon shown in the browser tab." />
+
+                      <Divider style={{ margin: "4px 0" }} />
+
+                      <Title level={5} style={{ margin: 0 }}>Tracking</Title>
+                      <div>
+                        <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>Meta Pixel ID</label>
+                        <Input value={metaPixel} onChange={(e) => setMetaPixel(e.target.value)} />
+                      </div>
+                      <div>
+                        <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>GA4 Tracking ID</label>
+                        <Input value={ga4Id} onChange={(e) => setGa4Id(e.target.value)} />
+                      </div>
+                      <div>
+                        <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>Google Tag Manager ID</label>
+                        <Input value={gtmId} onChange={(e) => setGtmId(e.target.value)} />
+                      </div>
+
+                      <div style={{ marginTop: 4 }}>
+                        <Button
+                          type="primary"
+                          loading={savingSection === "seo"}
+                          onClick={handleSaveSeo}
+                          style={{ background: "var(--accent-primary)", border: "none" }}
+                        >
+                          Save SEO Settings
+                        </Button>
+                      </div>
+                    </div>
+                  ),
+                },
+                {
+                  key: "localization",
+                  label: <Space size={6}><Languages size={14} /> Localization</Space>,
+                  children: (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 400 }}>
+                      <div>
+                        <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>Language</label>
+                        <Select value={language} onChange={setLanguage} style={{ width: "100%" }} showSearch>
+                          <Option value="en">English</Option>
+                          <Option value="es">Spanish</Option>
+                          <Option value="fr">French</Option>
+                          <Option value="de">German</Option>
+                          <Option value="pt">Portuguese</Option>
+                          <Option value="it">Italian</Option>
+                          <Option value="nl">Dutch</Option>
+                          <Option value="hi">Hindi</Option>
+                          <Option value="ja">Japanese</Option>
+                          <Option value="zh">Chinese</Option>
+                        </Select>
+                      </div>
+                      <div>
+                        <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>Timezone</label>
+                        <Select value={timezone} onChange={setTimezone} style={{ width: "100%" }} showSearch>
+                          <Option value="UTC">UTC</Option>
+                          <Option value="America/New_York">America/New_York</Option>
+                          <Option value="America/Chicago">America/Chicago</Option>
+                          <Option value="America/Los_Angeles">America/Los_Angeles</Option>
+                          <Option value="Europe/London">Europe/London</Option>
+                          <Option value="Europe/Berlin">Europe/Berlin</Option>
+                          <Option value="Asia/Kolkata">Asia/Kolkata</Option>
+                          <Option value="Asia/Dubai">Asia/Dubai</Option>
+                          <Option value="Asia/Singapore">Asia/Singapore</Option>
+                          <Option value="Australia/Sydney">Australia/Sydney</Option>
+                        </Select>
+                      </div>
+                      <div>
+                        <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>Currency</label>
+                        <Select value={currency} onChange={setCurrency} style={{ width: "100%" }} showSearch>
+                          <Option value="USD">USD - US Dollar</Option>
+                          <Option value="EUR">EUR - Euro</Option>
+                          <Option value="GBP">GBP - British Pound</Option>
+                          <Option value="INR">INR - Indian Rupee</Option>
+                          <Option value="CAD">CAD - Canadian Dollar</Option>
+                          <Option value="AUD">AUD - Australian Dollar</Option>
+                          <Option value="JPY">JPY - Japanese Yen</Option>
+                          <Option value="AED">AED - UAE Dirham</Option>
+                        </Select>
+                      </div>
+
+                      <div style={{ marginTop: 4 }}>
+                        <Button
+                          type="primary"
+                          loading={savingSection === "localization"}
+                          onClick={handleSaveLocalization}
+                          style={{ background: "var(--accent-primary)", border: "none" }}
+                        >
+                          Save Localization Settings
+                        </Button>
+                      </div>
+                    </div>
+                  ),
+                },
+                {
+                  key: "advanced",
+                  label: <Space size={6}><Code2 size={14} /> Advanced</Space>,
+                  children: (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 640 }}>
+                      <div>
+                        <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>Header Scripts</label>
+                        <Input.TextArea
+                          value={headerScripts}
+                          onChange={(e) => setHeaderScripts(e.target.value)}
+                          autoSize={{ minRows: 3, maxRows: 8 }}
+                          placeholder="<script>…</script> — injected into <head>"
+                          style={{ fontFamily: "monospace", fontSize: 13 }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>Footer Scripts</label>
+                        <Input.TextArea
+                          value={footerScripts}
+                          onChange={(e) => setFooterScripts(e.target.value)}
+                          autoSize={{ minRows: 3, maxRows: 8 }}
+                          placeholder="<script>…</script> — injected before </body>"
+                          style={{ fontFamily: "monospace", fontSize: 13 }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>Custom CSS</label>
+                        <Input.TextArea
+                          value={customCss}
+                          onChange={(e) => setCustomCss(e.target.value)}
+                          autoSize={{ minRows: 3, maxRows: 8 }}
+                          placeholder=".my-class { color: red; }"
+                          style={{ fontFamily: "monospace", fontSize: 13 }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontWeight: 600, display: "block", marginBottom: 6 }}>Custom JavaScript</label>
+                        <Input.TextArea
+                          value={customJs}
+                          onChange={(e) => setCustomJs(e.target.value)}
+                          autoSize={{ minRows: 3, maxRows: 8 }}
+                          placeholder="console.log('funnel loaded')"
+                          style={{ fontFamily: "monospace", fontSize: 13 }}
+                        />
+                      </div>
+
+                      <div style={{ marginTop: 4 }}>
+                        <Button
+                          type="primary"
+                          loading={savingSection === "advanced"}
+                          onClick={handleSaveAdvanced}
+                          style={{ background: "var(--accent-primary)", border: "none" }}
+                        >
+                          Save Advanced Settings
+                        </Button>
+                      </div>
+                    </div>
+                  ),
+                },
+              ]}
+            />
           </Card>
         )}
       </div>

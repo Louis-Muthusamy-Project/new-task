@@ -7,9 +7,51 @@ const FunnelAnalyticsEvent = require('../models/FunnelAnalyticsEvent');
 const { duplicateFunnel } = require('../services/funnelDuplicateService');
 const funnelPublishService = require('../services/funnelPublishService');
 const { slugify } = require('../utils/slugUtils');
+const { hashPassword } = require('../utils/passwordUtils');
 // Reuse the exact "what counts as a completed sale" definition already
 // established in funnelAnalyticsController, instead of redefining it here.
 const { COUNTED_STATUSES } = require('./funnelAnalyticsController');
+
+/**
+ * Flattens a nested plain-object payload into dot-path { 'a.b.c': value }
+ * pairs suitable for a Mongo $set. This lets PATCH /:id accept a partial
+ * nested object (e.g. just `{ seo: { title: 'x' } }`) and update only the
+ * keys provided, without clobbering sibling subfields (e.g. `seo.keywords`)
+ * that the caller didn't send. Arrays and non-plain-objects are treated as
+ * leaf values, not recursed into.
+ */
+const isPlainObject = (v) =>
+  v !== null && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date) && !mongoose.Types.ObjectId.isValid(v);
+
+const flattenForSet = (obj, prefix = '') => {
+  const out = {};
+  for (const [key, value] of Object.entries(obj || {})) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (isPlainObject(value)) {
+      Object.assign(out, flattenForSet(value, path));
+    } else {
+      out[path] = value;
+    }
+  }
+  return out;
+};
+
+/**
+ * Strips sensitive/internal fields (currently just the password hash) from
+ * a funnel before it goes out over the API. Replaces it with a boolean
+ * `hasPassword` flag so the frontend can show protection is on without
+ * ever seeing the hash.
+ */
+const sanitizeFunnel = (funnelDoc) => {
+  if (!funnelDoc) return funnelDoc;
+  const obj = typeof funnelDoc.toObject === 'function' ? funnelDoc.toObject() : { ...funnelDoc };
+  const hash = obj?.publishing?.passwordProtection?.passwordHash;
+  if (obj.publishing?.passwordProtection) {
+    obj.publishing.passwordProtection.hasPassword = !!hash;
+    delete obj.publishing.passwordProtection.passwordHash;
+  }
+  return obj;
+};
 
 const buildOwnershipFilter = (req) => {
   const ownerId = req?.user?.id || req?.user?._id || null;
@@ -35,7 +77,10 @@ const invalidIdError = () => {
  * Creates a new funnel. If templateId is provided, clones steps from the FunnelTemplate.
  */
 exports.createFunnel = async (req, res) => {
-  const { name, status, templateId, settings, seo, tags, createdBy } = req.body;
+  const {
+    name, status, templateId, settings, seo, tags, createdBy,
+    description, thumbnailUrl, iconUrl, publishing, localization, advanced,
+  } = req.body;
 
   if (!name) {
     return res.status(400).json({ success: false, error: 'Funnel name is required.' });
@@ -48,6 +93,21 @@ exports.createFunnel = async (req, res) => {
   // (e.g. the current AuthContext role) rather than leaving it blank.
   const createdByName = req?.user?.name || req?.user?.email || createdBy || '';
 
+  // Publishing settings may arrive with a plaintext `password` — hash it
+  // the same way updateFunnel does, rather than ever persisting it as-is.
+  let publishingToSave;
+  if (publishing) {
+    publishingToSave = { ...publishing };
+    const plainPassword = publishing?.passwordProtection?.password;
+    if (plainPassword) {
+      publishingToSave.passwordProtection = {
+        ...publishing.passwordProtection,
+        passwordHash: await hashPassword(plainPassword),
+      };
+      delete publishingToSave.passwordProtection.password;
+    }
+  }
+
   const funnel = await Funnel.create({
     ownerId,
     teamId,
@@ -56,6 +116,9 @@ exports.createFunnel = async (req, res) => {
     status: status || 'Draft',
     tags: Array.isArray(tags) ? tags.filter(Boolean).map((t) => String(t).trim()) : [],
     createdBy: createdByName,
+    description: description || '',
+    thumbnailUrl: thumbnailUrl || '',
+    iconUrl: iconUrl || '',
     settings: settings || {
       faviconUrl: '',
       domain: '',
@@ -69,6 +132,9 @@ exports.createFunnel = async (req, res) => {
       }
     },
     seo: seo || { title: '', description: '', ogImageUrl: '' },
+    publishing: publishingToSave,
+    localization: localization || undefined,
+    advanced: advanced || undefined,
     templateId: templateId || null,
   });
 
@@ -104,7 +170,7 @@ exports.createFunnel = async (req, res) => {
 
   res.status(201).json({
     success: true,
-    data: funnel,
+    data: sanitizeFunnel(funnel),
   });
 };
 
@@ -227,7 +293,7 @@ exports.getFunnels = async (req, res) => {
   }
 
   const funnelsWithExtras = funnels.map((f) => ({
-    ...f,
+    ...sanitizeFunnel(f),
     stepCount: stepCountMap[String(f._id)] || 0,
     ...(req.query.includeStats === 'true'
       ? { stats: statsMap[String(f._id)] || { visitors: 0, orders: 0, revenue: 0, conversionRate: 0 } }
@@ -286,13 +352,20 @@ exports.getFunnelById = async (req, res) => {
 
   res.status(200).json({
     success: true,
-    data: funnel,
+    data: sanitizeFunnel(funnel),
   });
 };
 
 /**
  * PATCH /api/funnels/:id
- * Updates a funnel.
+ * Updates a funnel. Powers every section of the Settings UI (General,
+ * Publishing, SEO, Localization, Advanced) through one generic endpoint.
+ *
+ * Nested fields (settings, seo, publishing, localization, advanced) are
+ * flattened to dot-paths before the $set, so a caller can PATCH e.g. just
+ * `{ seo: { title: 'x' } }` and only `seo.title` changes — sibling keys
+ * like `seo.keywords` that weren't included are left untouched. This keeps
+ * each Settings tab's "Save" button independent of the others.
  */
 exports.updateFunnel = async (req, res) => {
   const { id } = req.params;
@@ -301,23 +374,47 @@ exports.updateFunnel = async (req, res) => {
     throw invalidIdError();
   }
 
-  const allowedFields = [
+  const flatFields = [
     'name',
+    'description',
+    'thumbnailUrl',
+    'iconUrl',
     'status',
-    'settings',
-    'seo',
     'tags',
     'isFavorite',
+    'slug',
   ];
+  const nestedFields = ['settings', 'seo', 'publishing', 'localization', 'advanced'];
 
   const updates = {};
-  for (const field of allowedFields) {
+  for (const field of flatFields) {
     if (Object.prototype.hasOwnProperty.call(req.body, field)) {
       updates[field] = req.body[field];
     }
   }
+  for (const field of nestedFields) {
+    if (Object.prototype.hasOwnProperty.call(req.body, field) && isPlainObject(req.body[field])) {
+      Object.assign(updates, flattenForSet(req.body[field], field));
+    }
+  }
 
-  if (updates.name) {
+  // Custom Slug (Publishing tab): if the caller explicitly sends `slug`,
+  // that wins and is validated for uniqueness. Otherwise fall back to the
+  // original behavior of deriving the slug from `name` — unchanged, so
+  // existing callers that only ever sent `name` keep working exactly as
+  // before.
+  if (Object.prototype.hasOwnProperty.call(updates, 'slug')) {
+    const desiredSlug = slugify(updates.slug);
+    const clash = await Funnel.findOne({
+      _id: { $ne: id },
+      slug: desiredSlug,
+      isDeleted: false,
+    }).select('_id');
+    if (clash) {
+      return res.status(409).json({ success: false, error: 'That slug is already in use by another funnel.' });
+    }
+    updates.slug = desiredSlug;
+  } else if (updates.name) {
     updates.slug = slugify(updates.name);
   }
 
@@ -325,6 +422,20 @@ exports.updateFunnel = async (req, res) => {
     updates.tags = Array.isArray(updates.tags)
       ? updates.tags.filter(Boolean).map((t) => String(t).trim())
       : [];
+  }
+
+  // Password Protection (Publishing tab): the frontend sends a plaintext
+  // `publishing.passwordProtection.password`, which flattenForSet turns
+  // into the dot-path key below. Hash it before it ever touches the DB;
+  // an empty string clears the password (protection can still be toggled
+  // off separately via `publishing.passwordProtection.enabled`).
+  const passwordKey = 'publishing.passwordProtection.password';
+  if (Object.prototype.hasOwnProperty.call(updates, passwordKey)) {
+    const plainPassword = updates[passwordKey];
+    delete updates[passwordKey];
+    updates['publishing.passwordProtection.passwordHash'] = plainPassword
+      ? await hashPassword(plainPassword)
+      : '';
   }
 
   const funnel = await Funnel.findOneAndUpdate(
@@ -346,7 +457,7 @@ exports.updateFunnel = async (req, res) => {
 
   res.status(200).json({
     success: true,
-    data: funnel,
+    data: sanitizeFunnel(funnel),
   });
 };
 
@@ -472,7 +583,7 @@ exports.duplicateFunnel = async (req, res) => {
 
   res.status(201).json({
     success: true,
-    data: funnel,
+    data: sanitizeFunnel(funnel),
     meta: { stepsCopied: stepCount },
   });
 };
@@ -507,7 +618,7 @@ exports.previewFunnel = async (req, res) => {
   res.status(200).json({
     success: true,
     data: {
-      funnel,
+      funnel: sanitizeFunnel(funnel),
       steps,
       meta: {
         stepCount: steps.length,
