@@ -32,6 +32,7 @@ const WebsitesRouteWrapper = lazy(() => import('./pages/WebsiteBuilder/WebsitesR
 const Strategy = lazy(() => import('./pages/Strategy/Strategy'));
 const WebsiteSetupPage = lazy(() => import('./pages/WebsiteBuilder/websiteWizard/WebsiteSetupPage'));
 const StorefrontPreviewPage = lazy(() => import('./pages/WebsiteBuilder/storefront/StorefrontPreviewPage'));
+const PagePreviewRoute = lazy(() => import('./pages/WebsiteBuilder/storefront/PagePreviewRoute'));
 
 const SEO = lazy(() => import('./pages/SEO/SEO'));
 const Content = lazy(() => import('./pages/Content/Content'));
@@ -147,6 +148,15 @@ const AppRoutes = () => {
           action; mounts the same StorefrontApp component the modal does.
         */}
         <Route path="/preview/store/:storeId" element={<StorefrontPreviewPage />} />
+
+        {/*
+          Generic page preview — used by openPagePreview() (BccBuilder's
+          "Open preview in new tab" Eye button, WebsiteEditPage, WebsitesTab).
+          Reads the staged HTML payload out of sessionStorage by :previewId
+          instead of the old about:blank + document.write approach, so the
+          preview tab has a real, refreshable URL.
+        */}
+        <Route path="/preview/page/:previewId" element={<PagePreviewRoute />} />
 
         {/* Super Admin Routes */}
         <Route element={<ProtectedRoute allowedRoles={['superadmin']} />}>

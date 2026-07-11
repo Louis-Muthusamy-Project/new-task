@@ -787,6 +787,20 @@ const GrapesPageEditor = ({
   const isFunnelRef = useRef(isFunnel);
   useEffect(() => { isFunnelRef.current = isFunnel; }, [isFunnel]);
 
+  // pageKey ref so the change-tracking `handler` (registered once inside the
+  // mount-only init effect below) always compares against whichever page is
+  // *currently* loaded instead of whichever page was open the moment the
+  // editor first mounted. Without this, since GrapesPageEditor is never
+  // remounted when navigating between pages (BccBuilder renders it without a
+  // `key`), the handler's `pageKey` closure variable would stay frozen on the
+  // first page forever — so every component add/remove/style change made on
+  // any *other* page would silently fail the `loadedForPageKeyRef.current !==
+  // pageKey` check and never call onChange, meaning those pages' edits (e.g.
+  // dropping a Checkout/Footer/Product Grid block) would never be marked
+  // dirty or saved, even though everything looked fine in the canvas.
+  const pageKeyRef = useRef(pageKey);
+  useEffect(() => { pageKeyRef.current = pageKey; }, [pageKey]);
+
   useEffect(() => {
     if (activeTool === 'forms') {
       if (!formsLoading && formTemplates.length === 0) {
@@ -1243,6 +1257,24 @@ const GrapesPageEditor = ({
   //      editor.refresh() rather than only refresh() which is a layout hint.
   // ─────────────────────────────────────────────────────────────────────────
   const applyContentToEditor = async (editor, html, css, externalLinks, key) => {
+    // Safety net: make sure Store/Funnel custom component types are
+    // registered before this call parses `html` via setComponents() below.
+    // The 'load' handler already registers these once per mount, but if the
+    // very first page opened on this mount wasn't a store/funnel page,
+    // that registration never ran — and every subsequent page switch to a
+    // store/funnel page reaches this function directly (see Effect 2)
+    // without ever going through 'load' again. Both addType() and
+    // BlockManager.add() upsert by id, so calling this again here is a
+    // harmless no-op once it has already run.
+    if ((isStoreRef.current || isFunnelRef.current) && websiteIdRef.current) {
+      try {
+        registerStoreBlocks(editor, { apiBase: API_BASE, storeId: websiteIdRef.current });
+        registerStoreTraits(editor);
+      } catch (e) {
+        console.warn('[GrapesPageEditor] registerStoreBlocks/Traits (applyContentToEditor) failed:', e);
+      }
+    }
+
     const currentHtml = editor.getHtml();
     const htmlIsEmpty = !html || html.length === 0;
     const cssIsEmpty  = !css  || css.length  === 0;
@@ -1395,7 +1427,7 @@ const GrapesPageEditor = ({
 
     editor.on('load', async () => {
       if (editorRef.current !== editor) {
-        console.warn('[GrapesPageEditor] stale load ignored', { pageKey });
+        console.warn('[GrapesPageEditor] stale load ignored', { pageKey: pageKeyRef.current });
         return;
       }
 
@@ -1404,6 +1436,31 @@ const GrapesPageEditor = ({
       // Load backend media assets FIRST so images in the HTML resolve in the
       // AssetManager panel immediately on open.
       await syncAssetsFromBackend(editor, websiteIdRef.current);
+
+      // Register Store/Funnel custom component types BEFORE parsing any
+      // saved page content below (via applyContentToEditor -> setComponents).
+      //
+      // GrapesJS decides a DOM element's component *type* at parse time, by
+      // running it through every registered `isComponent` check. If a
+      // Product Grid / Single Product / Checkout / Footer block was already
+      // saved on this page from a previous session, and setComponents() runs
+      // BEFORE registerStoreTraits() has added those custom types, every one
+      // of those elements gets parsed as a plain generic/default component
+      // instead — permanently, for that parse. Registering the type a moment
+      // later (as this code used to do, right after applyContentToEditor)
+      // does NOT retroactively re-type components that were already parsed;
+      // the only symptom visible to a merchant reopening the page is that
+      // their store blocks now behave like inert, ordinary text/boxes —
+      // no special toolbar, no traits panel, no live re-hydration — even
+      // though the underlying saved HTML/script markup is still intact.
+      if ((isStoreRef.current || isFunnelRef.current) && websiteIdRef.current) {
+        try {
+          registerStoreBlocks(editor, { apiBase: API_BASE, storeId: websiteIdRef.current });
+          registerStoreTraits(editor);
+        } catch (e) {
+          console.warn('[GrapesPageEditor] registerStoreBlocks/Traits failed:', e);
+        }
+      }
 
       const pending = pendingContentRef.current;
       if (pending) {
@@ -1430,26 +1487,6 @@ const GrapesPageEditor = ({
       }
 
       await fetchFormTools(editor);
-
-      // Store pages — AND Funnel steps, which sell a StoreProduct the same
-      // way (see FunnelStep.settings.productId) — get an extra "Store"
-      // block category (Header, Menu, Hero, Product Grid, Latest Products,
-      // Featured Product(s), Collection Grid, Testimonials, Blog, Search,
-      // Cart, Checkout, Footer) that render live data from the storefront
-      // API. Registered once per editor instance — websiteId here is the
-      // storeId for store pages (see BccBuilder, which passes storeId
-      // through as websiteId) or the funnelId for funnel steps (Cart/
-      // Checkout resolve the real store id themselves at runtime — see
-      // runtimeHelpers() in storeDynamicBlocks.js — so a funnel step
-      // working with products from any store still works correctly).
-      if ((isStoreRef.current || isFunnelRef.current) && websiteIdRef.current) {
-        try {
-          registerStoreBlocks(editor, { apiBase: API_BASE, storeId: websiteIdRef.current });
-          registerStoreTraits(editor);
-        } catch (e) {
-          console.warn('[GrapesPageEditor] registerStoreBlocks/Traits failed:', e);
-        }
-      }
     });
 
     // ── Upload response normalisation ──────────────────────────────────────
@@ -1476,7 +1513,13 @@ const GrapesPageEditor = ({
       if (isSyncingRef.current) return;
       // FIX: Prevent async initialization events (asset:add, deferred component:add)
       // from firing onChange before the initial content pipeline has completely finished.
-      if (loadedForPageKeyRef.current !== pageKey) return;
+      // IMPORTANT: compare against pageKeyRef.current (live), not the `pageKey`
+      // closure variable — this effect runs only once per mount, so `pageKey`
+      // itself is frozen on whatever page was open at mount time. Using the
+      // bare variable here meant that after navigating to any other page,
+      // this check would always fail and onChange would never fire again —
+      // i.e. every page except the very first one would silently stop saving.
+      if (loadedForPageKeyRef.current !== pageKeyRef.current) return;
       if (!onChange) return;
       onChange({ html: editor.getHtml(), css: editor.getCss() });
     };

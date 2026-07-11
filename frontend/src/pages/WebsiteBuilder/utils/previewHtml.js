@@ -167,13 +167,51 @@ ${widgetMarkup}
 </html>`);
 }
 
-export function openPagePreview(page, chatWidget = null) {
-  const previewWindow = window.open("", "_blank");
-  if (!previewWindow) return false;
+const PREVIEW_STORAGE_PREFIX = "jeema_page_preview_";
 
-  previewWindow.document.open();
-  previewWindow.document.write(buildPreviewHtml(page, chatWidget));
-  previewWindow.document.close();
+function makePreviewId() {
+  try {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  } catch (_) {
+    // fall through to the timestamp-based id below
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * Reads back (without clearing) a preview payload staged by openPagePreview()
+ * below, keyed by the id that was put in the /preview/page/:previewId URL.
+ * Not cleared on read so refreshing the preview tab still works — it's
+ * sessionStorage, so it's already scoped to this tab's session and goes
+ * away on its own once the tab closes.
+ */
+export function readStagedPreviewHtml(previewId) {
+  if (!previewId) return null;
+  try {
+    return sessionStorage.getItem(PREVIEW_STORAGE_PREFIX + previewId);
+  } catch (_) {
+    return null;
+  }
+}
+
+export function openPagePreview(page, chatWidget = null) {
+  const previewId = makePreviewId();
+
+  try {
+    sessionStorage.setItem(PREVIEW_STORAGE_PREFIX + previewId, buildPreviewHtml(page, chatWidget));
+  } catch (e) {
+    console.warn("[previewHtml] could not stage preview payload:", e);
+    return false;
+  }
+
+  // Deliberately no "noopener" here: sessionStorage is only inherited by a
+  // new tab when it's opened as an auxiliary browsing context of this one
+  // (same origin), and "noopener" would break that relationship before the
+  // new tab gets a chance to read what was just staged above. We still cut
+  // the opener reference ourselves right after, for the same safety benefit
+  // "noopener" would have given us, without the timing problem.
+  const previewWindow = window.open(`/preview/page/${previewId}`, "_blank");
+  if (!previewWindow) return false;
   previewWindow.opener = null;
   return true;
 }
