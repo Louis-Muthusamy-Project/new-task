@@ -244,9 +244,25 @@ function normalizeToBodyAndCss(rawHtml = '', rawCss = '', rawHeadLinks = '') {
 
     // ── 3. Clean body ─────────────────────────────────────────────────────
     const body = doc.body.cloneNode(true);
-    // Remove <style>/<link> (already captured above), scripts, and loader elements.
+    // Remove <style>/<link> (already captured above) and loader elements.
+    //
+    // IMPORTANT: do NOT remove <script> here. Every Store/Funnel dynamic
+    // block (Product Grid, Latest Products, Featured Product(s), Cart,
+    // Checkout, Footer, single-product inserts, form templates, etc. — see
+    // storeDynamicBlocks.js) is a static placeholder shell PLUS an inline
+    // <script> that hydrates it with live data and wires up its buttons.
+    // That script is the only thing that makes the block actually work.
+    //
+    // Freshly-dropped blocks bypass this function entirely (they're
+    // inserted straight via editor.addComponents()/append()), so they
+    // hydrate fine. But every time a saved page is reloaded it comes
+    // through normalizeToBodyAndCss() first — stripping <script> here
+    // deleted the hydration logic before setComponents() ever ran, so
+    // reloaded blocks rendered as inert dead shells (no data, "Add to
+    // cart" did nothing) even though `allowScripts: 1` was set on the
+    // editor specifically to let GrapesJS preserve inline scripts.
     body.querySelectorAll(
-      'style, link, script, #spinner, .spinner, .preloader, .loader, [data-loader]'
+      'style, link, #spinner, .spinner, .preloader, .loader, [data-loader]'
     ).forEach((el) => el.remove());
 
     const bodyHtml = body.innerHTML;
