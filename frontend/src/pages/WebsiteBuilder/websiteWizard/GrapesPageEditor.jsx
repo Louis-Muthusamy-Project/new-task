@@ -632,7 +632,7 @@ function buildStoreProductHtml(storeId, product = {}) {
   const initialCurrency = JSON.stringify(product.currency || 'USD');
 
   return `
-    <div class="store-block store-single-product" data-store-block="single-product" data-store-id="${safeStoreId}" data-product-id="${productId}" style="display:grid;grid-template-columns:220px 1fr;gap:24px;align-items:center;padding:24px;border:1px solid #e5e7eb;border-radius:12px;background:#ffffff;font-family:sans-serif;max-width:640px;">
+    <div class="store-block store-single-product" data-store-block="single-product" data-store-id="${safeStoreId}" data-product-id="${productId}" data-redirect-url="" style="display:grid;grid-template-columns:220px 1fr;gap:24px;align-items:center;padding:24px;border:1px solid #e5e7eb;border-radius:12px;background:#ffffff;font-family:sans-serif;max-width:640px;">
       <div class="store-single-product-image">
         ${image
           ? `<img src="${image}" alt="${title}" style="width:100%;border-radius:8px;object-fit:cover;aspect-ratio:1/1;background:#f3f4f6;" />`
@@ -688,7 +688,18 @@ function buildStoreProductHtml(storeId, product = {}) {
             e.preventDefault();
             addToCart(storeId, productId, 1);
             btn.textContent = 'Added ✓';
-            setTimeout(function () { btn.textContent = 'Add to cart'; }, 1200);
+            // Optional "Button Redirect Link" trait (data-redirect-url) —
+            // read fresh at click time so a Settings-panel change while the
+            // page is open takes effect on the very next click, same as the
+            // matching traits on the Product Grid/Featured Product blocks
+            // in storeDynamicBlocks.js.
+            var redirectUrl = el.dataset.redirectUrl;
+            if (redirectUrl) {
+              btn.textContent = 'Redirecting…';
+              setTimeout(function () { window.location.href = redirectUrl; }, 800);
+            } else {
+              setTimeout(function () { btn.textContent = 'Add to cart'; }, 1200);
+            }
           });
         }
 

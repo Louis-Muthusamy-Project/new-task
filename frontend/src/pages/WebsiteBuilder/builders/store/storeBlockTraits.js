@@ -17,6 +17,10 @@
  * - Blog: limit, columns, show excerpt
  * - Search: placeholder
  * - Cart/Checkout/Footer: basic extensibility
+ * - Product Grid / Latest Products / Featured Product / Featured Products /
+ *   Single Product: also get a "Button Redirect Link" (data-redirect-url)
+ *   trait, letting a merchant send shoppers straight to a URL (cart,
+ *   checkout, an external link, etc.) right after "Add to cart" fires.
  *
  * All configuration comes from data-* attributes only (no inline JS variables).
  */
@@ -127,6 +131,13 @@ const productGridTraits = [
     default: '',
     placeholder: 'Collection ID (optional)',
   }),
+  createTrait({
+    name: 'data-redirect-url',
+    label: 'Button Redirect Link (optional)',
+    type: 'text',
+    default: '',
+    placeholder: '/cart, /checkout, or https://...',
+  }),
 ];
 
 /**
@@ -151,6 +162,13 @@ const featuredProductTraits = [
     label: 'Show Add to Cart Button',
     type: 'checkbox',
     default: true,
+  }),
+  createTrait({
+    name: 'data-redirect-url',
+    label: 'Button Redirect Link (optional)',
+    type: 'text',
+    default: '',
+    placeholder: '/cart, /checkout, or https://...',
   }),
 ];
 
@@ -345,6 +363,13 @@ const latestProductsTraits = [
     type: 'checkbox',
     default: true,
   }),
+  createTrait({
+    name: 'data-redirect-url',
+    label: 'Button Redirect Link (optional)',
+    type: 'text',
+    default: '',
+    placeholder: '/cart, /checkout, or https://...',
+  }),
 ];
 
 /**
@@ -383,6 +408,13 @@ const featuredProductsTraits = [
     label: 'Show Add to Cart Button',
     type: 'checkbox',
     default: true,
+  }),
+  createTrait({
+    name: 'data-redirect-url',
+    label: 'Button Redirect Link (optional)',
+    type: 'text',
+    default: '',
+    placeholder: '/cart, /checkout, or https://...',
   }),
 ];
 
@@ -496,6 +528,7 @@ export function registerStoreTraits(editor) {
           'data-show-button': 'true',
           'data-show-rating': 'false',
           'data-collection': '',
+          'data-redirect-url': '',
         },
       },
     },
@@ -514,6 +547,7 @@ export function registerStoreTraits(editor) {
           'data-columns': '4',
           'data-show-price': 'true',
           'data-show-button': 'true',
+          'data-redirect-url': '',
         },
       },
     },
@@ -531,6 +565,7 @@ export function registerStoreTraits(editor) {
           'data-product-id': '',
           'data-show-price': 'true',
           'data-show-button': 'true',
+          'data-redirect-url': '',
         },
       },
     },
@@ -549,6 +584,34 @@ export function registerStoreTraits(editor) {
           'data-columns': '4',
           'data-show-price': 'true',
           'data-show-button': 'true',
+          'data-redirect-url': '',
+        },
+      },
+    },
+  });
+
+  // ── Single Product Component ─────────────────────────────────────────
+  // Built by GrapesPageEditor.jsx's "insert single product" flow
+  // (buildStoreProductHtml), not by a BlockManager drag-in like the
+  // sections above — but it renders the same kind of "Add to cart" button,
+  // so it gets the same optional redirect trait for consistency.
+  editor.DomComponents.addType('single-product', {
+    isComponent: (el) => {
+      return el.dataset?.storeBlock === 'single-product';
+    },
+    model: {
+      defaults: {
+        traits: [
+          createTrait({
+            name: 'data-redirect-url',
+            label: 'Button Redirect Link (optional)',
+            type: 'text',
+            default: '',
+            placeholder: '/cart, /checkout, or https://...',
+          }),
+        ],
+        attributes: {
+          'data-redirect-url': '',
         },
       },
     },

@@ -29,7 +29,13 @@
 // settings into a Traits panel a merchant edits from the sidebar (limit,
 // columns, sort, which collection, etc.) instead of hand-editing HTML —
 // so a "block" here means an actual configurable component, the same way
-// a Shopify theme section + its schema settings do.
+// a Shopify theme section + its schema settings do. Every block that
+// renders a product "Add to cart" button (Product Grid, Latest Products,
+// Featured Product, Featured Products) also carries a `data-redirect-url`
+// trait — "Button Redirect Link" in the Traits panel — so a merchant can
+// send the shopper straight to the cart, checkout, or any other URL right
+// after the item is added, instead of leaving them on the section. Left
+// empty (the default), the button behaves exactly as before.
 //
 // Hydration pattern: every block wraps its markup in a container carrying
 // `data-store-block="<type>"`. Its script selects ALL not-yet-hydrated
@@ -282,7 +288,7 @@ function heroBlock(apiBase, storeId) {
 // ── 2. Product Grid ──────────────────────────────────────────────────────
 function productGridBlock(apiBase, storeId) {
   const content = `
-    <section class="store-block store-product-grid" data-store-block="product-grid" data-limit="8" data-columns="4" data-sort="latest" data-show-price="true" data-show-button="true" data-show-rating="false" data-collection="" style="padding:48px 24px;font-family:sans-serif;">
+    <section class="store-block store-product-grid" data-store-block="product-grid" data-limit="8" data-columns="4" data-sort="latest" data-show-price="true" data-show-button="true" data-show-rating="false" data-collection="" data-redirect-url="" style="padding:48px 24px;font-family:sans-serif;">
       <h2 style="margin:0 0 20px;font-size:24px;font-weight:800;color:#111827;">Shop our products</h2>
       <div class="store-product-grid-items" style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px;">
         <div style="color:#6b7280;">Loading products…</div>
@@ -325,7 +331,19 @@ function productGridBlock(apiBase, storeId) {
             if (!btn) return;
             addToCart(btn.getAttribute('data-add-to-cart'), 1);
             btn.textContent = 'Added ✓';
-            setTimeout(function () { btn.textContent = 'Add to cart'; }, 1200);
+            // Optional "Button Redirect Link" trait (data-redirect-url) —
+            // read fresh at click time (see runtimeHelpers() note above on
+            // why nothing here should be captured once at hydrate time), so
+            // a merchant can point this button at a specific page (e.g. the
+            // cart, checkout, or an external URL) instead of leaving the
+            // shopper on the grid after "Add to cart".
+            var redirectUrl = el.dataset.redirectUrl;
+            if (redirectUrl) {
+              btn.textContent = 'Redirecting…';
+              setTimeout(function () { window.location.href = redirectUrl; }, 800);
+            } else {
+              setTimeout(function () { btn.textContent = 'Add to cart'; }, 1200);
+            }
           });
         }).catch(function () { wrap.innerHTML = '<div style="color:#ef4444;">Could not load products.</div>'; });
       }
@@ -339,7 +357,7 @@ function productGridBlock(apiBase, storeId) {
 // ── 2b. Latest Products ──────────────────────────────────────────────────
 function latestProductsBlock(apiBase, storeId) {
   const content = `
-    <section class="store-block store-latest-products" data-store-block="latest-products" data-limit="8" data-columns="4" data-show-price="true" data-show-button="true" style="padding:48px 24px;font-family:sans-serif;">
+    <section class="store-block store-latest-products" data-store-block="latest-products" data-limit="8" data-columns="4" data-show-price="true" data-show-button="true" data-redirect-url="" style="padding:48px 24px;font-family:sans-serif;">
       <h2 style="margin:0 0 20px;font-size:24px;font-weight:800;color:#111827;">New arrivals</h2>
       <div class="store-latest-products-items" style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px;">
         <div style="color:#6b7280;">Loading products…</div>
@@ -375,7 +393,16 @@ function latestProductsBlock(apiBase, storeId) {
             if (!btn) return;
             addToCart(btn.getAttribute('data-add-to-cart'), 1);
             btn.textContent = 'Added ✓';
-            setTimeout(function () { btn.textContent = 'Add to cart'; }, 1200);
+            // Optional "Button Redirect Link" trait (data-redirect-url) —
+            // see the equivalent Product Grid handler above for why this is
+            // read fresh at click time instead of once at hydrate time.
+            var redirectUrl = el.dataset.redirectUrl;
+            if (redirectUrl) {
+              btn.textContent = 'Redirecting…';
+              setTimeout(function () { window.location.href = redirectUrl; }, 800);
+            } else {
+              setTimeout(function () { btn.textContent = 'Add to cart'; }, 1200);
+            }
           });
         }).catch(function () { wrap.innerHTML = '<div style="color:#ef4444;">Could not load products.</div>'; });
       }
@@ -389,7 +416,7 @@ function latestProductsBlock(apiBase, storeId) {
 // ── 3. Featured Product ──────────────────────────────────────────────────
 function featuredProductBlock(apiBase, storeId) {
   const content = `
-    <section class="store-block store-featured-product" data-store-block="featured-product" data-product-id="" data-show-price="true" data-show-button="true" style="padding:48px 24px;font-family:sans-serif;">
+    <section class="store-block store-featured-product" data-store-block="featured-product" data-product-id="" data-show-price="true" data-show-button="true" data-redirect-url="" style="padding:48px 24px;font-family:sans-serif;">
       <div class="store-featured-product-body" style="display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:center;">
         <div style="color:#6b7280;">Loading featured product…</div>
       </div>
@@ -426,7 +453,16 @@ function featuredProductBlock(apiBase, storeId) {
               e.preventDefault();
               addToCart(btn.getAttribute('data-add-to-cart'), 1);
               btn.textContent = 'Added ✓';
-              setTimeout(function () { btn.textContent = 'Add to cart'; }, 1200);
+              // Optional "Button Redirect Link" trait (data-redirect-url) —
+              // see the equivalent Product Grid handler for why this is
+              // read fresh at click time instead of once at hydrate time.
+              var redirectUrl = el.dataset.redirectUrl;
+              if (redirectUrl) {
+                btn.textContent = 'Redirecting…';
+                setTimeout(function () { window.location.href = redirectUrl; }, 800);
+              } else {
+                setTimeout(function () { btn.textContent = 'Add to cart'; }, 1200);
+              }
             });
           }
         }).catch(function (err) { body.innerHTML = '<div style="color:#ef4444;">Could not load product.</div>'; });
@@ -441,7 +477,7 @@ function featuredProductBlock(apiBase, storeId) {
 // ── 3b. Featured Products (grid) ─────────────────────────────────────────
 function featuredProductsBlock(apiBase, storeId) {
   const content = `
-    <section class="store-block store-featured-products" data-store-block="featured-products" data-limit="8" data-columns="4" data-show-price="true" data-show-button="true" style="padding:48px 24px;font-family:sans-serif;">
+    <section class="store-block store-featured-products" data-store-block="featured-products" data-limit="8" data-columns="4" data-show-price="true" data-show-button="true" data-redirect-url="" style="padding:48px 24px;font-family:sans-serif;">
       <h2 style="margin:0 0 20px;font-size:24px;font-weight:800;color:#111827;">Featured products</h2>
       <div class="store-featured-products-items" style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px;">
         <div style="color:#6b7280;">Loading products…</div>
@@ -477,7 +513,16 @@ function featuredProductsBlock(apiBase, storeId) {
             if (!btn) return;
             addToCart(btn.getAttribute('data-add-to-cart'), 1);
             btn.textContent = 'Added ✓';
-            setTimeout(function () { btn.textContent = 'Add to cart'; }, 1200);
+            // Optional "Button Redirect Link" trait (data-redirect-url) —
+            // see the equivalent Product Grid handler above for why this is
+            // read fresh at click time instead of once at hydrate time.
+            var redirectUrl = el.dataset.redirectUrl;
+            if (redirectUrl) {
+              btn.textContent = 'Redirecting…';
+              setTimeout(function () { window.location.href = redirectUrl; }, 800);
+            } else {
+              setTimeout(function () { btn.textContent = 'Add to cart'; }, 1200);
+            }
           });
         }).catch(function () { wrap.innerHTML = '<div style="color:#ef4444;">Could not load products.</div>'; });
       }
