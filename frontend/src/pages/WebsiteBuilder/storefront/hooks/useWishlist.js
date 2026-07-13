@@ -1,67 +1,42 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useStorefront } from '../StorefrontContext';
-import { useProducts } from './useProducts';
+import { useWishlistContext } from '../WishlistContext';
 
 // useWishlist.js — the data layer behind the `wishlist` / `wishlist-button`
-// store blocks (see ThemeRenderer.jsx). There is no dedicated backend
-// surface for wishlists yet (see the architecture note on
-// StoreWishlist/wishlistService as a future, separate vertical slice) —
-// this keeps the *block system* itself fully self-contained by persisting
-// the saved product-id set client-side, per store, exactly the way
-// CartContext already persists its guest identity token. Swapping this
-// for a real backend-synced wishlist later only touches this one file —
-// every block that consumes `useWishlist()` keeps working unchanged.
-
-const storageKey = (storeId) => `storefront_wishlist_${storeId}`;
-
-function readIds(storeId) {
-  try {
-    const raw = window.localStorage.getItem(storageKey(storeId));
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeIds(storeId, ids) {
-  try {
-    window.localStorage.setItem(storageKey(storeId), JSON.stringify(ids));
-  } catch {
-    // localStorage unavailable — wishlist still works for this tab's
-    // lifetime via in-memory state, it just won't survive a reload.
-  }
-}
+// store blocks (see ThemeRenderer.jsx). Backed by a real, persisted
+// StoreWishlist document (wishlistService.js / wishlistController.js) via
+// WishlistContext, the same way useCart() is backed by CartContext and a
+// real StoreCart — a wishlist item now survives a reload, a different
+// device, or a different browser tab the moment a shopper is signed in,
+// and merges into their account at login exactly like cart items do.
+//
+// Every block that already consumes useWishlist()/useWishlistProducts()
+// keeps working unchanged — this file keeps the same exported shapes
+// { ids, has, toggle } / { products, loading, error, reload } that the
+// former client-only (localStorage) implementation had.
 
 /** useWishlist() — the saved-product-id set for the current store. */
 export function useWishlist() {
-  const { storeId } = useStorefront();
-  const [ids, setIds] = useState(() => readIds(storeId));
-
-  useEffect(() => {
-    setIds(readIds(storeId));
-  }, [storeId]);
-
-  const toggle = useCallback(
-    (productId) => {
-      setIds((prev) => {
-        const next = prev.includes(productId) ? prev.filter((id) => id !== productId) : [...prev, productId];
-        writeIds(storeId, next);
-        return next;
-      });
-    },
-    [storeId]
-  );
-
-  const has = useCallback((productId) => ids.includes(productId), [ids]);
-
+  const { ids, has, toggle } = useWishlistContext();
   return { ids, has, toggle };
 }
 
 /** useWishlistProducts() — the Wishlist page's data: full product records for every saved id. */
 export function useWishlistProducts() {
-  const { ids } = useWishlist();
-  const { products: allProducts, loading, error, reload } = useProducts({ limit: 100 });
-  const products = (allProducts || []).filter((p) => ids.includes(p.id));
-  return { products, loading, error, reload };
+  const { items, loading, error, refreshWishlist } = useWishlistContext();
+
+  // Re-shaped to the { id, title, price, currency, image, slug, inStock }
+  // contract ProductCard/ProductGrid already expect from useProducts() —
+  // WishlistService intentionally returns `productId` (it's the id of a
+  // StoreProduct, not a wishlist-line id), mapped to `id` here so this
+  // stays a drop-in replacement for the grid components.
+  const products = (items || []).map((item) => ({
+    id: String(item.productId),
+    title: item.title,
+    price: item.price,
+    currency: item.currency,
+    image: item.image,
+    slug: item.slug,
+    inStock: item.inStock,
+  }));
+
+  return { products, loading, error, reload: refreshWishlist };
 }

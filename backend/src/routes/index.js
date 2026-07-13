@@ -48,6 +48,11 @@ router.use('/store', require('./store/storeStorefrontRoutes'));
 router.use('/store', require('./store/cartRoutes'));
 router.use('/store', require('./store/customerStorefrontAuthRoutes'));
 
+// Persisted wishlist (guest + logged-in, with merge-on-login) — same
+// identity contract as cartRoutes.js, backing the `wishlist` /
+// `wishlist-button` store blocks (see ThemeRenderer.jsx / useWishlist.js).
+router.use('/store', require('./store/wishlistRoutes'));
+
 // Admin Products CRUD (Create/Edit/Delete, Images, Inventory, Price, SEO)
 // used by the Products tab in StoresTab.jsx.
 router.use('/store', require('./store/productRoutes'));
@@ -75,6 +80,11 @@ router.use('/store', require('./store/themeRoutes'));
 // Admin Shipping config (Zones/Charges/Free Shipping/Delivery Time) used
 // by the Shipping tab in StoresTab.jsx.
 router.use('/store', require('./store/shippingRoutes'));
+
+// Admin Tax config (Sales tax rate) used by the "Tax & checkout" panel in
+// StoresTab.jsx. Consumed at checkout by CartService/OrderService via
+// taxService.calculateTax — see cartService.getCartView / orderService.createOrder.
+router.use('/store', require('./store/taxRoutes'));
 
 // Admin Payments config (Razorpay/Stripe/PayPal/Cash on Delivery) used by
 // the Payments tab in StoresTab.jsx.

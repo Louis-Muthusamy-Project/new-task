@@ -28,6 +28,7 @@ const StoreShipping = require('../../models/store/StoreShipping');
 const { notFoundError, badRequestError } = require('./errors');
 const inventoryService = require('./inventoryService');
 const discountService = require('./discountService');
+const taxService = require('./taxService');
 
 function requireValidId(id, label = 'id') {
   if (!id || !mongoose.Types.ObjectId.isValid(id)) {
@@ -230,7 +231,16 @@ async function getCartView(storeId, cart) {
   }
 
   const discountAmount = discount?.valid ? discount.amount : 0;
-  const total = Math.max(0, subtotal - discountAmount + shippingPrice);
+
+  // Tax — computed on the subtotal net of discount (see taxService.js /
+  // the "Tax & checkout" panel's own copy), the same way OrderService
+  // re-derives it at checkout time. Shown here so a shopper sees the
+  // real total *before* placing the order, never a surprise added only
+  // once the order is created.
+  const taxResult = await taxService.calculateTax(storeId, subtotal - discountAmount);
+  const taxAmount = taxResult.amount;
+
+  const total = Math.max(0, subtotal - discountAmount + taxAmount + shippingPrice);
   const itemCount = cart.items.reduce((sum, i) => sum + i.quantity, 0);
 
   return {
@@ -239,6 +249,7 @@ async function getCartView(storeId, cart) {
     itemCount,
     subtotal,
     discount,
+    tax: taxResult.enabled ? { rate: taxResult.rate, amount: taxAmount, label: taxResult.label } : null,
     shippingChoice: cart.shippingChoice?.rateName
       ? { ...cart.shippingChoice.toObject?.() || cart.shippingChoice, price: shippingPrice }
       : null,

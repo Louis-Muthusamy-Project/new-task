@@ -1,6 +1,15 @@
 import React, { createContext, useContext, useMemo, useState, useCallback, useEffect } from 'react';
 import { storefrontApi } from '../../../api/storefrontApi';
 import { useStorefront } from './StorefrontContext';
+import {
+  guestTokenKey,
+  sessionKey,
+  readLocalStorage,
+  writeLocalStorage,
+  makeGuestToken,
+  headersForIdentity,
+  emitSessionChange,
+} from './identity';
 
 // CartContext.jsx
 //
@@ -28,33 +37,6 @@ export function useCart() {
   const ctx = useContext(CartContext);
   if (!ctx) throw new Error('useCart must be used within a CartProvider');
   return ctx;
-}
-
-const guestTokenKey = (storeId) => `storefront_guest_token_${storeId}`;
-const sessionKey = (storeId) => `storefront_session_${storeId}`;
-
-function readLocalStorage(key) {
-  try {
-    return window.localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function writeLocalStorage(key, value) {
-  try {
-    if (value == null) window.localStorage.removeItem(key);
-    else window.localStorage.setItem(key, value);
-  } catch {
-    // localStorage unavailable (private mode, etc.) -- the cart still
-    // works for this tab's lifetime via in-memory state, it just won't
-    // survive a reload. Not worth failing the whole storefront over.
-  }
-}
-
-function makeGuestToken() {
-  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
-  return `guest_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
 }
 
 export function CartProvider({ children }) {
@@ -94,11 +76,7 @@ export function CartProvider({ children }) {
     setSessionLoaded(true);
   }, [storeId]);
 
-  const identityHeaders = useMemo(() => {
-    if (session?.token) return { Authorization: `Bearer ${session.token}` };
-    if (guestToken) return { 'X-Guest-Token': guestToken };
-    return null;
-  }, [session, guestToken]);
+  const identityHeaders = useMemo(() => headersForIdentity({ session, guestToken }), [session, guestToken]);
 
   const refreshCart = useCallback(async () => {
     if (!storeId || !identityHeaders) return;
@@ -232,6 +210,12 @@ export function CartProvider({ children }) {
         // effect below once `session` changes identityHeaders.
         await refreshCart();
       }
+      // Tells WishlistContext (a sibling, not a descendant of this
+      // context) that a session just became active, and what the prior
+      // guest token was -- see identity.js's emitSessionChange. This is
+      // what makes "save something, then sign in" merge the wishlist the
+      // same moment cart items already merge above.
+      emitSessionChange(storeId, { session: nextSession, priorGuestToken });
       setAuthOpen(false);
     },
     [storeId, guestToken, refreshCart]
@@ -256,6 +240,7 @@ export function CartProvider({ children }) {
   const logout = useCallback(() => {
     writeLocalStorage(sessionKey(storeId), null);
     setSession(null);
+    emitSessionChange(storeId, { session: null, priorGuestToken: null });
     // Shopping continues as a guest under the same guest token as before
     // login (it was never deleted, only merged-from) -- refreshCart's
     // effect (via identityHeaders changing) loads whatever's left under

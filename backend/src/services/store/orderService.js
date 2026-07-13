@@ -38,6 +38,7 @@ const StoreProduct = require('../../models/store/StoreProduct');
 const { notFoundError, badRequestError } = require('./errors');
 const inventoryService = require('./inventoryService');
 const discountService = require('./discountService');
+const taxService = require('./taxService');
 const customerService = require('./customerService');
 const productService = require('./productService');
 const notificationService = require('./notificationService');
@@ -222,6 +223,15 @@ async function createOrder(storeId, body) {
     discountResult = await discountService.resolveForOrder(storeId, body.discountCode, subtotal);
   }
   const discountAmount = discountResult?.amount || 0;
+
+  // Tax — re-derived here (never trusted from the client, same rule as
+  // every other line of this order) via the same TaxService the cart
+  // preview already calls, so what a shopper sees at checkout and what
+  // they're actually charged can never drift apart. Computed on the
+  // subtotal net of discount, matching CartService.getCartView.
+  const taxResult = await taxService.calculateTax(storeId, subtotal - discountAmount);
+  const taxAmount = taxResult.amount;
+
   // Shipping is priced by the Shipping step of checkout (see
   // cartService.getCartView, which already applies the store's free-
   // shipping threshold) and passed through as-is here — OrderService
@@ -230,7 +240,7 @@ async function createOrder(storeId, body) {
   // the client-selected { name, price } pair is trusted the same way an
   // admin-configured shipping zone would be read at read time elsewhere.
   const shippingAmount = Math.max(0, Number(body?.shippingAmount) || 0);
-  const total = Math.max(0, subtotal - discountAmount + shippingAmount);
+  const total = Math.max(0, subtotal - discountAmount + taxAmount + shippingAmount);
 
   const orderNumber = `ORD-${Date.now().toString(36).toUpperCase()}`;
   const firstProduct = productMap.get(String(orderItems[0].productId));
@@ -250,6 +260,7 @@ async function createOrder(storeId, body) {
     subtotal,
     discountId: discountResult?.discountId || null,
     discountAmount,
+    taxAmount,
     shippingAmount,
     total,
     currency: firstProduct?.currency || 'USD',

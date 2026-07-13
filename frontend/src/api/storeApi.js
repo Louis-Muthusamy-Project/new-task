@@ -249,6 +249,26 @@ export const shippingApi = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────
+// Tax Module — admin config used by the "Tax & checkout" panel in
+// StoresTab.jsx. One StoreTax document per store: a single sales tax
+// rate + enabled flag, applied at CartService/OrderService checkout time
+// (see backend taxService.js) — never computed a second way in the UI.
+// ─────────────────────────────────────────────────────────────────────────
+export const taxApi = {
+  get: async (storeId) => {
+    const json = unwrap(await requestJson(`/store/${storeId}/admin/tax`));
+    return json.data;
+  },
+
+  updateSettings: async (storeId, payload) => {
+    const json = unwrap(
+      await requestJson(`/store/${storeId}/admin/tax`, { method: 'PATCH', body: payload })
+    );
+    return json.data;
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────
 // Payments Module — admin config used by the Payments tab in StoresTab.jsx.
 // One StorePayment document per store; each gateway (Razorpay, Stripe,
 // PayPal, Cash on Delivery) is an independently-togglable sub-resource, so

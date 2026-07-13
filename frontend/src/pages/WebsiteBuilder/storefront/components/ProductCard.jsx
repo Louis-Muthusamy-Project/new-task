@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Heart } from 'lucide-react';
 import { useStorefront } from '../StorefrontContext';
 import { useCart } from '../CartContext';
+import { useWishlist } from '../hooks/useWishlist';
 
 // ProductCard.jsx — the single card renderer for a product. Featured
-// Products, Latest Products, Best Sellers, Category pages, and Search
-// results all render this same component instead of each defining its
-// own card markup.
+// Products, Latest Products, Best Sellers, Category pages, Search
+// results, and the Wishlist page all render this same component instead
+// of each defining its own card markup.
 export default function ProductCard({ product }) {
   const { currency, goToProduct } = useStorefront();
   const { addItem } = useCart();
+  const { has, toggle } = useWishlist();
   const [adding, setAdding] = useState(false);
 
   if (!product) return null;
@@ -35,6 +37,11 @@ export default function ProductCard({ product }) {
     }
   };
 
+  const handleToggleWishlist = (e) => {
+    e.stopPropagation();
+    toggle(product.id);
+  };
+
   return (
     <div
       role="button"
@@ -56,6 +63,7 @@ export default function ProductCard({ product }) {
     >
       <div
         style={{
+          position: 'relative',
           aspectRatio: '1 / 1',
           background: '#f8fafc',
           display: 'flex',
@@ -64,6 +72,27 @@ export default function ProductCard({ product }) {
           overflow: 'hidden',
         }}
       >
+        <button
+          onClick={handleToggleWishlist}
+          aria-label={has(product.id) ? 'Remove from wishlist' : 'Save to wishlist'}
+          style={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            zIndex: 1,
+            width: 28,
+            height: 28,
+            borderRadius: 999,
+            border: 'none',
+            background: 'rgba(255,255,255,0.9)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+          }}
+        >
+          <Heart size={14} color={has(product.id) ? '#ef4444' : '#0f172a'} fill={has(product.id) ? '#ef4444' : 'none'} />
+        </button>
         {product.image ? (
           <img src={product.image} alt={product.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         ) : (

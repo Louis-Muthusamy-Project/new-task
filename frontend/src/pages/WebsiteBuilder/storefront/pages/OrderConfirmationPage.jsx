@@ -44,6 +44,7 @@ export default function OrderConfirmationPage({ order }) {
         <Row label="Order number" value={order.orderNumber} />
         <Row label="Subtotal" value={formatMoney(order.subtotal, order.currency)} />
         {order.discountAmount > 0 && <Row label="Discount" value={`-${formatMoney(order.discountAmount, order.currency)}`} />}
+        {order.taxAmount > 0 && <Row label="Tax" value={formatMoney(order.taxAmount, order.currency)} />}
         <Row label="Shipping" value={formatMoney(order.shippingAmount, order.currency)} />
         <Row label="Total" value={formatMoney(order.total, order.currency)} bold />
         <Row label="Status" value={order.status} />

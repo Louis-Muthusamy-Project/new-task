@@ -243,6 +243,29 @@ export const storefrontApi = {
   mergeCart: async (storeId, identityHeaders, guestToken) =>
     unwrap(await postJson(`/store/${storeId}/cart/merge`, { guestToken }, identityHeaders)).data,
 
+  // ── Wishlist (persisted server-side — see wishlistController.js/
+  // wishlistService.js). Same `identityHeaders` shape as Cart, built by
+  // WishlistContext the same way CartContext builds it for the cart. ──
+  getWishlist: async (storeId, identityHeaders) =>
+    unwrap(await getJson(`/store/${storeId}/wishlist`, identityHeaders)).data,
+
+  addWishlistItem: async (storeId, identityHeaders, productId) =>
+    unwrap(await postJson(`/store/${storeId}/wishlist/items`, { productId }, identityHeaders)).data,
+
+  toggleWishlistItem: async (storeId, identityHeaders, productId) =>
+    unwrap(await postJson(`/store/${storeId}/wishlist/toggle`, { productId }, identityHeaders)).data,
+
+  removeWishlistItem: async (storeId, identityHeaders, productId) =>
+    unwrap(await deleteJson(`/store/${storeId}/wishlist/items/${productId}`, identityHeaders)).data,
+
+  clearWishlist: async (storeId, identityHeaders) =>
+    unwrap(await deleteJson(`/store/${storeId}/wishlist`, identityHeaders)).data,
+
+  // Called once, right after a successful login/register — same call
+  // site/timing as mergeCart above.
+  mergeWishlist: async (storeId, identityHeaders, guestToken) =>
+    unwrap(await postJson(`/store/${storeId}/wishlist/merge`, { guestToken }, identityHeaders)).data,
+
   // ── Checkout ──
   // GET /api/store/:storeId/shipping-options?country=&subtotal=
   getShippingOptions: async (storeId, params = {}) =>

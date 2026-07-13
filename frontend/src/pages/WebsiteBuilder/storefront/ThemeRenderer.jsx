@@ -348,8 +348,7 @@ function hydrateStaticBlock(el, type, ctx) {
       el.addEventListener('click', (e) => {
         e.preventDefault();
         if (!productId) return;
-        toggle(productId);
-        paint();
+        Promise.resolve(toggle(productId)).finally(paint);
       });
       break;
     }

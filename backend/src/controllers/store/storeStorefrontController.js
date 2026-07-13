@@ -636,6 +636,7 @@ exports.checkout = async (req, res) => {
       orderNumber: order.orderNumber,
       subtotal: order.subtotal,
       discountAmount: order.discountAmount,
+      taxAmount: order.taxAmount,
       shippingAmount: order.shippingAmount,
       total: order.total,
       currency: order.currency,

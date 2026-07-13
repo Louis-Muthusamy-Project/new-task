@@ -46,7 +46,11 @@ function StepIndicator({ step }) {
 }
 
 function OrderSummary({ cart, currency, shippingPrice }) {
-  const total = Math.max(0, (cart?.subtotal || 0) - (cart?.discount?.valid ? cart.discount.amount : 0) + (shippingPrice || 0));
+  const taxAmount = cart?.tax?.amount || 0;
+  const total = Math.max(
+    0,
+    (cart?.subtotal || 0) - (cart?.discount?.valid ? cart.discount.amount : 0) + taxAmount + (shippingPrice || 0)
+  );
   return (
     <div style={{ background: '#f8fafc', borderRadius: 12, padding: 20 }}>
       <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', marginBottom: 12 }}>Order summary</div>
@@ -65,6 +69,12 @@ function OrderSummary({ cart, currency, shippingPrice }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#059669', marginBottom: 4 }}>
             <span>Discount ({cart.discount.code})</span>
             <span>-{formatMoney(cart.discount.amount, currency)}</span>
+          </div>
+        )}
+        {taxAmount > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#334155', marginBottom: 4 }}>
+            <span>{cart?.tax?.label || 'Tax'}{cart?.tax?.rate ? ` (${cart.tax.rate}%)` : ''}</span>
+            <span>{formatMoney(taxAmount, currency)}</span>
           </div>
         )}
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#334155', marginBottom: 4 }}>

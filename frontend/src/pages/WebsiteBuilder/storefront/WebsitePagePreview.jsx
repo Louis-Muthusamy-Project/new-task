@@ -1,6 +1,7 @@
 import React from 'react';
 import { StorefrontProvider } from './StorefrontContext';
 import { CartProvider } from './CartContext';
+import { WishlistProvider } from './WishlistContext';
 import { ThemePage } from './ThemeRenderer';
 import ChatWidgetLauncher from './components/ChatWidgetLauncher';
 
@@ -50,8 +51,10 @@ export default function WebsitePagePreview({ page, storeId, chatWidget = null })
   return (
     <StorefrontProvider storeId={storeId}>
       <CartProvider>
-        <ThemePage page={page} />
-        {chatWidget ? <ChatWidgetLauncher widget={chatWidget} /> : null}
+        <WishlistProvider>
+          <ThemePage page={page} />
+          {chatWidget ? <ChatWidgetLauncher widget={chatWidget} /> : null}
+        </WishlistProvider>
       </CartProvider>
     </StorefrontProvider>
   );

@@ -10,7 +10,7 @@ import StoreTemplateLibraryModal from "./StoreTemplateLibraryModal";
 import ProductFormModal from "./ProductFormModal";
 import CollectionFormModal from "./CollectionFormModal";
 import CustomerFormModal from "./CustomerFormModal";
-import { productApi, storeApi, collectionApi, customerApi, orderApi, ORDER_STATUSES, discountApi, DISCOUNT_TYPES, shippingApi, paymentApi, PAYMENT_METHODS, emailApi, EMAIL_TEMPLATE_TYPES, analyticsApi } from "../../../api/storeApi";
+import { productApi, storeApi, collectionApi, customerApi, orderApi, ORDER_STATUSES, discountApi, DISCOUNT_TYPES, shippingApi, taxApi, paymentApi, PAYMENT_METHODS, emailApi, EMAIL_TEMPLATE_TYPES, analyticsApi } from "../../../api/storeApi";
 import DiscountFormModal from "./DiscountFormModal";
 import ShippingZoneModal from "./ShippingZoneModal";
 import { optimizeStoreImageUrl } from "../utils/storeImageCdn";
@@ -387,6 +387,46 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
       message.error(err.message || "Failed to save free shipping settings.");
     } finally {
       setSavingFreeShipping(false);
+    }
+  };
+
+  // ── Tax Module state (Sales tax rate, applied at CartService/OrderService
+  // checkout time — see backend taxService.js) ──
+  const [taxSettings, setTaxSettings] = useState(null);
+  const [taxRateInput, setTaxRateInput] = useState("0");
+  const [savingTax, setSavingTax] = useState(false);
+
+  const loadTax = async () => {
+    if (!storeId) return;
+    try {
+      const data = await taxApi.get(storeId);
+      setTaxSettings(data || null);
+      setTaxRateInput(data?.rate != null ? String(data.rate) : "0");
+    } catch (err) {
+      message.error(err.message || "Failed to load tax settings.");
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === "shipping") {
+      loadTax();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSubTab, storeId]);
+
+  const handleSaveTax = async () => {
+    setSavingTax(true);
+    try {
+      const updated = await taxApi.updateSettings(storeId, {
+        rate: taxRateInput === "" ? 0 : Number(taxRateInput),
+        isEnabled: true,
+      });
+      setTaxSettings(updated);
+      message.success("Tax settings saved.");
+    } catch (err) {
+      message.error(err.message || "Failed to save tax settings.");
+    } finally {
+      setSavingTax(false);
     }
   };
 
@@ -1167,7 +1207,29 @@ const ManageStoreView = ({ activeStore, setView, itemVariants }) => {
 
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>Sales tax rate (%)</div>
-          <Input defaultValue="7.5000" size="large" style={{ borderRadius: 8 }} />
+          <Space>
+            <Input
+              value={taxRateInput}
+              onChange={(e) => setTaxRateInput(e.target.value)}
+              disabled={!storeId}
+              size="large"
+              style={{ borderRadius: 8, width: 220 }}
+            />
+            <Button
+              type="primary"
+              loading={savingTax}
+              disabled={!storeId}
+              onClick={handleSaveTax}
+              style={{ background: "var(--accent-success)", border: 'none', borderRadius: 8, fontWeight: 700, height: 40 }}
+            >
+              Save
+            </Button>
+          </Space>
+          {taxSettings && (
+            <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 8 }}>
+              Currently applying {taxSettings.rate}% tax on the cart subtotal after discounts, at checkout.
+            </div>
+          )}
         </div>
 
         <div style={{ marginBottom: 24 }}>

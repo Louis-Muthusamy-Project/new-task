@@ -36,6 +36,8 @@ const themeService = require('./themeService');
 const inventoryService = require('./inventoryService');
 const discountService = require('./discountService');
 const cartService = require('./cartService');
+const wishlistService = require('./wishlistService');
+const taxService = require('./taxService');
 const customerAuthService = require('./customerAuthService');
 const notificationService = require('./notificationService');
 
@@ -49,6 +51,8 @@ module.exports = {
   inventoryService,
   discountService,
   cartService,
+  wishlistService,
+  taxService,
   customerAuthService,
   notificationService,
 };

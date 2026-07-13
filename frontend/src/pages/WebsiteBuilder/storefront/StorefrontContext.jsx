@@ -106,6 +106,7 @@ export function StorefrontProvider({ storeId, initialView, children }) {
   const goToSearch = useCallback((q) => setView({ name: 'search', q }), []);
   const goToCheckout = useCallback(() => setView({ name: 'checkout' }), []);
   const goToConfirmation = useCallback((order) => setView({ name: 'confirmation', order }), []);
+  const goToWishlist = useCallback(() => setView({ name: 'wishlist' }), []);
 
   const {
     data: storeInfo,
@@ -161,6 +162,7 @@ export function StorefrontProvider({ storeId, initialView, children }) {
       goToSearch,
       goToCheckout,
       goToConfirmation,
+      goToWishlist,
       subscribeToStoreEvents,
       realtimeConnected,
       viewedProduct,
@@ -180,6 +182,7 @@ export function StorefrontProvider({ storeId, initialView, children }) {
       goToSearch,
       goToCheckout,
       goToConfirmation,
+      goToWishlist,
       subscribeToStoreEvents,
       realtimeConnected,
       viewedProduct,
