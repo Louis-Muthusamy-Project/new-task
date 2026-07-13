@@ -84,8 +84,14 @@ export function useStorefront() {
   return ctx;
 }
 
-export function StorefrontProvider({ storeId, children }) {
-  const [view, setView] = useState({ name: 'home' });
+export function StorefrontProvider({ storeId, initialView, children }) {
+  const [view, setView] = useState(initialView || { name: 'home' });
+  // Set by ProductPage once its slug lookup resolves to a real product —
+  // lets DOM-level block hydration (ThemeRenderer's wishlist-button,
+  // which mounts outside the React tree that fetched the product) know
+  // the current product's internal id, since `view` itself only carries
+  // the shopper-facing slug.
+  const [viewedProduct, setViewedProduct] = useState(null);
 
   const navigate = useCallback((next) => setView(next), []);
   const goHome = useCallback(() => setView({ name: 'home' }), []);
@@ -93,7 +99,10 @@ export function StorefrontProvider({ storeId, children }) {
     (collectionId) => setView({ name: 'collection', collectionId }),
     []
   );
-  const goToProduct = useCallback((productId) => setView({ name: 'product', productId }), []);
+  // Product Detail Pages are addressed by slug (the shopper-facing
+  // /products/:slug identifier), not the internal _id — see
+  // pages/ProductPage.jsx / hooks/useProducts.js's useProductBySlug.
+  const goToProduct = useCallback((slug) => setView({ name: 'product', slug }), []);
   const goToSearch = useCallback((q) => setView({ name: 'search', q }), []);
   const goToCheckout = useCallback(() => setView({ name: 'checkout' }), []);
   const goToConfirmation = useCallback((order) => setView({ name: 'confirmation', order }), []);
@@ -154,6 +163,8 @@ export function StorefrontProvider({ storeId, children }) {
       goToConfirmation,
       subscribeToStoreEvents,
       realtimeConnected,
+      viewedProduct,
+      setViewedProduct,
     }),
     [
       storeId,
@@ -171,6 +182,7 @@ export function StorefrontProvider({ storeId, children }) {
       goToConfirmation,
       subscribeToStoreEvents,
       realtimeConnected,
+      viewedProduct,
     ]
   );
 

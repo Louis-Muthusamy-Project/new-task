@@ -148,6 +148,7 @@ const AppRoutes = () => {
           action; mounts the same StorefrontApp component the modal does.
         */}
         <Route path="/preview/store/:storeId" element={<StorefrontPreviewPage />} />
+        <Route path="/preview/store/:storeId/products/:slug" element={<StorefrontPreviewPage />} />
 
         {/*
           Generic page preview — used by openPagePreview() (BccBuilder's

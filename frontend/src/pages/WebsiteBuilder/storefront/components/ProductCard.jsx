@@ -39,8 +39,8 @@ export default function ProductCard({ product }) {
     <div
       role="button"
       tabIndex={0}
-      onClick={() => goToProduct(product.id)}
-      onKeyDown={(e) => e.key === 'Enter' && goToProduct(product.id)}
+      onClick={() => goToProduct(product.slug)}
+      onKeyDown={(e) => e.key === 'Enter' && goToProduct(product.slug)}
       style={{
         cursor: 'pointer',
         border: '1px solid var(--border-color, #e2e8f0)',

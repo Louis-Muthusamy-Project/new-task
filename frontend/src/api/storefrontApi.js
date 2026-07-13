@@ -149,6 +149,17 @@ export const storefrontApi = {
   getProduct: async (storeId, productId) =>
     unwrap(await requestJson(`/store/${storeId}/products/${productId}`)).data,
 
+  // GET /api/store/:storeId/products/slug/:slug — the Product Detail
+  // Page's primary read (name, gallery, price, description, stock,
+  // category, rating summary, related products, SEO), by the
+  // shopper-facing /products/:slug identifier.
+  getProductBySlug: async (storeId, slug) =>
+    unwrap(await requestJson(`/store/${storeId}/products/slug/${encodeURIComponent(slug)}`)).data,
+
+  // GET /api/store/:storeId/products/:productId/reviews
+  listProductReviews: async (storeId, productId, limit = 20) =>
+    unwrap(await requestJson(`/store/${storeId}/products/${productId}/reviews${qs({ limit })}`)).data,
+
   // GET /api/store/:storeId/products/featured
   listFeaturedProducts: async (storeId, limit = 8) =>
     unwrap(await requestJson(`/store/${storeId}/products/featured${qs({ limit })}`)).data,

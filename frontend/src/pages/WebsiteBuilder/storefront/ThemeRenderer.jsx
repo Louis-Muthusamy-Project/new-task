@@ -146,8 +146,8 @@ function ImportedBestSellers({ container }) {
 
 function ImportedRelatedProducts({ container }) {
   const { view } = useStorefront();
-  const { limit = 4, collectionId: configuredCollectionId, productId: configuredProductId } = blockConfig(container);
-  const productId = configuredProductId || view.productId;
+  const { limit = 4, collectionId: configuredCollectionId } = blockConfig(container);
+  const slug = container?.dataset?.productSlug || view.slug;
   // "Related" = other Active products in the same collection as the
   // current product; falls back to Latest Products for a store/product
   // with no collection to relate against, so the block is never empty
@@ -155,16 +155,15 @@ function ImportedRelatedProducts({ container }) {
   const { products: sameCollection, loading, error } = useProducts({ limit: limit + 1, collectionId: configuredCollectionId });
   const { products: latest } = useLatestProducts(limit + 1);
   const source = configuredCollectionId || sameCollection.length ? sameCollection : latest;
-  const products = source.filter((p) => p.id !== productId).slice(0, limit);
+  const products = source.filter((p) => p.slug !== slug).slice(0, limit);
   return <ProductGrid products={products} loading={loading} error={error} emptyLabel="No related products yet." />;
 }
 
 function ImportedProductDetail({ container }) {
   const { view } = useStorefront();
-  const { productId: configuredProductId } = blockConfig(container);
-  const productId = configuredProductId || view.productId;
-  if (!productId) return <div style={{ padding: 24, color: '#94a3b8', fontWeight: 600 }}>No product selected.</div>;
-  return <ProductPage productId={productId} />;
+  const slug = container?.dataset?.productSlug || view.slug;
+  if (!slug) return <div style={{ padding: 24, color: '#94a3b8', fontWeight: 600 }}>No product selected.</div>;
+  return <ProductPage slug={slug} />;
 }
 
 function ImportedCart() {
@@ -343,7 +342,7 @@ function hydrateStaticBlock(el, type, ctx) {
       // `data-product-id` (a template author can hand-set this), falling
       // back to whatever product the storefront is currently viewing.
       const { toggle, has } = ctx.wishlist;
-      const productId = el.dataset.productId || ctx.storefront.view.productId;
+      const productId = el.dataset.productId || ctx.storefront.viewedProduct?.id;
       const paint = () => el.classList.toggle('is-active', productId ? has(productId) : false);
       paint();
       el.addEventListener('click', (e) => {

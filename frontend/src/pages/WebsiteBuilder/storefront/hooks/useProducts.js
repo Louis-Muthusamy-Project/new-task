@@ -93,6 +93,44 @@ export function useProduct(productId) {
 }
 
 /**
+ * useProductBySlug(slug) — a Product Detail Page's data, looked up by the
+ * shopper-facing `/products/:slug` identifier instead of the internal
+ * _id. Returns the full PDP payload (gallery, price, description, stock,
+ * category, rating summary, related products, SEO) in one request.
+ * Reloads on the same product/inventory events useProduct does.
+ */
+export function useProductBySlug(slug) {
+  const { storeId } = useStorefront();
+
+  const { data, loading, error, reload } = useStorefrontQuery(
+    () => storefrontApi.getProductBySlug(storeId, slug),
+    [storeId, slug]
+  );
+
+  useReloadOnStoreEvents(PRODUCT_EVENTS, reload);
+
+  return { product: data, loading, error, reload };
+}
+
+/**
+ * useProductReviews(productId, limit) — a Product Detail Page's Reviews
+ * section. Backed by StoreTestimonial (merchant-curated, no realtime
+ * write path yet), so unlike the product/collection hooks above this one
+ * doesn't subscribe to the store's event stream — `reload()` is still
+ * exposed for an explicit refresh.
+ */
+export function useProductReviews(productId, limit = 20) {
+  const { storeId } = useStorefront();
+
+  const { data, loading, error, reload } = useStorefrontQuery(
+    () => (productId ? storefrontApi.listProductReviews(storeId, productId, limit) : Promise.resolve([])),
+    [storeId, productId, limit]
+  );
+
+  return { reviews: data || [], loading, error, reload };
+}
+
+/**
  * useFeaturedProducts(limit) — Homepage's "Featured Products" section.
  */
 export function useFeaturedProducts(limit = 8) {

@@ -149,6 +149,23 @@ async function getPublicCollection(storeId, collectionId) {
   return collection;
 }
 
+/**
+ * getPublicCollectionsByIds — resolves a StoreProduct's `collectionIds`
+ * down to their titles/slugs for the "Category" and breadcrumb sections
+ * of a Product Detail Page. Reads the same StoreCollection collection
+ * every other collection read goes through — no separate category table.
+ */
+async function getPublicCollectionsByIds(storeId, ids = []) {
+  const validIds = (ids || []).filter((id) => mongoose.Types.ObjectId.isValid(id));
+  if (!validIds.length) return [];
+  return StoreCollection.find({
+    _id: { $in: validIds },
+    storeId,
+    isDeleted: false,
+    isActive: true,
+  }).select('title slug');
+}
+
 async function searchPublicCollections(storeId, q, limit = 8) {
   return StoreCollection.find({
     storeId,
@@ -166,5 +183,6 @@ module.exports = {
   deleteCollection,
   listPublicCollections,
   getPublicCollection,
+  getPublicCollectionsByIds,
   searchPublicCollections,
 };

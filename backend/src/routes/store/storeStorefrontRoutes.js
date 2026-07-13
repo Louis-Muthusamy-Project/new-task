@@ -47,8 +47,14 @@ router.get('/:storeId/products/featured', cache, asyncHandler(storeStorefrontCon
 router.get('/:storeId/products/latest', cache, asyncHandler(storeStorefrontController.listLatestProducts));
 router.get('/:storeId/products/bestsellers', cache, asyncHandler(storeStorefrontController.listBestSellers));
 
+// Product Detail Page — looked up by slug (/products/:slug on the
+// storefront), so it must be registered before the /:productId param
+// route below or Express would treat "slug" as a productId.
+router.get('/:storeId/products/slug/:slug', cache, asyncHandler(storeStorefrontController.getProductBySlug));
+
 router.get('/:storeId/products', cache, asyncHandler(storeStorefrontController.listProducts));
 router.get('/:storeId/products/:productId', cache, asyncHandler(storeStorefrontController.getProduct));
+router.get('/:storeId/products/:productId/reviews', cache, asyncHandler(storeStorefrontController.listProductReviews));
 
 router.get('/:storeId/collections', cache, asyncHandler(storeStorefrontController.listCollections));
 router.get('/:storeId/collections/:collectionId', cache, asyncHandler(storeStorefrontController.getCollection));

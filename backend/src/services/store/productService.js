@@ -239,6 +239,52 @@ async function getPublicProduct(storeId, productId) {
   return product;
 }
 
+/**
+ * getPublicProductBySlug — the Product Detail Page's primary lookup.
+ * Same StoreProduct collection getPublicProduct already reads (single
+ * source of truth, no duplicated/denormalized copy for the storefront
+ * route); only the lookup key differs (slug, the shopper-facing
+ * `/products/:slug` identifier, instead of the internal _id).
+ */
+async function getPublicProductBySlug(storeId, slug) {
+  const product = await StoreProduct.findOne({
+    storeId,
+    slug: String(slug || '').toLowerCase(),
+    isDeleted: false,
+    status: 'Active',
+  });
+  if (!product) throw notFoundError('Product not found.');
+  return product;
+}
+
+/**
+ * getPublicRelatedProducts — "Related Products" for a Product Detail
+ * Page. Prefers other Active products sharing a collection with `product`,
+ * falls back to shared tags, and finally to the newest Active products so
+ * the section is never empty by construction (same fallback pattern
+ * getFeaturedProducts already uses). Reads straight off StoreProduct —
+ * no separate "related products" table.
+ */
+async function getPublicRelatedProducts(storeId, product, limit = 4) {
+  const base = { storeId, isDeleted: false, status: 'Active', _id: { $ne: product._id } };
+
+  let items = [];
+  if (product.collectionIds?.length) {
+    items = await StoreProduct.find({ ...base, collectionIds: { $in: product.collectionIds } })
+      .sort({ createdAt: -1 })
+      .limit(limit);
+  }
+  if (!items.length && product.tags?.length) {
+    items = await StoreProduct.find({ ...base, tags: { $in: product.tags } })
+      .sort({ createdAt: -1 })
+      .limit(limit);
+  }
+  if (!items.length) {
+    items = await StoreProduct.find(base).sort({ createdAt: -1 }).limit(limit);
+  }
+  return items;
+}
+
 async function searchPublicProducts(storeId, q, limit = 8) {
   const regex = { $regex: q, $options: 'i' };
   return StoreProduct.find({
@@ -281,6 +327,8 @@ module.exports = {
   deleteProduct,
   listPublicProducts,
   getPublicProduct,
+  getPublicProductBySlug,
+  getPublicRelatedProducts,
   searchPublicProducts,
   getLatestProducts,
   getFeaturedProducts,

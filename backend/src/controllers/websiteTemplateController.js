@@ -69,7 +69,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const Website      = require('../models/Website');
 const WebsitePage  = require('../models/WebsitePage');
 const { uploadBufferToCloudinary } = require('../config/cloudinary');
-const { runTemplateImportPipeline } = require('../services/templateImport');
+const { runTemplateImportPipeline } = require('../services/templateImplort/index');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Multer — in-memory, 50 MB

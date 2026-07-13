@@ -78,6 +78,50 @@ const toPublicCollection = (c) => ({
   productCount: Array.isArray(c.productIds) ? c.productIds.length : 0,
 });
 
+/**
+ * toPublicProductDetail — the Product Detail Page's shape. Same
+ * StoreProduct doc `toPublicProduct` above maps for listings; this just
+ * adds the fields a PDP needs that a grid card doesn't (full gallery,
+ * resolved categories, rating summary, SEO) — still one source of truth,
+ * two views.
+ */
+const toPublicProductDetail = (p, { categories = [], rating } = {}) => ({
+  id: p._id,
+  title: p.title,
+  slug: p.slug,
+  description: p.description,
+  images: optimizeImageList(p.images, 'detail'),
+  price: p.price,
+  compareAtPrice: p.compareAtPrice,
+  currency: p.currency || 'USD',
+  sku: p.sku || '',
+  inStock: inventoryService.isInStock(p),
+  // Exact count only surfaced when the merchant actually tracks stock for
+  // this product — untracked products are always "in stock" and have no
+  // meaningful quantity to show.
+  stockQuantity: p.trackInventory ? p.inventoryQuantity || 0 : null,
+  trackInventory: !!p.trackInventory,
+  tags: p.tags || [],
+  categories: categories.map((c) => ({ id: c._id, title: c.title, slug: c.slug })),
+  rating: rating?.average || 0,
+  reviewCount: rating?.count || 0,
+  seo: {
+    metaTitle: p.seo?.metaTitle || p.title,
+    metaDescription: p.seo?.metaDescription || (p.description || '').slice(0, 160),
+  },
+  createdAt: p.createdAt,
+});
+
+const toPublicReview = (t) => ({
+  id: t._id,
+  customerName: t.customerName,
+  customerTitle: t.customerTitle || '',
+  avatarUrl: optimizeImageUrl(t.avatarUrl || '', 'avatar'),
+  quote: t.quote,
+  rating: t.rating || 5,
+  createdAt: t.createdAt,
+});
+
 const toPublicTestimonial = (t) => ({
   id: t._id,
   customerName: t.customerName,
@@ -153,6 +197,71 @@ exports.getProduct = async (req, res) => {
 
   const product = await productService.getPublicProduct(storeId, productId);
   res.status(200).json({ success: true, data: toPublicProduct(product) });
+};
+
+/**
+ * GET /api/store/:storeId/products/slug/:slug
+ * Product Detail Page's primary read — the same StoreProduct collection
+ * every other product route reads (no separate/denormalized copy),
+ * looked up by the shopper-facing slug used at /products/:slug. Also
+ * resolves the product's categories (for the Category section and
+ * breadcrumb), a rating summary (from StoreTestimonial reviews already
+ * linked via `productId`), and up to 4 related products — everything the
+ * PDP needs in one round trip.
+ */
+exports.getProductBySlug = async (req, res) => {
+  const { storeId, slug } = req.params;
+  requireValidId(storeId, 'storeId');
+  if (!slug) throw badRequestError('A product slug is required.');
+
+  const product = await productService.getPublicProductBySlug(storeId, slug);
+
+  const [categories, ratingAgg, related] = await Promise.all([
+    collectionService.getPublicCollectionsByIds(storeId, product.collectionIds),
+    StoreTestimonial.aggregate([
+      { $match: { storeId: product.storeId, productId: product._id, isDeleted: false, isActive: true } },
+      { $group: { _id: null, average: { $avg: '$rating' }, count: { $sum: 1 } } },
+    ]),
+    productService.getPublicRelatedProducts(storeId, product, 4),
+  ]);
+
+  const rating = ratingAgg[0]
+    ? { average: Math.round(ratingAgg[0].average * 10) / 10, count: ratingAgg[0].count }
+    : { average: 0, count: 0 };
+
+  res.status(200).json({
+    success: true,
+    data: {
+      ...toPublicProductDetail(product, { categories, rating }),
+      relatedProducts: related.map(toPublicProduct),
+    },
+  });
+};
+
+/**
+ * GET /api/store/:storeId/products/:productId/reviews
+ * The "Reviews" section of a Product Detail Page. Backed by
+ * StoreTestimonial (see the model's `productId` field) rather than a new
+ * Review model — one collection already carries "customer quote + star
+ * rating + which product it's about."
+ */
+exports.listProductReviews = async (req, res) => {
+  const { storeId, productId } = req.params;
+  requireValidId(storeId, 'storeId');
+  requireValidId(productId, 'productId');
+
+  const limit = Math.min(parseInt(req.query.limit, 10) || 20, 60);
+
+  const reviews = await StoreTestimonial.find({
+    storeId,
+    productId,
+    isDeleted: false,
+    isActive: true,
+  })
+    .sort({ createdAt: -1 })
+    .limit(limit);
+
+  res.status(200).json({ success: true, data: reviews.map(toPublicReview) });
 };
 
 /**

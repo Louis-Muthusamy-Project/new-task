@@ -1,181 +1,190 @@
-import React, { useEffect, useState } from 'react';
-import { StorefrontProvider, useStorefront } from './StorefrontContext';
-import { CartProvider } from './CartContext';
-import Header from './components/Header';
-import Footer from './components/Footer';
-import CartDrawer from './components/CartDrawer';
-import AuthModal from './components/AuthModal';
-import HomePage from './pages/HomePage';
-import CategoryPage from './pages/CategoryPage';
-import ProductPage from './pages/ProductPage';
-import SearchResultsPage from './pages/SearchResultsPage';
-import CheckoutPage from './pages/CheckoutPage';
-import OrderConfirmationPage from './pages/OrderConfirmationPage';
+import React, { createContext, useContext, useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { storefrontApi } from '../../../api/storefrontApi';
-import ThemeRenderer, { hasThemedContent } from './ThemeRenderer';
+import { useStorefrontQuery } from './hooks/useStorefrontQuery';
 
-// StorefrontApp.jsx — the dynamic storefront preview. Replaces the old
-// static-HTML iframe (buildPreviewHtml over a stored StorePage snapshot)
-// with a real, mounted React tree: every section below fetches live data
-// from the Store Engine's public API, so anything a merchant changes in
-// Admin (a new product, a renamed collection, a published page) shows up
-// here on the next fetch — no hardcoded products, no static JSON, no
-// pre-baked HTML snapshot anywhere in this tree.
+// StorefrontContext.jsx — the single source of truth for:
+//   - which store this Preview instance is rendering (storeId)
+//   - that store's public info (name/currency/logo), fetched once and
+//     shared by Header/Footer/ProductCard/etc. instead of every section
+//     re-fetching (and re-holding) its own copy
+//   - internal "which screen is showing" navigation state, so Home /
+//     Category / Product / Search behave like real pages without pulling
+//     in a full router for what is, today, a Preview surface
+//   - ONE real-time connection (Server-Sent Events) to the Store Engine's
+//     event stream (GET /store/:storeId/events), fanned out to every
+//     useProducts()/useProduct()/useFeaturedProducts()/etc hook in the
+//     tree via `subscribeToStoreEvents`. This is what replaces manual
+//     refresh logic: Admin creates a product → the backend emits
+//     `product.created` → this one connection receives it → every
+//     subscribed hook reloads its own query.
 //
-// Cart + Checkout flow: Customer -> Add to Cart -> Checkout -> Shipping
-// -> Payment -> Order -> Inventory -> Confirmation -> Analytics. The
-// cart itself is never local React state (see CartContext.jsx — every
-// mutation round-trips to the persisted StoreCart on the backend); this
-// component just wires the provider in and renders the 'checkout' /
-// 'confirmation' views alongside the existing product-browsing ones.
-// Checked once per (store, slug) pair (see `useThemedPage` below): does
-// this store have actual themed page markup (GrapesJS-authored, or
-// produced by the WordPress Import pipeline / Store Block System) for
-// this route, worth rendering via ThemeRenderer instead of the generic
-// hardcoded section? `null` = "still checking", so the generic screens
-// don't flash before the check resolves.
-function useThemedPage(storeId, slug) {
-  const [themed, setThemed] = useState(null);
+// Every storefront component reads from this context rather than
+// accepting storeId as a prop chain or fetching store info itself — one
+// place, one copy, no duplicated state.
+
+const StorefrontContext = createContext(null);
+
+const SSE_BASE = import.meta.env.VITE_WEBSITE_WIZARD_API_BASE || 'http://localhost:5500/api';
+
+/**
+ * Opens exactly one EventSource for `storeId` and fans events out to every
+ * listener registered via the returned `subscribe` function. Reconnects
+ * automatically (native EventSource behavior) if the connection drops.
+ */
+function useStoreEventSource(storeId) {
+  const listenersRef = useRef(new Set());
+  const [connected, setConnected] = useState(false);
+
+  const subscribe = useCallback((listener) => {
+    listenersRef.current.add(listener);
+    return () => listenersRef.current.delete(listener);
+  }, []);
 
   useEffect(() => {
-    if (!slug) {
-      setThemed(false);
+    if (!storeId || typeof window === 'undefined' || typeof window.EventSource === 'undefined') {
       return undefined;
     }
-    let cancelled = false;
-    setThemed(null);
-    storefrontApi
-      .getPage(storeId, slug)
-      .then((page) => {
-        if (!cancelled) setThemed(hasThemedContent(page));
-      })
-      .catch(() => {
-        if (!cancelled) setThemed(false);
-      });
-    return () => {
-      cancelled = true;
+
+    setConnected(false);
+    const es = new EventSource(`${SSE_BASE}/store/${storeId}/events`);
+
+    es.onopen = () => setConnected(true);
+    es.onerror = () => setConnected(false); // EventSource retries on its own
+    es.onmessage = (raw) => {
+      let event;
+      try {
+        event = JSON.parse(raw.data);
+      } catch {
+        return;
+      }
+      if (event.type === 'connected') {
+        setConnected(true);
+        return;
+      }
+      // A write anywhere invalidates this store's short-lived client-side
+      // GET cache once, up front, so every listener's reload() that fires
+      // from this same event is guaranteed to hit the network instead of
+      // replaying a stale cached response.
+      storefrontApi.invalidate(storeId);
+      for (const listener of listenersRef.current) listener(event);
     };
-  }, [storeId, slug]);
 
-  return themed;
+    return () => {
+      es.close();
+      setConnected(false);
+    };
+  }, [storeId]);
+
+  return { subscribe, connected };
 }
 
-// Maps the current storefront `view` to the themed-page slug (if any)
-// that view could have — the same slug convention every StorePage
-// already uses. `null` means "this view never has a themed page", so
-// StorefrontScreens/StorefrontChrome always fall back to the generic
-// component for it without a wasted lookup.
-function themedSlugForView(view) {
-  switch (view.name) {
-    case 'home':
-      return 'home';
-    case 'collection':
-      return 'shop';
-    case 'product':
-      return 'product';
-    case 'search':
-      return 'search';
-    case 'checkout':
-      return 'checkout';
-    default:
-      return null;
-  }
+export function useStorefront() {
+  const ctx = useContext(StorefrontContext);
+  if (!ctx) throw new Error('useStorefront must be used within a StorefrontProvider');
+  return ctx;
 }
 
-function StorefrontScreens({ storeId, themedSlug, themed }) {
-  const { view } = useStorefront();
+export function StorefrontProvider({ storeId, initialView, children }) {
+  const [view, setView] = useState(initialView || { name: 'home' });
+  // Set by ProductPage once its slug lookup resolves to a real product —
+  // lets DOM-level block hydration (ThemeRenderer's wishlist-button,
+  // which mounts outside the React tree that fetched the product) know
+  // the current product's internal id, since `view` itself only carries
+  // the shopper-facing slug.
+  const [viewedProduct, setViewedProduct] = useState(null);
 
-  // Any themed view — home, collection, product, search, or checkout —
-  // renders via the exact same ThemeRenderer path (its own header/
-  // footer/nav baked in, per the Simply-Static/GrapesJS document
-  // convention) instead of the generic hardcoded section; every other
-  // view keeps the generic Store sections until a themed page exists
-  // for that slug too. See ThemeRenderer.jsx for how each
-  // `data-store-block` region inside it hydrates against live data.
-  if (themedSlug && themed) {
-    return <ThemeRenderer storeId={storeId} slug={themedSlug} />;
-  }
+  const navigate = useCallback((next) => setView(next), []);
+  const goHome = useCallback(() => setView({ name: 'home' }), []);
+  const goToCollection = useCallback(
+    (collectionId) => setView({ name: 'collection', collectionId }),
+    []
+  );
+  // Product Detail Pages are addressed by slug (the shopper-facing
+  // /products/:slug identifier), not the internal _id — see
+  // pages/ProductPage.jsx / hooks/useProducts.js's useProductBySlug.
+  const goToProduct = useCallback((slug) => setView({ name: 'product', slug }), []);
+  const goToSearch = useCallback((q) => setView({ name: 'search', q }), []);
+  const goToCheckout = useCallback(() => setView({ name: 'checkout' }), []);
+  const goToConfirmation = useCallback((order) => setView({ name: 'confirmation', order }), []);
 
-  switch (view.name) {
-    case 'collection':
-      return <CategoryPage collectionId={view.collectionId} />;
-    case 'product':
-      return <ProductPage productId={view.productId} />;
-    case 'search':
-      return <SearchResultsPage q={view.q} />;
-    case 'checkout':
-      return <CheckoutPage />;
-    case 'confirmation':
-      return <OrderConfirmationPage order={view.order} />;
-    case 'home':
-    default:
-      return <HomePage />;
-  }
-}
+  const {
+    data: storeInfo,
+    loading: storeInfoLoading,
+    error: storeInfoError,
+  } = useStorefrontQuery(() => storefrontApi.getStoreInfo(storeId), [storeId]);
 
-function VisitTracker({ storeId }) {
-  const { view } = useStorefront();
-  useEffect(() => {
-    const path =
-      view.name === 'home'
-        ? '/'
-        : view.name === 'collection'
-          ? `/collections/${view.collectionId}`
-          : view.name === 'product'
-            ? `/products/${view.productId}`
-            : view.name === 'checkout'
-              ? '/checkout'
-              : view.name === 'confirmation'
-                ? '/checkout/confirmation'
-                : `/search?q=${encodeURIComponent(view.q || '')}`;
-    storefrontApi.trackVisit(storeId, { path });
+  const { subscribe: subscribeToStoreEvents, connected: realtimeConnected } = useStoreEventSource(storeId);
 
-    // Every view change already pings the generic pageview above; a
-    // Product Page or Search view additionally pings a typed funnel
-    // event (see StoreAnalyticsEvent on the backend) so the Analytics
-    // tab can report Product Views / Searches and top-viewed products /
-    // top search terms, not just raw pageviews.
-    if (view.name === 'product' && view.productId) {
-      storefrontApi.trackEvent(storeId, 'product_view', { productId: view.productId });
-    } else if (view.name === 'search' && String(view.q || '').trim()) {
-      storefrontApi.trackEvent(storeId, 'search', { query: view.q });
+  // Theme tokens — fetched once on load, then kept live via the same
+  // event stream every other storefront surface uses. Applied as CSS
+  // custom properties on the document root so any component's CSS can
+  // reference var(--color-primary) etc. without threading theme state
+  // through props; a Theme tab edit lands here the instant `theme.updated`
+  // arrives, no reload needed.
+  const applyThemeVariables = useCallback((cssVariables) => {
+    if (!cssVariables || typeof document === 'undefined') return;
+    const root = document.documentElement;
+    for (const [name, value] of Object.entries(cssVariables)) {
+      root.style.setProperty(name, value);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storeId, view.name, view.collectionId, view.productId, view.q]);
-  return null;
-}
+  }, []);
 
-function StorefrontChrome({ storeId }) {
-  const { view } = useStorefront();
-  const themedSlug = themedSlugForView(view);
-  const themed = useThemedPage(storeId, themedSlug);
-  // Generic Header/Footer chrome is skipped only for a view that actually
-  // resolved to themed markup — a themed page brings its own header/
-  // footer/nav baked into its own document (see ThemeRenderer.jsx).
-  const showGenericChrome = !(themedSlug && themed);
-
-  return (
-    <>
-      {showGenericChrome && <Header />}
-      <StorefrontScreens storeId={storeId} themedSlug={themedSlug} themed={themed} />
-      {showGenericChrome && <Footer />}
-    </>
+  const { data: themeData, reload: reloadTheme } = useStorefrontQuery(
+    () => (storeId ? storefrontApi.getTheme(storeId) : Promise.resolve(null)),
+    [storeId]
   );
-}
 
-export default function StorefrontApp({ storeId }) {
-  if (!storeId) return null;
+  useEffect(() => {
+    if (themeData?.cssVariables) applyThemeVariables(themeData.cssVariables);
+  }, [themeData, applyThemeVariables]);
 
-  return (
-    <StorefrontProvider storeId={storeId}>
-      <CartProvider storeId={storeId}>
-        <div style={{ minHeight: '100%', background: '#fff', fontFamily: 'Inter, Segoe UI, sans-serif' }}>
-          <StorefrontChrome storeId={storeId} />
-          <CartDrawer />
-          <AuthModal />
-          <VisitTracker storeId={storeId} />
-        </div>
-      </CartProvider>
-    </StorefrontProvider>
+  useEffect(() => {
+    const unsubscribe = subscribeToStoreEvents((event) => {
+      if (event.type === 'theme.updated') reloadTheme();
+    });
+    return unsubscribe;
+  }, [subscribeToStoreEvents, reloadTheme]);
+
+  const value = useMemo(
+    () => ({
+      storeId,
+      storeInfo,
+      storeInfoLoading,
+      storeInfoError,
+      currency: storeInfo?.currency || 'USD',
+      theme: themeData?.theme || null,
+      view,
+      navigate,
+      goHome,
+      goToCollection,
+      goToProduct,
+      goToSearch,
+      goToCheckout,
+      goToConfirmation,
+      subscribeToStoreEvents,
+      realtimeConnected,
+      viewedProduct,
+      setViewedProduct,
+    }),
+    [
+      storeId,
+      storeInfo,
+      storeInfoLoading,
+      storeInfoError,
+      themeData,
+      view,
+      navigate,
+      goHome,
+      goToCollection,
+      goToProduct,
+      goToSearch,
+      goToCheckout,
+      goToConfirmation,
+      subscribeToStoreEvents,
+      realtimeConnected,
+      viewedProduct,
+    ]
   );
+
+  return <StorefrontContext.Provider value={value}>{children}</StorefrontContext.Provider>;
 }
