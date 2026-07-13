@@ -41,6 +41,99 @@ const textOf = ($, el) => $(el).text().trim();
 const classOf = ($, el) => $(el).attr('class') || '';
 
 /**
+ * ── Store Block System: comment-marker syntax ──────────────────────────
+ *
+ * Alongside the class/text heuristics below, a template author (or a
+ * previous export tool) can mark a region explicitly with an HTML
+ * comment instead of relying on auto-detection, e.g.:
+ *
+ *   <!-- STORE_PRODUCT_GRID -->
+ *   <div class="products">...</div>
+ *
+ * This maps 1:1 to the same `data-store-block="product-grid"` attribute
+ * contract the heuristic detector produces, so both paths feed the exact
+ * same rendering system (see storeBlockTemplates.js's THEME_COMPONENT_MAP
+ * and frontend ThemeRenderer.jsx). The comment itself is left in the
+ * document untouched (comments never render, so leaving it costs
+ * nothing) — only the very next element is tagged. If there's no
+ * following element, nothing is changed: markers never wrap, split, or
+ * synthesize markup.
+ */
+const MARKER_TO_TYPE = {
+  STORE_HEADER: 'header',
+  STORE_FOOTER: 'footer',
+  STORE_NAVIGATION: 'navigation',
+  STORE_NAV: 'navigation',
+  STORE_HERO: 'hero',
+  STORE_PRODUCT_GRID: 'product-grid',
+  STORE_FEATURED_PRODUCTS: 'featured-products',
+  STORE_CATEGORY_GRID: 'category-grid',
+  STORE_LATEST_PRODUCTS: 'latest-products',
+  STORE_BEST_SELLERS: 'best-sellers',
+  STORE_RELATED_PRODUCTS: 'related-products',
+  STORE_PRODUCT_DETAIL: 'product-detail',
+  STORE_CART: 'cart',
+  STORE_CHECKOUT: 'checkout',
+  STORE_WISHLIST: 'wishlist',
+  STORE_WISHLIST_BUTTON: 'wishlist-button',
+  STORE_SEARCH: 'search',
+  STORE_PAGINATION: 'pagination',
+  STORE_CART_BUTTON: 'cart-button',
+  STORE_CHECKOUT_BUTTON: 'checkout-button',
+};
+
+/**
+ * Walks every comment node under `$('body')` (recursively, at any
+ * nesting depth) and, for each one that matches a known marker, tags the
+ * next *element* sibling with `data-store-block`/`data-store-mapping`
+ * exactly the same way the heuristic classifier does. Returns the list
+ * of blocks it claimed so the main detection pass below skips them.
+ */
+function applyCommentMarkers($) {
+  const detected = [];
+  const claimed = new Set();
+
+  const walk = (container) => {
+    $(container)
+      .contents()
+      .each((_, node) => {
+        if (node.type === 'comment') {
+          const key = (node.data || '').trim().toUpperCase();
+          const type = MARKER_TO_TYPE[key];
+          if (!type) return;
+
+          // Next *element* sibling only — text/whitespace nodes in
+          // between are skipped, nothing is moved or wrapped.
+          let sib = node.next;
+          while (sib && sib.type !== 'tag') sib = sib.next;
+          if (!sib) return;
+
+          const $el = $(sib);
+          if (claimed.has(sib)) return;
+          claimed.add(sib);
+
+          const label = COMPONENT_LABELS[type] || type;
+          if (AUTO_CONVERTIBLE_TYPES.has(type)) {
+            const existingClass = $el.attr('class') || '';
+            $el.attr('data-store-block', type);
+            $el.attr('class', `store-block store-block-${type} ${existingClass}`.trim());
+            detected.push({ type, label, score: 1, mapping: 'converted', source: 'comment-marker' });
+          } else {
+            $el.attr('data-store-component', type);
+            $el.attr('data-store-mapping', 'needs-manual-mapping');
+            detected.push({ type, label, score: 1, mapping: 'needs-manual-mapping', source: 'comment-marker' });
+          }
+          return;
+        }
+        if (node.type === 'tag') walk(node);
+      });
+  };
+
+  walk('body');
+  return { detected, claimed };
+}
+
+/**
  * Detects if an element looks like a container of product items (for homepage
  * product sections that may not have a strict repeating-sibling grid structure).
  * Used only on homepage pages for fallback detection.
@@ -101,9 +194,13 @@ function repeatingChildren($, el, minCount = 3) {
  * / less ambiguous and win over later, broader ones (mirrors the priority
  * order in store-module-analysis-wordpress-importer.md §3.3).
  *
+ * @param {object} pageMetadata  { isHome, slug, name } — only `isHome` is
+ *   consulted here, to gate the Product Detail heuristic (a PDP is by
+ *   definition not the home page).
  * @returns {{ type: string, score: number } | null}
  */
-function classify($, el) {
+function classify($, el, pageMetadata = {}) {
+  const pageIsHome = !!pageMetadata.isHome;
   const $el = $(el);
   const tag = (el.tagName || '').toLowerCase();
   const cls = classOf($, el);
@@ -225,8 +322,74 @@ function classify($, el) {
     return { type: 'widget-area', score: 0.75 };
   }
 
-  // ── Product Grid vs Category Grid: both are repeating-sibling grids;
-  //    Product Grid items have a price, Category Grid items don't ────────
+  // ── Cart page / Checkout page (full pages, NOT the small nav trigger
+  //    handled above — these have real descendant content: a list of
+  //    line items or an address/payment form plus an order summary) ──────
+  if (descendantCount > 6) {
+    const hasQtyControls = $el.find('input[type=number], input[name*=quantity], input[name*=qty]').length;
+    const hasLineItemsList = $el.find('li, tr, .cart-item, [class*="cart-item"], [class*="line-item"]').length >= 1;
+    const looksLikeCartPage =
+      /\b(cart-page|shopping-cart|cart-table|your-cart)\b/i.test(cls) ||
+      (/\bcart\b/i.test(cls + ' ' + text) && PRICE_RE.test(text) && (hasQtyControls || hasLineItemsList));
+    if (looksLikeCartPage) return { type: 'cart', score: 0.7 };
+
+    const hasPaymentFields = $el.find('input[name*=card],input[name*=payment],input[name*=cvv],select[name*=country]').length;
+    const hasAddressFields = $el.find('input[name*=address],input[name*=city],input[name*=zip],input[name*=postal]').length;
+    const looksLikeCheckoutPage =
+      /\b(checkout-page|checkout-form)\b/i.test(cls) ||
+      (/\bcheckout\b/i.test(cls + ' ' + text) && (hasPaymentFields || hasAddressFields) && PRICE_RE.test(text));
+    if (looksLikeCheckoutPage) return { type: 'checkout', score: 0.7 };
+  }
+
+  // ── Wishlist page vs Wishlist button — a full saved-items page has
+  //    repeating product-like children (checked further below alongside
+  //    Product Grid); the *button* is the small heart/save icon that
+  //    toggles one product, mirroring the Cart Button heuristic ─────────
+  if ((tag === 'a' || tag === 'button') && descendantCount <= 6 && !$el.find('form').length) {
+    if (/\b(wishlist|favorite|favourite|save-for-later)\b/i.test(cls) || /\b(wishlist|favorite|favourite|save for later)\b/i.test(text)) {
+      return { type: 'wishlist-button', score: 0.7 };
+    }
+  }
+  if (/\b(wishlist|saved-items|favorites|favourites)\b/i.test(cls) || /^(my\s+)?(wishlist|saved items|favorites|favourites)$/i.test(text.slice(0, 40))) {
+    const repeatItems = repeatingChildren($, el, 2);
+    if (repeatItems && repeatItems.every((c) => $(c).find('img').length)) {
+      return { type: 'wishlist', score: 0.65 };
+    }
+  }
+
+  // ── Pagination — a row of page-number links/buttons, or explicit
+  //    prev/next controls ────────────────────────────────────────────────
+  if (/\b(pagination|pager|page-numbers|page-nav)\b/i.test(cls) || $el.attr('role') === 'navigation' && /\bpaginat/i.test(cls)) {
+    const links = $el.find('a, button');
+    if (links.length >= 2) return { type: 'pagination', score: 0.75 };
+  }
+  if (tag === 'nav' && /\b(prev|next|previous)\b/i.test(text) && $el.find('a, button').length >= 2) {
+    return { type: 'pagination', score: 0.6 };
+  }
+
+  // ── Product Detail — a single, non-repeating product cluster: one
+  //    image + a title + a price + an "Add to cart" control, on a page
+  //    that isn't the home page. Unlike grids, there are no repeating
+  //    siblings to pattern-match, so this is a page-level structural
+  //    check rather than a container-scan ─────────────────────────────
+  if (!pageIsHome && (tag === 'section' || tag === 'div' || tag === 'main' || tag === 'article')) {
+    const hasSingleMainImage = $el.find('img').length >= 1 && $el.find('img').length <= 6;
+    const hasTitle = $el.find('h1, h2').length >= 1;
+    const hasPrice = PRICE_RE.test(text);
+    const hasAddToCart = /\badd\s+to\s+cart\b|\bbuy\s+now\b/i.test(text);
+    const notARepeatingGrid = !repeatingChildren($, el, 3);
+    const looksLikeProductDetail =
+      /\b(product-detail|product-page|single-product|product-info)\b/i.test(cls) ||
+      (hasSingleMainImage && hasTitle && hasPrice && hasAddToCart && notARepeatingGrid);
+    if (looksLikeProductDetail) return { type: 'product-detail', score: 0.65 };
+  }
+
+  // ── Product Grid family: Product Grid / Featured / Latest / Best
+  //    Sellers / Related / Category Grid all share the same repeating-
+  //    sibling shape; class/heading text disambiguates *which* live
+  //    section it should hydrate into. Checked most-specific-first so a
+  //    "Featured Products" grid isn't swallowed by the generic
+  //    product-grid catch-all ──────────────────────────────────────────
   const repeaters = repeatingChildren($, el, 3);
   if (repeaters) {
     const sample = repeaters.slice(0, 4);
@@ -235,7 +398,15 @@ function classify($, el) {
     const looksLikeCategoryLinks = sample.every(
       (c) => /product-categor(y|ies)|\/category\//i.test($(c).find('a').attr('href') || '') || /categor(y|ies)/i.test($(c).text())
     );
-    if (allHaveImage && allHavePrice) return { type: 'product-grid', score: 0.8 };
+
+    if (allHaveImage && allHavePrice) {
+      const label = (cls + ' ' + text.slice(0, 120)).toLowerCase();
+      if (/\bfeatured\b/.test(label)) return { type: 'featured-products', score: 0.75 };
+      if (/\b(latest|new arrivals|new-arrivals|newest)\b/.test(label)) return { type: 'latest-products', score: 0.75 };
+      if (/\b(best[\s-]?sellers?|bestsell|trending|top[\s-]?sell)\b/.test(label)) return { type: 'best-sellers', score: 0.75 };
+      if (/\b(related|you may also like|similar products|recommended)\b/.test(label)) return { type: 'related-products', score: 0.75 };
+      return { type: 'product-grid', score: 0.8 };
+    }
     if (allHaveImage && (looksLikeCategoryLinks || /\b(categor(y|ies)|shop-by-category)\b/i.test(cls) || /shop by category/i.test(text))) {
       return { type: 'category-grid', score: 0.7 };
     }
@@ -257,8 +428,14 @@ function detectAndReplaceComponents(html, pageMetadata = {}) {
   if (!html || typeof html !== 'string') return { html: html || '', detected: [] };
 
   const $ = cheerio.load(html, { decodeEntities: false });
-  const detected = [];
-  const claimed = new Set();
+
+  // Pass 0 — explicit comment-marker syntax (e.g. `<!-- STORE_PRODUCT_GRID -->`)
+  // takes priority over heuristic detection: an author who hand-marked a
+  // region meant exactly that region, so those elements are claimed
+  // up-front and the heuristic walk below skips them entirely.
+  const markerResult = applyCommentMarkers($);
+  const detected = [...markerResult.detected];
+  const claimed = markerResult.claimed;
 
   // Walk top-down in document order so a matched container "claims" its
   // descendants — they're skipped rather than independently reclassified
@@ -267,7 +444,7 @@ function detectAndReplaceComponents(html, pageMetadata = {}) {
     if (claimed.has(el)) return;
     if ($(el).parents().toArray().some((p) => claimed.has(p))) return;
 
-    const hit = classify($, el);
+    const hit = classify($, el, pageMetadata);
     if (!hit || hit.score < CONFIDENCE_THRESHOLD) return;
 
     claimed.add(el);

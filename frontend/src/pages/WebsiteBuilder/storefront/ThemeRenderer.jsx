@@ -3,9 +3,18 @@ import { createRoot } from 'react-dom/client';
 import { storefrontApi } from '../../../api/storefrontApi';
 import { useStorefront } from './StorefrontContext';
 import { useCart } from './CartContext';
-import { useProducts, useCollections } from './hooks/useProducts';
+import {
+  useProducts,
+  useCollections,
+  useFeaturedProducts,
+  useLatestProducts,
+  useBestSellers,
+} from './hooks/useProducts';
+import { useWishlist, useWishlistProducts } from './hooks/useWishlist';
 import ProductGrid from './components/ProductGrid';
 import CollectionsGrid from './components/CollectionsGrid';
+import ProductPage from './pages/ProductPage';
+import CheckoutPage from './pages/CheckoutPage';
 
 // ThemeRenderer.jsx
 //
@@ -52,23 +61,164 @@ import CollectionsGrid from './components/CollectionsGrid';
 
 const DATA_ROOTS = new WeakMap(); // element -> createRoot() instance, for cleanup
 
-function ImportedProductGrid({ container }) {
-  const limit = Number(container?.dataset?.limit) || 12;
-  const collectionId = container?.dataset?.collectionId || undefined;
-  const sort = container?.dataset?.sort || undefined;
-  const { products, loading, error } = useProducts({ limit, collectionId, sort });
+// ── Pagination store ─────────────────────────────────────────────────────
+// A tiny plain-JS pub/sub store (NOT React context) shared by every
+// data-driven grid block and every `pagination` block on one themed page.
+// It has to be plain JS rather than context because each `data-store-block`
+// mounts its own independent `createRoot()` tree (see mountDataDrivenBlock
+// below) — those trees don't inherit an ancestor's React context, but they
+// can all read/write the same object. Blocks opt in via a shared
+// `data-group` attribute (default group: "default"), so a themed page can
+// have more than one independently-paginated grid.
+function createPaginationStore() {
+  const state = new Map();
+  const listeners = new Map();
+  const notify = (group) => (listeners.get(group) || new Set()).forEach((fn) => fn());
+  return {
+    getPage: (group) => state.get(group)?.page || 1,
+    getTotalPages: (group) => state.get(group)?.totalPages || 1,
+    setPage: (group, page) => {
+      const cur = state.get(group) || { page: 1, totalPages: 1 };
+      if (cur.page === page) return;
+      state.set(group, { ...cur, page });
+      notify(group);
+    },
+    setTotalPages: (group, totalPages) => {
+      const cur = state.get(group) || { page: 1, totalPages: 1 };
+      if (cur.totalPages === totalPages) return;
+      state.set(group, { ...cur, totalPages });
+      notify(group);
+    },
+    subscribe: (group, fn) => {
+      if (!listeners.has(group)) listeners.set(group, new Set());
+      listeners.get(group).add(fn);
+      return () => listeners.get(group)?.delete(fn);
+    },
+  };
+}
+
+/** Reads every configuration knob a block container can carry (`data-*`). */
+function blockConfig(container) {
+  const d = container?.dataset || {};
+  return {
+    limit: Number(d.limit) || undefined,
+    collectionId: d.collectionId || undefined,
+    sort: d.sort || undefined,
+    group: d.group || 'default',
+    productId: d.productId || undefined,
+  };
+}
+
+// ── Data-driven block components (§ "Product Grid" / "Featured Products" /
+//    "Category Grid" / "Latest Products" / "Best Sellers" /
+//    "Related Products" / "Product Detail" / "Cart" / "Checkout" /
+//    "Wishlist"). Each is a thin adapter: real data in, the *existing*
+//    generic presentation component out — never a bespoke visual fork. ──
+
+function ImportedProductGrid({ container, paginationStore }) {
+  const { limit = 12, collectionId, sort, group } = blockConfig(container);
+  const [page, setPage] = useState(paginationStore.getPage(group));
+  useEffect(() => paginationStore.subscribe(group, () => setPage(paginationStore.getPage(group))), [group]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { products, meta, loading, error } = useProducts({ limit, collectionId, sort, page });
+  useEffect(() => {
+    if (meta?.totalPages) paginationStore.setTotalPages(group, meta.totalPages);
+  }, [meta?.totalPages, group]); // eslint-disable-line react-hooks/exhaustive-deps
   return <ProductGrid products={products} loading={loading} error={error} />;
 }
 
-function ImportedCollectionsGrid({ container }) {
-  const limit = Number(container?.dataset?.limit) || 8;
-  // CollectionsGrid fetches via useCollections itself; passing limit
-  // through as a prop keeps this a thin adapter rather than a fork.
-  return <CollectionsGrid limit={limit} />;
+function ImportedFeaturedProducts({ container }) {
+  const { limit = 8 } = blockConfig(container);
+  const { products, loading, error } = useFeaturedProducts(limit);
+  return <ProductGrid products={products} loading={loading} error={error} emptyLabel="No featured products yet." />;
+}
+
+function ImportedLatestProducts({ container }) {
+  const { limit = 8 } = blockConfig(container);
+  const { products, loading, error } = useLatestProducts(limit);
+  return <ProductGrid products={products} loading={loading} error={error} emptyLabel="No products yet." />;
+}
+
+function ImportedBestSellers({ container }) {
+  const { limit = 8 } = blockConfig(container);
+  const { products, loading, error } = useBestSellers(limit);
+  return <ProductGrid products={products} loading={loading} error={error} emptyLabel="No sales yet." />;
+}
+
+function ImportedRelatedProducts({ container }) {
+  const { view } = useStorefront();
+  const { limit = 4, collectionId: configuredCollectionId, productId: configuredProductId } = blockConfig(container);
+  const productId = configuredProductId || view.productId;
+  // "Related" = other Active products in the same collection as the
+  // current product; falls back to Latest Products for a store/product
+  // with no collection to relate against, so the block is never empty
+  // by construction.
+  const { products: sameCollection, loading, error } = useProducts({ limit: limit + 1, collectionId: configuredCollectionId });
+  const { products: latest } = useLatestProducts(limit + 1);
+  const source = configuredCollectionId || sameCollection.length ? sameCollection : latest;
+  const products = source.filter((p) => p.id !== productId).slice(0, limit);
+  return <ProductGrid products={products} loading={loading} error={error} emptyLabel="No related products yet." />;
+}
+
+function ImportedProductDetail({ container }) {
+  const { view } = useStorefront();
+  const { productId: configuredProductId } = blockConfig(container);
+  const productId = configuredProductId || view.productId;
+  if (!productId) return <div style={{ padding: 24, color: '#94a3b8', fontWeight: 600 }}>No product selected.</div>;
+  return <ProductPage productId={productId} />;
+}
+
+function ImportedCart() {
+  const { cart, loading, updateItem, removeItem } = useCart();
+  const { currency, goToCheckout } = useStorefront();
+  const items = cart?.items || [];
+  const fmt = (n) => new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(n || 0);
+
+  if (loading) return <div style={{ padding: 24, color: '#64748b', fontWeight: 600 }}>Loading cart…</div>;
+  if (!items.length) return <div style={{ padding: 24, color: '#94a3b8', fontWeight: 600 }}>Your cart is empty.</div>;
+
+  return (
+    <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {items.map((item) => (
+        <div key={item.productId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>{item.title}</div>
+          <input
+            type="number"
+            min={1}
+            value={item.quantity}
+            onChange={(e) => updateItem(item.productId, Number(e.target.value) || 1)}
+            style={{ width: 56, padding: 4 }}
+          />
+          <div style={{ fontWeight: 700 }}>{fmt(item.price * item.quantity)}</div>
+          <button onClick={() => removeItem(item.productId)} style={{ color: '#ef4444', fontWeight: 700 }}>
+            Remove
+          </button>
+        </div>
+      ))}
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, paddingTop: 8 }}>
+        <span>Total</span>
+        <span>{fmt(cart?.total)}</span>
+      </div>
+      <button
+        onClick={goToCheckout}
+        style={{ padding: '10px 16px', borderRadius: 8, background: '#0f172a', color: '#fff', fontWeight: 700 }}
+      >
+        Checkout
+      </button>
+    </div>
+  );
+}
+
+function ImportedCheckout() {
+  return <CheckoutPage />;
+}
+
+function ImportedWishlist() {
+  const { products, loading, error } = useWishlistProducts();
+  return <ProductGrid products={products} loading={loading} error={error} emptyLabel="Nothing saved yet." />;
 }
 
 /** Mounts (or re-mounts) the right live component into one `data-store-block` container. */
-function mountDataDrivenBlock(el, type) {
+function mountDataDrivenBlock(el, type, paginationStore) {
   if (el.dataset.themeHydrated === '1') return;
   el.dataset.themeHydrated = '1';
 
@@ -79,10 +229,39 @@ function mountDataDrivenBlock(el, type) {
   const root = createRoot(el);
   DATA_ROOTS.set(el, root);
 
-  if (type === 'product-grid') {
-    root.render(<ImportedProductGrid container={el} />);
-  } else if (type === 'category-grid') {
-    root.render(<ImportedCollectionsGrid container={el} />);
+  switch (type) {
+    case 'product-grid':
+      root.render(<ImportedProductGrid container={el} paginationStore={paginationStore} />);
+      break;
+    case 'category-grid':
+      root.render(<CollectionsGrid limit={blockConfig(el).limit || 8} />);
+      break;
+    case 'featured-products':
+      root.render(<ImportedFeaturedProducts container={el} />);
+      break;
+    case 'latest-products':
+      root.render(<ImportedLatestProducts container={el} />);
+      break;
+    case 'best-sellers':
+      root.render(<ImportedBestSellers container={el} />);
+      break;
+    case 'related-products':
+      root.render(<ImportedRelatedProducts container={el} />);
+      break;
+    case 'product-detail':
+      root.render(<ImportedProductDetail container={el} />);
+      break;
+    case 'cart':
+      root.render(<ImportedCart />);
+      break;
+    case 'checkout':
+      root.render(<ImportedCheckout />);
+      break;
+    case 'wishlist':
+      root.render(<ImportedWishlist />);
+      break;
+    default:
+      break;
   }
 }
 
@@ -159,12 +338,74 @@ function hydrateStaticBlock(el, type, ctx) {
       });
       break;
     }
+    case 'wishlist-button': {
+      // A single-product toggle — productId comes from an explicit
+      // `data-product-id` (a template author can hand-set this), falling
+      // back to whatever product the storefront is currently viewing.
+      const { toggle, has } = ctx.wishlist;
+      const productId = el.dataset.productId || ctx.storefront.view.productId;
+      const paint = () => el.classList.toggle('is-active', productId ? has(productId) : false);
+      paint();
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (!productId) return;
+        toggle(productId);
+        paint();
+      });
+      break;
+    }
+    case 'pagination': {
+      // Wires whatever prev/next/page-number controls the theme already
+      // renders to the shared pagination store (see createPaginationStore
+      // above) — never adds or removes markup, only reads each control's
+      // own text/aria-label to decide what it means.
+      const group = el.dataset.group || 'default';
+      const store = ctx.paginationStore;
+      const controls = Array.from(el.querySelectorAll('a, button'));
+      const paint = () => {
+        const page = store.getPage(group);
+        const totalPages = store.getTotalPages(group);
+        controls.forEach((c) => {
+          const label = (c.textContent || c.getAttribute('aria-label') || '').trim().toLowerCase();
+          const num = Number(label);
+          if (!Number.isNaN(num) && num > 0) c.classList.toggle('active', num === page);
+          if (/^(prev|previous|«|←)/.test(label)) c.classList.toggle('disabled', page <= 1);
+          if (/^(next|»|→)/.test(label)) c.classList.toggle('disabled', page >= totalPages);
+        });
+      };
+      controls.forEach((c) => {
+        c.addEventListener('click', (e) => {
+          e.preventDefault();
+          const label = (c.textContent || c.getAttribute('aria-label') || '').trim().toLowerCase();
+          const num = Number(label);
+          const page = store.getPage(group);
+          const totalPages = store.getTotalPages(group);
+          if (!Number.isNaN(num) && num > 0) store.setPage(group, num);
+          else if (/^(prev|previous|«|←)/.test(label)) store.setPage(group, Math.max(1, page - 1));
+          else if (/^(next|»|→)/.test(label)) store.setPage(group, Math.min(totalPages, page + 1));
+        });
+      });
+      store.subscribe(group, paint);
+      paint();
+      break;
+    }
     default:
       break;
   }
 }
 
-const DATA_DRIVEN_TYPES = new Set(['product-grid', 'category-grid']);
+const DATA_DRIVEN_TYPES = new Set([
+  'product-grid',
+  'category-grid',
+  'featured-products',
+  'latest-products',
+  'best-sellers',
+  'related-products',
+  'product-detail',
+  'cart',
+  'checkout',
+  'wishlist',
+]);
 const STATIC_HYDRATE_TYPES = new Set([
   'header',
   'footer',
@@ -172,12 +413,17 @@ const STATIC_HYDRATE_TYPES = new Set([
   'search',
   'cart-button',
   'checkout-button',
+  'wishlist-button',
+  'pagination',
 ]);
 
 function ThemePage({ page }) {
   const containerRef = useRef(null);
   const storefront = useStorefront();
   const cart = useCart();
+  const wishlist = useWishlist();
+  const paginationStoreRef = useRef(null);
+  if (!paginationStoreRef.current) paginationStoreRef.current = createPaginationStore();
 
   useEffect(() => {
     const root = containerRef.current;
@@ -187,9 +433,9 @@ function ThemePage({ page }) {
     blocks.forEach((el) => {
       const type = el.getAttribute('data-store-block');
       if (DATA_DRIVEN_TYPES.has(type)) {
-        mountDataDrivenBlock(el, type);
+        mountDataDrivenBlock(el, type, paginationStoreRef.current);
       } else if (STATIC_HYDRATE_TYPES.has(type)) {
-        hydrateStaticBlock(el, type, { storefront, cart });
+        hydrateStaticBlock(el, type, { storefront, cart, wishlist, paginationStore: paginationStoreRef.current });
       }
       // widget-area (and anything else) is intentionally left untouched.
     });

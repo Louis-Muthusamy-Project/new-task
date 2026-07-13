@@ -28,18 +28,24 @@ import ThemeRenderer, { hasThemedContent } from './ThemeRenderer';
 // mutation round-trips to the persisted StoreCart on the backend); this
 // component just wires the provider in and renders the 'checkout' /
 // 'confirmation' views alongside the existing product-browsing ones.
-// Checked once per store (see `useThemedHome` below): does this store have
-// an actual themed home page (GrapesJS-authored, or produced by the
-// WordPress Import pipeline) worth rendering via ThemeRenderer, instead of
-// the generic hardcoded Home section? `null` = "still checking", so the
-// generic screens don't flash before the check resolves.
-function useThemedHome(storeId) {
+// Checked once per (store, slug) pair (see `useThemedPage` below): does
+// this store have actual themed page markup (GrapesJS-authored, or
+// produced by the WordPress Import pipeline / Store Block System) for
+// this route, worth rendering via ThemeRenderer instead of the generic
+// hardcoded section? `null` = "still checking", so the generic screens
+// don't flash before the check resolves.
+function useThemedPage(storeId, slug) {
   const [themed, setThemed] = useState(null);
 
   useEffect(() => {
+    if (!slug) {
+      setThemed(false);
+      return undefined;
+    }
     let cancelled = false;
+    setThemed(null);
     storefrontApi
-      .getPage(storeId, 'home')
+      .getPage(storeId, slug)
       .then((page) => {
         if (!cancelled) setThemed(hasThemedContent(page));
       })
@@ -49,13 +55,46 @@ function useThemedHome(storeId) {
     return () => {
       cancelled = true;
     };
-  }, [storeId]);
+  }, [storeId, slug]);
 
   return themed;
 }
 
-function StorefrontScreens({ storeId, themedHome }) {
+// Maps the current storefront `view` to the themed-page slug (if any)
+// that view could have — the same slug convention every StorePage
+// already uses. `null` means "this view never has a themed page", so
+// StorefrontScreens/StorefrontChrome always fall back to the generic
+// component for it without a wasted lookup.
+function themedSlugForView(view) {
+  switch (view.name) {
+    case 'home':
+      return 'home';
+    case 'collection':
+      return 'shop';
+    case 'product':
+      return 'product';
+    case 'search':
+      return 'search';
+    case 'checkout':
+      return 'checkout';
+    default:
+      return null;
+  }
+}
+
+function StorefrontScreens({ storeId, themedSlug, themed }) {
   const { view } = useStorefront();
+
+  // Any themed view — home, collection, product, search, or checkout —
+  // renders via the exact same ThemeRenderer path (its own header/
+  // footer/nav baked in, per the Simply-Static/GrapesJS document
+  // convention) instead of the generic hardcoded section; every other
+  // view keeps the generic Store sections until a themed page exists
+  // for that slug too. See ThemeRenderer.jsx for how each
+  // `data-store-block` region inside it hydrates against live data.
+  if (themedSlug && themed) {
+    return <ThemeRenderer storeId={storeId} slug={themedSlug} />;
+  }
 
   switch (view.name) {
     case 'collection':
@@ -70,14 +109,7 @@ function StorefrontScreens({ storeId, themedHome }) {
       return <OrderConfirmationPage order={view.order} />;
     case 'home':
     default:
-      // A themed home page (its own header/footer/nav baked in per the
-      // Simply-Static/GrapesJS document convention) replaces the generic
-      // Header/HomePage/Footer stack entirely for this view — see
-      // ThemeRenderer.jsx. Every other view keeps the generic Store
-      // sections today; extending themed rendering to Category/Product/
-      // Search is straightforward follow-up (same ThemeRenderer, a
-      // different page slug) once those pages exist as themed content.
-      return themedHome ? <ThemeRenderer storeId={storeId} slug="home" /> : <HomePage />;
+      return <HomePage />;
   }
 }
 
@@ -115,15 +147,17 @@ function VisitTracker({ storeId }) {
 
 function StorefrontChrome({ storeId }) {
   const { view } = useStorefront();
-  const themedHome = useThemedHome(storeId);
-  // Only the 'home' view can currently be themed (see StorefrontScreens);
-  // every other view keeps the generic Header/Footer chrome around it.
-  const showGenericChrome = !(view.name === 'home' && themedHome);
+  const themedSlug = themedSlugForView(view);
+  const themed = useThemedPage(storeId, themedSlug);
+  // Generic Header/Footer chrome is skipped only for a view that actually
+  // resolved to themed markup — a themed page brings its own header/
+  // footer/nav baked into its own document (see ThemeRenderer.jsx).
+  const showGenericChrome = !(themedSlug && themed);
 
   return (
     <>
       {showGenericChrome && <Header />}
-      <StorefrontScreens storeId={storeId} themedHome={themedHome} />
+      <StorefrontScreens storeId={storeId} themedSlug={themedSlug} themed={themed} />
       {showGenericChrome && <Footer />}
     </>
   );

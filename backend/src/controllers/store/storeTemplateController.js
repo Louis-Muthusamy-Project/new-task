@@ -29,6 +29,7 @@ const StorePage    = require('../../models/store/StorePage');
 const { uploadBufferToCloudinary } = require('../../config/cloudinary');
 const { minifyCss } = require('../../utils/minifyCss');
 const { optimizeImageUrl } = require('../../utils/storeImageOptimizer');
+const { detectAndReplaceComponents } = require('../../utils/storeComponentDetector');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Multer — in-memory, ZIP-only
@@ -817,7 +818,21 @@ const parseStoreTemplateZip = async (zipBuffer, { cloudinaryFolder }) => {
 
     const { css: extractedCss, htmlWithoutStyles } = extractCssFromHtml(htmlWithRewrittenAssets);
 
-    const bodyHtml = extractBody(htmlWithoutStyles);
+    const bodyHtmlRaw = extractBody(htmlWithoutStyles);
+
+    // Store Block System — same detection stage the WordPress Import
+    // pipeline runs (see services/wordpressImport/detectComponents.js /
+    // utils/storeComponentDetector.js), now also applied to manually
+    // uploaded Store Template ZIPs so static product sections in *any*
+    // uploaded theme become dynamic `data-store-block` regions, not just
+    // WordPress exports. Purely additive: only ever adds attributes to
+    // elements that were already there — layout, CSS, spacing, and
+    // markup structure are untouched.
+    const { html: bodyHtml, detected: detectedComponents } = detectAndReplaceComponents(bodyHtmlRaw, {
+      isHome: isHome,
+      slug: pageSlug,
+      name: pageName,
+    });
 
     pages.push({
       name: pageName,
@@ -831,6 +846,7 @@ const parseStoreTemplateZip = async (zipBuffer, { cloudinaryFolder }) => {
         css:        minifyCss(extractedCss),
         headLinks,
         sourcePath: zipPath,
+        detectedComponents,
       },
     });
   }
