@@ -25,6 +25,8 @@ const COMPONENT_LABELS = {
   'cart-button': 'Cart Button',
   'checkout-button': 'Checkout Button',
   'widget-area': 'Widget',
+  'product-card': 'Product Card',
+  'category-card': 'Category Card',
 };
 
 
@@ -57,6 +59,10 @@ const AUTO_CONVERTIBLE_TYPES = new Set([
   // confidence" — see PASSTHROUGH_TYPES below for how the frontend
   // treats it differently from the data-driven types.
   'widget-area',
+  // Per-item blocks tagged by the Convert Product Sections stage, nested
+  // inside an already-converted product-grid-family container.
+  'product-card',
+  'category-card',
 ]);
 
 /**
@@ -99,6 +105,11 @@ const THEME_COMPONENT_MAP = {
   'checkout-button': 'CheckoutButton',
   hero: null,
   'widget-area': null,
+  // The *container* (product-grid, category-grid, ...) is what mounts a
+  // live component; product-card/category-card are field-level hooks
+  // inside it for binding live data, not independent mount points.
+  'product-card': null,
+  'category-card': null,
 };
 
 /**

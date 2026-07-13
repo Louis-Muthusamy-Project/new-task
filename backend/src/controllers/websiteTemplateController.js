@@ -69,6 +69,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const Website      = require('../models/Website');
 const WebsitePage  = require('../models/WebsitePage');
 const { uploadBufferToCloudinary } = require('../config/cloudinary');
+const { runTemplateImportPipeline } = require('../services/templateImport');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Multer — in-memory, 50 MB
@@ -1047,6 +1048,25 @@ console.log(htmlEntries.length);
 
       console.log(`[import-engine] "${pageSlug}" — body: ${bodyHtml.length}ch  css: ${extractedCss.length}ch  headLinks: ${headLinks.length}ch`);
 
+      // F. Template Import Pipeline — Detect Components → Convert Product
+      //    Sections → Inject Store Blocks. Runs against every uploaded
+      //    Website Builder template now, not just WordPress imports. This
+      //    call can never throw and can never make the page worse: on any
+      //    internal failure it hands back `bodyHtml` completely untouched
+      //    (see services/templateImport/index.js's safety contract).
+      const {
+        html: themedHtml,
+        detectedComponents,
+        componentSummary,
+        storeReady,
+        previewStatus,
+      } = runTemplateImportPipeline(bodyHtml, { isHome, slug: pageSlug, name: pageName });
+
+      console.log(
+        `[import-engine] "${pageSlug}" — components: ${detectedComponents.length}` +
+        ` (storeReady: ${storeReady}, previewStatus: ${previewStatus})`
+      );
+
       const page = await WebsitePage.create({
         websiteId: website._id,
         name:      pageName,
@@ -1054,10 +1074,22 @@ console.log(htmlEntries.length);
         isHome,
         status:    'Draft',
         content: {
-          html:       bodyHtml,
+          // Original body markup is never discarded: `html` is the
+          // pipeline's output, which equals `bodyHtml` byte-for-byte
+          // whenever detection didn't confidently find anything (or
+          // failed outright) — see "If detection fails, preserve
+          // original HTML" in the pipeline requirements.
+          html:       themedHtml,
           css:        extractedCss,
           headLinks,  // ← inject into GrapesJS canvas.styles / canvas.scripts
           sourcePath: zipPath,
+          // Template Import Pipeline output — consumed by Store Admin
+          // ("this theme covers N/M sections") and by the storefront
+          // renderer once this template is bound to a Store.
+          detectedComponents,
+          componentSummary,
+          storeReady,
+          previewStatus,
         },
       });
 
@@ -1071,9 +1103,26 @@ console.log(htmlEntries.length);
       if (v.secureUrl) assetMap[k] = v.secureUrl;
     }
 
-    console.log(`[import-engine] DONE — website: ${website._id}  pages: ${pages.length}  assets uploaded: ${Object.keys(assetMap).length}`);
+    // Aggregate per-page pipeline results so the caller can show something
+    // like "this theme covers 6/10 sections" without re-scanning every page.
+    const templateDetection = {
+      pagesScanned:   pages.length,
+      storeReadyPages: pages.filter((p) => p?.content?.storeReady).length,
+      componentsByType: pages.reduce((acc, p) => {
+        const byType = p?.content?.componentSummary?.byType || {};
+        Object.entries(byType).forEach(([type, count]) => {
+          acc[type] = (acc[type] || 0) + count;
+        });
+        return acc;
+      }, {}),
+      needsManualMapping: [
+        ...new Set(pages.flatMap((p) => p?.content?.componentSummary?.needsManualMapping || [])),
+      ],
+    };
 
-    return res.status(200).json({ success: true, website, pages, assetMap });
+    console.log(`[import-engine] DONE — website: ${website._id}  pages: ${pages.length}  assets uploaded: ${Object.keys(assetMap).length}  storeReadyPages: ${templateDetection.storeReadyPages}`);
+
+    return res.status(200).json({ success: true, website, pages, assetMap, templateDetection });
 
   } catch (err) {
     console.error('[import-engine] fatal:', err);
@@ -1086,4 +1135,4 @@ console.log(htmlEntries.length);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-module.exports = { upload, uploadTemplateZipToCloudinary };  
+module.exports = { upload, uploadTemplateZipToCloudinary };
