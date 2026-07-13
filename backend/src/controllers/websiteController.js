@@ -185,6 +185,7 @@ exports.updateWebsite = async (req, res) => {
     'domainId',
     'templateId',
     'folderId',
+    'storeId',
   ];
 
   const updates = {};

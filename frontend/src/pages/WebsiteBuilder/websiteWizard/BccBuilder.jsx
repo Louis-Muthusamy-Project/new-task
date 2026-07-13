@@ -154,6 +154,13 @@ const BccBuilder = () => {
   const [viewport, setViewport] = useState("desktop"); // preserved UI selection
   const [pageStatus, setPageStatus] = useState("Draft");
 
+  // Preview Integration: which Store (if any) this page should hydrate
+  // live against. When editing a Store page directly, that Store IS
+  // entityId — no lookup needed. When editing a Website page, the link
+  // lives on the Website document (Website.storeId), so it's fetched once
+  // (not on every preview click) and cached here.
+  const [linkedStoreId, setLinkedStoreId] = useState(isStore ? storeId : null);
+
   useUnsavedChangesWarning(isDirty);
 
   const displayName = page?.name || routeState.pageName || "Page";
@@ -234,6 +241,25 @@ const BccBuilder = () => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [websiteId, storeId, pageId]);
+
+  // Resolve Website.storeId once per website (not per preview click, not
+  // per render). No-op for the isStore branch — linkedStoreId is already
+  // seeded to `storeId` in that case.
+  useEffect(() => {
+    if (isStore || !isMongoId(websiteId)) return undefined;
+    let cancelled = false;
+    websiteWizardApi
+      .getWebsite(websiteId)
+      .then((site) => {
+        if (!cancelled) setLinkedStoreId(site?.storeId || null);
+      })
+      .catch(() => {
+        if (!cancelled) setLinkedStoreId(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isStore, websiteId]);
 
   // -------------------------------------------------------------------------
   // Save
@@ -490,10 +516,25 @@ const BccBuilder = () => {
             <Button
               icon={<Eye size={15} />}
               onClick={() => {
-                const opened = openPagePreview({
-                  ...page,
-                  content: { html, css, ...(headLinks ? { headLinks } : {}) },
-                });
+                const opened = openPagePreview(
+                  {
+                    ...page,
+                    content: {
+                      // Keep whatever the Template Import Pipeline already
+                      // computed for this page (storeReady, detectedComponents,
+                      // componentSummary) — only html/css/headLinks reflect
+                      // the in-progress GrapesJS edit; overwriting the whole
+                      // `content` object would silently turn live preview
+                      // off for every page that has it.
+                      ...(page?.content && typeof page.content === "object" ? page.content : {}),
+                      html,
+                      css,
+                      ...(headLinks ? { headLinks } : {}),
+                    },
+                  },
+                  null,
+                  linkedStoreId
+                );
                 if (!opened) message.error("Popup blocked. Allow popups to preview this page.");
               }}
               style={{

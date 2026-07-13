@@ -1,29 +1,33 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { readStagedPreviewHtml } from '../utils/previewHtml';
+import { readStagedPreview } from '../utils/previewHtml';
+import WebsitePagePreview from './WebsitePagePreview';
 
 // PagePreviewRoute.jsx — renders at /preview/page/:previewId.
 //
-// Replaces the old openPagePreview() behaviour of window.open("", "_blank")
-// + document.write(...), which always left the new tab's address bar
-// showing "about:blank" (no real URL to copy/share/refresh, and nothing
-// for the browser history to hang on to).
+// Two render paths, chosen by what openPagePreview() staged:
 //
-// Instead, openPagePreview() now stages the built preview HTML into
-// sessionStorage under a generated id and opens this route with that id in
-// the URL. sessionStorage written just before window.open() is inherited by
-// the new tab (same-origin auxiliary browsing context), so it's available
-// here on first render with no backend round-trip and no change to any of
-// openPagePreview's existing callers (BccBuilder, WebsiteEditPage,
-// WebsitesTab all keep calling it exactly as before).
+//   mode: 'static' (no Store linked, or nothing for the Template Import
+//   Pipeline to hydrate on this page) — unchanged from before: the
+//   prebuilt HTML document goes into an `srcDoc` iframe. Full document
+//   isolation, own <head>, own inline <script> execution — exactly what a
+//   plain marketing/content page's preview needs and always got.
+//
+//   mode: 'live' (Website.storeId is set AND this page's pipeline output
+//   says content.storeReady) — rendered in-page via WebsitePagePreview,
+//   which mounts real React against the Store's public API. This can't be
+//   done inside an iframe's srcDoc without a lot of extra cross-document
+//   plumbing, and doesn't need to be — Preview Integration's whole point
+//   is live data, not a static snapshot, so trading iframe isolation for a
+//   real mounted tree here is the right trade.
 export default function PagePreviewRoute() {
   const { previewId } = useParams();
-  const [html, setHtml] = useState(null);
+  const [payload, setPayload] = useState(null);
   const [expired, setExpired] = useState(false);
 
   useEffect(() => {
-    const stored = readStagedPreviewHtml(previewId);
-    if (stored) setHtml(stored);
+    const stored = readStagedPreview(previewId);
+    if (stored) setPayload(stored);
     else setExpired(true);
   }, [previewId]);
 
@@ -46,12 +50,20 @@ export default function PagePreviewRoute() {
     );
   }
 
-  if (!html) return null;
+  if (!payload) return null;
+
+  if (payload.mode === 'live') {
+    return (
+      <div style={{ position: 'fixed', inset: 0, overflow: 'auto', background: '#fff' }}>
+        <WebsitePagePreview page={payload.page} storeId={payload.storeId} chatWidget={payload.chatWidget} />
+      </div>
+    );
+  }
 
   return (
     <iframe
       title="Page preview"
-      srcDoc={html}
+      srcDoc={payload.html}
       style={{ position: 'fixed', inset: 0, width: '100%', height: '100%', border: 'none' }}
     />
   );

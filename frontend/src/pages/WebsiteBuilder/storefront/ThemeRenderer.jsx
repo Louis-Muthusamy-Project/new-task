@@ -498,3 +498,11 @@ export default function ThemeRenderer({ storeId, slug = 'home' }) {
 export function hasThemedContent(page) {
   return !!page?.content?.html && page.content.html.trim().length > 0;
 }
+
+// Re-exported so other surfaces that already HAVE a page object in hand
+// (e.g. the Website Builder's Preview Integration — see
+// frontend/.../storefront/WebsitePagePreview.jsx) can mount the exact same
+// Detect→Hydrate engine directly, without an extra network round-trip
+// through storefrontApi.getPage(). Requires the same ancestor providers
+// ThemeRenderer itself needs: <StorefrontProvider storeId=...><CartProvider>.
+export { ThemePage };

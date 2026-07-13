@@ -163,7 +163,7 @@ const WebsiteEditPage = ({ website: initialWebsite, onBack, onChange, justCreate
         }
       }
 
-      const opened = openPagePreview(homePage, chatWidget);
+      const opened = openPagePreview(homePage, chatWidget, previewData?.website?.storeId || null);
       if (!opened) message.error("Popup blocked. Allow popups to preview this page.");
     } catch (err) {
       console.error(err);

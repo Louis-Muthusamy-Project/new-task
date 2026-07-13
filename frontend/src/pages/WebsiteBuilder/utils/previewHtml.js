@@ -184,21 +184,51 @@ function makePreviewId() {
  * Not cleared on read so refreshing the preview tab still works — it's
  * sessionStorage, so it's already scoped to this tab's session and goes
  * away on its own once the tab closes.
+ *
+ * Returns a normalized `{ mode: 'live'|'static', ... }` object. `mode:
+ * 'static'` carries a prebuilt `html` string (srcDoc target, unchanged
+ * behavior); `mode: 'live'` carries `{ storeId, page, chatWidget }` for
+ * WebsitePagePreview to render through the Dynamic Block -> Store API ->
+ * React Component pipeline instead.
  */
-export function readStagedPreviewHtml(previewId) {
+export function readStagedPreview(previewId) {
   if (!previewId) return null;
   try {
-    return sessionStorage.getItem(PREVIEW_STORAGE_PREFIX + previewId);
+    const raw = sessionStorage.getItem(PREVIEW_STORAGE_PREFIX + previewId);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && parsed.mode) return parsed;
+    // Shouldn't happen post-migration, but never crash a preview tab over it.
+    return { mode: "static", html: String(raw) };
   } catch (_) {
     return null;
   }
 }
 
-export function openPagePreview(page, chatWidget = null) {
+/**
+ * @param {object} page        WebsitePage-shaped object (needs .content)
+ * @param {object|null} chatWidget
+ * @param {string|null} storeId  the owning Website's linked Store, if any
+ *   (Website.storeId — see backend/src/models/Website.js). Passing this is
+ *   what turns on live rendering; omitting it always renders the static
+ *   snapshot, exactly like before this field existed.
+ */
+export function openPagePreview(page, chatWidget = null, storeId = null) {
   const previewId = makePreviewId();
 
+  // Live rendering only kicks in when there's a Store to hydrate against
+  // AND the Template Import Pipeline actually found something to hydrate
+  // on this page (content.storeReady — see services/templateImport/
+  // storeBlockInjector.js). Every other page stages the exact same static
+  // payload as before.
+  const isLive = !!storeId && !!page?.content?.storeReady;
+
+  const payload = isLive
+    ? { mode: "live", storeId, page, chatWidget }
+    : { mode: "static", html: buildPreviewHtml(page, chatWidget) };
+
   try {
-    sessionStorage.setItem(PREVIEW_STORAGE_PREFIX + previewId, buildPreviewHtml(page, chatWidget));
+    sessionStorage.setItem(PREVIEW_STORAGE_PREFIX + previewId, JSON.stringify(payload));
   } catch (e) {
     console.warn("[previewHtml] could not stage preview payload:", e);
     return false;

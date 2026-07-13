@@ -203,7 +203,7 @@ const ManageWebsiteView = ({ activeWebsite, setView, itemVariants }) => {
         message.info("No HTML content found for this website.");
         return;
       }
-      const opened = openPagePreview(homePage);
+      const opened = openPagePreview(homePage, null, previewData?.website?.storeId || null);
       if (!opened) message.error("Popup blocked. Allow popups to preview this website.");
     } catch (err) {
       message.error(err?.message || "Failed to load preview.");
@@ -543,7 +543,7 @@ const WebsitesTab = ({ itemVariants }) => {
         message.info("No published HTML content found for this website.");
         return;
       }
-      const opened = openPagePreview(homePage);
+      const opened = openPagePreview(homePage, null, previewData?.website?.storeId || null);
       if (!opened) message.error("Popup blocked. Allow popups to preview this website.");
     } catch (err) {
       message.error(err?.message || "Preview failed.");
