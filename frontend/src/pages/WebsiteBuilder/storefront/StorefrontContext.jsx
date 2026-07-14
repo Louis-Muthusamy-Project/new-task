@@ -103,6 +103,12 @@ export function StorefrontProvider({ storeId, initialView, children }) {
   // /products/:slug identifier), not the internal _id — see
   // pages/ProductPage.jsx / hooks/useProducts.js's useProductBySlug.
   const goToProduct = useCallback((slug) => setView({ name: 'product', slug }), []);
+  // Any other stored StorePage — About, Contact, FAQ, Blog, or any custom
+  // page a merchant uploaded — reachable by its own slug, exactly like
+  // Home/Collection/Product already are. See CustomPageView in
+  // StorefrontApp.jsx for what actually renders it (ThemeRenderer's
+  // ThemePage, same as every other view).
+  const goToPage = useCallback((slug) => setView({ name: 'page', slug }), []);
   const goToSearch = useCallback((q) => setView({ name: 'search', q }), []);
   const goToCheckout = useCallback(() => setView({ name: 'checkout' }), []);
   const goToConfirmation = useCallback((order) => setView({ name: 'confirmation', order }), []);
@@ -159,6 +165,7 @@ export function StorefrontProvider({ storeId, initialView, children }) {
       goHome,
       goToCollection,
       goToProduct,
+      goToPage,
       goToSearch,
       goToCheckout,
       goToConfirmation,
@@ -179,6 +186,7 @@ export function StorefrontProvider({ storeId, initialView, children }) {
       goHome,
       goToCollection,
       goToProduct,
+      goToPage,
       goToSearch,
       goToCheckout,
       goToConfirmation,

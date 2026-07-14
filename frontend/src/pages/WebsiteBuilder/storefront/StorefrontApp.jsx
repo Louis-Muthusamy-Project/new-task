@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { StorefrontProvider, useStorefront } from './StorefrontContext';
 import { CartProvider } from './CartContext';
 import { WishlistProvider } from './WishlistContext';
@@ -37,6 +37,23 @@ import WishlistPage from './pages/WishlistPage';
 // use: 'home', 'catalog' (Shop/Collections), 'product', 'checkout'.
 // Search, Wishlist, and Order Confirmation have no themed-page concept
 // (no default slug for them) and always render their generic screen.
+// Every OTHER stored StorePage — About, Contact, FAQ, Blog, or any other
+// custom page a merchant's uploaded template has — is reachable the same
+// way via the `page` view (see goToPage in StorefrontContext.jsx and
+// CustomPageView below): looked up by its own slug, no dedicated generic
+// screen needed since ThemePage already renders it from its real stored
+// content.html/css, same as Home/Category/Product/Checkout do.
+//
+// Chrome (Header/Footer) note: a themed page's `content.html` is the
+// *entire* uploaded/GrapesJS/WordPress-imported page — it already carries
+// its own `data-store-block="header"/"footer"/"navigation"` markup, which
+// ThemeRenderer hydrates in place (see ThemeRenderer.jsx). So whenever the
+// active view is rendering a themed page, StorefrontApp's own generic
+// <Header/>/<Footer/> must stay hidden, or the storefront would show two
+// headers and two footers stacked on top of the theme's real ones. The
+// generic chrome only reappears for views that have no themed-page concept
+// (Search/Wishlist/Order Confirmation) or when the current route's slug
+// has no themed page yet, so the generic screen isn't left bare.
 
 const SLUG_BY_VIEW = {
   home: 'home',
@@ -45,11 +62,26 @@ const SLUG_BY_VIEW = {
   checkout: 'checkout',
 };
 
-/** Renders the active theme's real page markup for `viewName`'s slug when one exists, else `generic`. */
-function RouteView({ viewName, generic }) {
+/**
+ * Renders the active theme's real page markup for `viewName`'s slug when
+ * one exists, else `generic`. Reports the resolved themed/not-themed
+ * status upward via `onThemedChange` so the app shell knows whether to
+ * keep its own generic Header/Footer chrome hidden — a single source of
+ * truth (this hook's result) rather than a second, duplicate check.
+ */
+function RouteView({ viewName, generic, onThemedChange }) {
   const { storeId } = useStorefront();
   const slug = SLUG_BY_VIEW[viewName] || null;
   const { page, loading, isThemed } = useThemedPage(slug ? storeId : null, slug);
+
+  useEffect(() => {
+    if (!slug) {
+      onThemedChange(false);
+      return;
+    }
+    if (loading) return; // keep previous chrome state until the check resolves
+    onThemedChange(isThemed);
+  }, [slug, loading, isThemed, onThemedChange]);
 
   if (!slug) return generic;
   if (loading) return null; // themed-page check in flight — avoid a generic flash
@@ -57,26 +89,105 @@ function RouteView({ viewName, generic }) {
   return generic;
 }
 
-function StorefrontScreens() {
+/** Views with no themed-page concept always show the generic screen + generic chrome. */
+function GenericOnlyView({ onThemedChange, children }) {
+  useEffect(() => {
+    onThemedChange(false);
+  }, [onThemedChange]);
+  return children;
+}
+
+/**
+ * Renders any stored StorePage by slug — About, Contact, FAQ, Blog, or any
+ * other custom page a merchant's uploaded template has, none of which have
+ * (or need) a dedicated generic React screen the way Home/Category/
+ * Product/Checkout do. Reuses the exact same useThemedPage + ThemePage
+ * pair RouteView uses above — one lookup-and-render path for every stored
+ * page, core or custom. When the store has no Published page at this slug
+ * (typo'd link, unpublished draft, deleted page), shows a plain message
+ * instead of a blank screen or a crash — the generic chrome (Header/
+ * Footer) stays visible throughout so the visitor can still get somewhere.
+ */
+function CustomPageView({ slug, onThemedChange }) {
+  const { storeId } = useStorefront();
+  const { page, loading, isThemed } = useThemedPage(storeId, slug);
+
+  useEffect(() => {
+    if (loading) return;
+    onThemedChange(isThemed);
+  }, [loading, isThemed, onThemedChange]);
+
+  if (loading) return null;
+  if (isThemed) return <ThemePage page={page} />;
+  return (
+    <div style={{ padding: '80px 24px', textAlign: 'center', color: '#64748b' }}>
+      <p style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: '0 0 8px' }}>Page not available</p>
+      <p style={{ fontSize: 13, margin: 0 }}>
+        This store doesn&apos;t have a published page at &ldquo;{slug}&rdquo; yet.
+      </p>
+    </div>
+  );
+}
+
+function StorefrontScreens({ onThemedChange }) {
   const { view } = useStorefront();
 
   switch (view?.name) {
     case 'collection':
-      return <RouteView viewName="collection" generic={<CategoryPage collectionId={view.collectionId} />} />;
+      return (
+        <RouteView
+          viewName="collection"
+          generic={<CategoryPage collectionId={view.collectionId} />}
+          onThemedChange={onThemedChange}
+        />
+      );
     case 'product':
-      return <RouteView viewName="product" generic={<ProductPage slug={view.slug} />} />;
+      return (
+        <RouteView viewName="product" generic={<ProductPage slug={view.slug} />} onThemedChange={onThemedChange} />
+      );
+    case 'page':
+      return <CustomPageView slug={view.slug} onThemedChange={onThemedChange} />;
     case 'search':
-      return <SearchResultsPage q={view.q} />;
+      return (
+        <GenericOnlyView onThemedChange={onThemedChange}>
+          <SearchResultsPage q={view.q} />
+        </GenericOnlyView>
+      );
     case 'checkout':
-      return <RouteView viewName="checkout" generic={<CheckoutPage />} />;
+      return <RouteView viewName="checkout" generic={<CheckoutPage />} onThemedChange={onThemedChange} />;
     case 'confirmation':
-      return <OrderConfirmationPage order={view.order} />;
+      return (
+        <GenericOnlyView onThemedChange={onThemedChange}>
+          <OrderConfirmationPage order={view.order} />
+        </GenericOnlyView>
+      );
     case 'wishlist':
-      return <WishlistPage />;
+      return (
+        <GenericOnlyView onThemedChange={onThemedChange}>
+          <WishlistPage />
+        </GenericOnlyView>
+      );
     case 'home':
     default:
-      return <RouteView viewName="home" generic={<HomePage />} />;
+      return <RouteView viewName="home" generic={<HomePage />} onThemedChange={onThemedChange} />;
   }
+}
+
+/** The app shell: generic Header/Footer chrome, hidden only while a themed page (which brings its own) is active. */
+function StorefrontShell() {
+  const [themedActive, setThemedActive] = useState(false);
+
+  return (
+    <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', background: '#fff' }}>
+      {!themedActive && <Header />}
+      <main style={{ flex: 1 }}>
+        <StorefrontScreens onThemedChange={setThemedActive} />
+      </main>
+      {!themedActive && <Footer />}
+      <CartDrawer />
+      <AuthModal />
+    </div>
+  );
 }
 
 export default function StorefrontApp({ storeId, initialView }) {
@@ -84,15 +195,7 @@ export default function StorefrontApp({ storeId, initialView }) {
     <StorefrontProvider storeId={storeId} initialView={initialView}>
       <CartProvider>
         <WishlistProvider>
-          <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', background: '#fff' }}>
-            <Header />
-            <main style={{ flex: 1 }}>
-              <StorefrontScreens />
-            </main>
-            <Footer />
-            <CartDrawer />
-            <AuthModal />
-          </div>
+          <StorefrontShell />
         </WishlistProvider>
       </CartProvider>
     </StorefrontProvider>

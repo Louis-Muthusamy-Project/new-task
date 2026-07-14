@@ -12,7 +12,7 @@ import { storefrontApi } from '../../../../api/storefrontApi';
 // page a merchant publishes, or a collection they create, appears the
 // moment the corresponding event arrives, no refetch timer required.
 export default function Menu() {
-  const { storeId, goHome, goToCollection } = useStorefront();
+  const { storeId, goHome, goToCollection, goToPage } = useStorefront();
 
   const { data: pages } = useStorefrontQuery(() => storefrontApi.listPages(storeId), [storeId]);
   const { collections } = useCollections(8);
@@ -66,7 +66,13 @@ export default function Menu() {
       )}
 
       {customPages.map((p) => (
-        <span key={p.id} style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', cursor: 'default' }}>
+        <span
+          key={p.id}
+          role="button"
+          tabIndex={0}
+          onClick={() => goToPage(p.slug)}
+          style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', cursor: 'pointer' }}
+        >
           {p.name}
         </span>
       ))}

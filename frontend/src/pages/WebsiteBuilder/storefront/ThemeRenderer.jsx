@@ -509,12 +509,74 @@ async function mountThemeAwareBlock(el, type, cardTemplateHtml, page, pagination
   };
 }
 
+/**
+ * Wires every internal <a> inside a header/footer/navigation block to real
+ * SPA navigation, instead of the theme's own href doing a full page
+ * navigation (which would break out of the Preview/live storefront) or
+ * doing nothing at all. Never touches markup — only click behavior — so
+ * the theme's own menu, styling, and link text render exactly as
+ * authored. Runs against the theme's OWN links (whatever the uploaded
+ * template already wrote) and, for `navigation` blocks, also against the
+ * synthetic links appended for pages the theme's own menu doesn't already
+ * list (see the `navigation` case below).
+ *
+ * A link only gets intercepted if it resolves to something this store
+ * actually has — its home page, a product (`/product(s)/:slug`), or any
+ * other stored StorePage by slug (`pages`, from storefrontApi.listPages,
+ * is the same live Published-page list Menu.jsx/Footer.jsx already use).
+ * Anything else (external links, mailto:, on-page "#anchors", pages this
+ * store doesn't have) is left completely alone.
+ */
+function wireInternalPageLinks(el, { pages, goHome, goToProduct, goToPage }) {
+  if (el.dataset.themeNavWired === '1') return;
+  el.dataset.themeNavWired = '1';
+
+  const slugSet = new Set((pages || []).map((p) => p.slug));
+
+  const resolveTarget = (a) => {
+    // Fast path: links this same hydration pass appended itself (tagged
+    // via data-store-page in the `navigation` case below).
+    const tagged = a.dataset.storePage;
+    if (tagged) return { type: 'page', slug: tagged };
+
+    const href = a.getAttribute('href');
+    if (!href) return null;
+    // External / non-navigational links: leave the theme's own behavior untouched.
+    if (/^([a-z]+:)?\/\//i.test(href) || /^(mailto|tel|javascript):/i.test(href)) return null;
+
+    let path = href.replace(/^#/, ''); // supports both real paths and "#/slug" hash links
+    path = path.split('?')[0].split('#')[0];
+    path = path.replace(/^\/+|\/+$/g, ''); // trim leading/trailing slashes
+
+    if (path === '' || path === 'home') return { type: 'home' };
+
+    const productMatch = path.match(/^products?\/(.+)$/);
+    if (productMatch) return { type: 'product', slug: productMatch[1] };
+
+    const candidate = path.split('/')[0];
+    if (slugSet.has(candidate)) return { type: 'page', slug: candidate };
+
+    return null; // not a page this store has — don't hijack the click
+  };
+
+  el.querySelectorAll('a').forEach((a) => {
+    const target = resolveTarget(a);
+    if (!target) return;
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (target.type === 'home') goHome();
+      else if (target.type === 'product') goToProduct(target.slug);
+      else goToPage(target.slug);
+    });
+  });
+}
+
 /** Light, in-place hydration for header/footer/nav/search/cart/checkout — never replaces markup. */
 function hydrateStaticBlock(el, type, ctx) {
   if (el.dataset.themeHydrated === '1') return;
   el.dataset.themeHydrated = '1';
 
-  const { storeId, storeInfo, goToSearch, goToCheckout } = ctx.storefront;
+  const { storeId, storeInfo, goToSearch, goToCheckout, goHome, goToProduct, goToPage } = ctx.storefront;
   const { itemCount, openDrawer } = ctx.cart;
 
   switch (type) {
@@ -531,6 +593,14 @@ function hydrateStaticBlock(el, type, ctx) {
       }
       const year = el.querySelector('[class*="year"], .copyright-year');
       if (year) year.textContent = String(new Date().getFullYear());
+      // Headers and footers routinely carry their own menu/quick-links
+      // (About, Contact, FAQ, Shop, …) — wire those up too, the same as
+      // a dedicated `navigation` block, so every uploaded page stays
+      // reachable regardless of which region of the theme links to it.
+      storefrontApi
+        .listPages(storeId)
+        .then((pages) => wireInternalPageLinks(el, { pages, goHome, goToProduct, goToPage }))
+        .catch(() => {});
       break;
     }
     case 'navigation': {
@@ -548,9 +618,11 @@ function hydrateStaticBlock(el, type, ctx) {
               a.href = `#/${p.slug}`;
               a.textContent = p.name;
               a.dataset.storePage = p.slug;
-              a.addEventListener('click', (e) => e.preventDefault());
               el.appendChild(a);
             });
+          // Wire every link in the block — the theme's own menu items AND
+          // the synthetic ones just appended — to real SPA navigation.
+          wireInternalPageLinks(el, { pages, goHome, goToProduct, goToPage });
         })
         .catch(() => {});
       break;
@@ -674,9 +746,10 @@ function ThemePage({ page }) {
   // (which doesn't run inside React) back into React's application routing & cart contexts.
   useEffect(() => {
     const handleNavigate = (e) => {
-      if (e.detail?.slug) {
-        storefront.goToProduct(e.detail.slug);
-      }
+      const { type, slug } = e.detail || {};
+      if (type === 'page' && slug) storefront.goToPage(slug);
+      else if (type === 'home') storefront.goHome();
+      else if (slug) storefront.goToProduct(slug); // default/back-compat: bare {slug} or type:'product'
     };
     const handleAddToCart = (e) => {
       if (e.detail?.productId) {

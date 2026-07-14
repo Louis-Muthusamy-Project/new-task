@@ -7,7 +7,7 @@ import { storefrontApi } from '../../../../api/storefrontApi';
 // itself (independent query from Menu's — a section only shares data it
 // truly shares, and owns the data it doesn't).
 export default function Footer() {
-  const { storeId, storeInfo } = useStorefront();
+  const { storeId, storeInfo, goToPage } = useStorefront();
   const { data: pages } = useStorefrontQuery(() => storefrontApi.listPages(storeId), [storeId]);
 
   return (
@@ -31,7 +31,13 @@ export default function Footer() {
       {(pages || []).length > 0 && (
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           {pages.map((p) => (
-            <span key={p.id} style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>
+            <span
+              key={p.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => goToPage(p.slug)}
+              style={{ fontSize: 12, fontWeight: 600, color: '#334155', cursor: 'pointer' }}
+            >
               {p.name}
             </span>
           ))}
