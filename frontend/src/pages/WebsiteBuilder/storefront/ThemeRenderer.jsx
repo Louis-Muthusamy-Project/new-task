@@ -15,6 +15,7 @@ import ProductGrid from './components/ProductGrid';
 import CollectionsGrid from './components/CollectionsGrid';
 import ProductPage from './pages/ProductPage';
 import CheckoutPage from './pages/CheckoutPage';
+import { readConfigFromElement, CURRENT_COLLECTION_TOKEN } from '../builders/store/blockConfigSchema';
 
 // ThemeRenderer.jsx
 //
@@ -97,16 +98,49 @@ function createPaginationStore() {
   };
 }
 
-/** Reads every configuration knob a block container can carry (`data-*`). */
+/**
+ * Reads every configuration knob a block container can carry — §3/§6 of
+ * the redesign. `readConfigFromElement` checks the canonical
+ * `data-block-config` JSON attribute first (what a fresh detection pass
+ * or any GrapesJS trait edit from this point forward writes); if that
+ * attribute is entirely absent, it falls back to the legacy individual
+ * `data-*` attributes (including `data-collection` as a recognized alias
+ * for collection binding) so an already-imported page's merchant-set
+ * value is never silently dropped (§6 dual-read, single-write).
+ *
+ * `collectionId` here is left as whatever the config says
+ * (`CURRENT_COLLECTION_TOKEN`, a literal id, or undefined) — resolving
+ * the "current" token into a real id from navigation context happens in
+ * each consuming component below via `resolveCollectionBinding()`, since
+ * only the component knows whether it's even meaningful to look at
+ * `view.collectionId` (e.g. Related Products resolves it differently).
+ */
 function blockConfig(container) {
-  const d = container?.dataset || {};
+  const config = readConfigFromElement(container);
   return {
-    limit: Number(d.limit) || undefined,
-    collectionId: d.collectionId || undefined,
-    sort: d.sort || undefined,
-    group: d.group || 'default',
-    productId: d.productId || undefined,
+    limit: Number(config.limit) || undefined,
+    collectionId: config.collectionBinding || config.collectionId || undefined,
+    sort: config.sort || undefined,
+    group: (config.pagination && config.pagination.group) || config.group || 'default',
+    productId: config.productId || undefined,
   };
+}
+
+/**
+ * §4 Category Binding, mode 1 (contextual, zero-configuration): resolves
+ * a config's `collectionBinding` into a real collection id for THIS page
+ * visit. When the config carries the symbolic `"current"` token (the
+ * default seeded at import time), the current navigation context's
+ * `view.collectionId` — the same value that already correctly drives the
+ * generic `CategoryPage.jsx` — supplies the real id. A literal id
+ * (mode 2, merchant-set via the collection-picker trait) is returned
+ * as-is, unresolved.
+ */
+function resolveCollectionBinding(collectionBinding, viewCollectionId) {
+  if (collectionBinding === CURRENT_COLLECTION_TOKEN || !collectionBinding) {
+    return viewCollectionId || undefined;
+  }
+  return collectionBinding;
 }
 
 // ── Data-driven block components (§ "Product Grid" / "Featured Products" /
@@ -116,7 +150,15 @@ function blockConfig(container) {
 //    generic presentation component out — never a bespoke visual fork. ──
 
 function ImportedProductGrid({ container, paginationStore }) {
-  const { limit = 12, collectionId, sort, group } = blockConfig(container);
+  const { view } = useStorefront();
+  const { limit = 12, collectionId: configuredBinding, sort, group } = blockConfig(container);
+  // §4 Category Binding — a product-grid dropped onto a Category page
+  // (the common "one stored 'catalog' page reused for every category"
+  // case the audit found) resolves its binding from THIS page visit's
+  // navigation context by default, rather than a literal id baked in at
+  // import time. A merchant-set explicit binding (mode 2) passes through
+  // unresolved, since it's already a real collection id.
+  const collectionId = resolveCollectionBinding(configuredBinding, view.collectionId);
   const [page, setPage] = useState(paginationStore.getPage(group));
   useEffect(() => paginationStore.subscribe(group, () => setPage(paginationStore.getPage(group))), [group]); // eslint-disable-line react-hooks/exhaustive-deps
   const { products, meta, loading, error } = useProducts({ limit, collectionId, sort, page });
@@ -146,7 +188,8 @@ function ImportedBestSellers({ container }) {
 
 function ImportedRelatedProducts({ container }) {
   const { view } = useStorefront();
-  const { limit = 4, collectionId: configuredCollectionId } = blockConfig(container);
+  const { limit = 4, collectionId: configuredBinding } = blockConfig(container);
+  const configuredCollectionId = resolveCollectionBinding(configuredBinding, view.collectionId);
   const slug = container?.dataset?.productSlug || view.slug;
   // "Related" = other Active products in the same collection as the
   // current product; falls back to Latest Products for a store/product

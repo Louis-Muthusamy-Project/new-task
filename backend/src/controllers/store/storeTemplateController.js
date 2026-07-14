@@ -29,7 +29,7 @@ const StorePage    = require('../../models/store/StorePage');
 const { uploadBufferToCloudinary } = require('../../config/cloudinary');
 const { minifyCss } = require('../../utils/minifyCss');
 const { optimizeImageUrl } = require('../../utils/storeImageOptimizer');
-const { detectAndReplaceComponents } = require('../../utils/storeComponentDetector');
+const { runTemplateImportPipeline } = require('../../services/templateImplort');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Multer — in-memory, ZIP-only
@@ -820,15 +820,27 @@ const parseStoreTemplateZip = async (zipBuffer, { cloudinaryFolder }) => {
 
     const bodyHtmlRaw = extractBody(htmlWithoutStyles);
 
-    // Store Block System — same detection stage the WordPress Import
-    // pipeline runs (see services/wordpressImport/detectComponents.js /
-    // utils/storeComponentDetector.js), now also applied to manually
-    // uploaded Store Template ZIPs so static product sections in *any*
-    // uploaded theme become dynamic `data-store-block` regions, not just
-    // WordPress exports. Purely additive: only ever adds attributes to
-    // elements that were already there — layout, CSS, spacing, and
-    // markup structure are untouched.
-    const { html: bodyHtml, detected: detectedComponents } = detectAndReplaceComponents(bodyHtmlRaw, {
+    // Store Block System — the SAME full 3-stage Template Import Pipeline
+    // the WordPress Import path runs (services/templateImplort/index.js),
+    // now also applied to manually uploaded Store Template ZIPs so static
+    // product sections in *any* uploaded theme become dynamic
+    // `data-store-block` regions with a seeded starting configuration —
+    // not just detection with no config, and not just WordPress exports.
+    // §6 "Entry-point convergence is a prerequisite": before this change,
+    // this path called Stage 1 (`detectAndReplaceComponents`) directly,
+    // so pages uploaded through it never got Stage 2's per-card field
+    // tagging or Stage 3's `data-block-config` seeding — the redesign's
+    // widened detection signals and count preservation only reached
+    // WordPress-imported pages, not this one. Purely additive, same as
+    // before: only ever adds attributes to elements that were already
+    // there — layout, CSS, spacing, and markup structure are untouched.
+    const {
+      html: bodyHtml,
+      detectedComponents,
+      componentSummary: pageComponentSummary,
+      storeReady: pageStoreReady,
+      previewStatus: pagePreviewStatus,
+    } = runTemplateImportPipeline(bodyHtmlRaw, {
       isHome: isHome,
       slug: pageSlug,
       name: pageName,
@@ -847,6 +859,9 @@ const parseStoreTemplateZip = async (zipBuffer, { cloudinaryFolder }) => {
         headLinks,
         sourcePath: zipPath,
         detectedComponents,
+        componentSummary: pageComponentSummary,
+        storeReady: pageStoreReady,
+        previewStatus: pagePreviewStatus,
       },
     });
   }

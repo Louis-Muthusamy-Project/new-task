@@ -20,6 +20,16 @@
  *     already been through detection, and a `data-store-preview="ready"`
  *     marker once at least one live-hydratable block was found — this is
  *     what "Preview Ready" (the pipeline's last step) actually means.
+ *   - §3 Configuration System: seeds every grid-family container's
+ *     initial `data-block-config` — the ONE canonical, JSON-serialized
+ *     attribute the frontend trait factory and runtime reader both read/
+ *     write (see backend/src/utils/blockConfigSchema.js and its frontend
+ *     mirror). `limit` is seeded from Stage 2's preserved native item
+ *     count when present (§2), clamped into a safe band; every other
+ *     field gets the schema's sensible default. This is written ONCE, at
+ *     import time — a merchant's later GrapesJS trait edits overwrite
+ *     this same attribute going forward, never a second one (§6
+ *     single-write).
  *
  * Like Stages 1 & 2: additive only, and failure-isolated — if summarizing
  * blows up for some reason, the page's tagged HTML from the earlier
@@ -29,6 +39,7 @@
 
 const cheerio = require('cheerio');
 const { MANUAL_MAPPING_TYPES, PASSTHROUGH_TYPES } = require('../../utils/storeBlockTemplates');
+const { CONFIG_ATTR, GRID_FAMILY_TYPES, buildDefaultConfig } = require('../../utils/blockConfigSchema');
 
 // Minimum signal for a page to be worth previewing against live Store data:
 // at least one product-listing-shaped block (grid family or a PDP).
@@ -81,6 +92,27 @@ function injectStoreBlocks(html, detected = []) {
 
     target.attr('data-store-theme', 'true');
     if (storeReady) target.attr('data-store-preview', 'ready');
+
+    // §3 — seed data-block-config on every grid-family container. Runs
+    // over every detected type, not just ones with a native count, so a
+    // comment-marker-tagged block (which never went through Stage 2's
+    // card walk) still starts life with the schema's sensible defaults
+    // instead of no config at all.
+    [...GRID_FAMILY_TYPES].forEach((type) => {
+      $(`[data-store-block="${type}"]`).each((_, container) => {
+        const $container = $(container);
+        if ($container.attr(CONFIG_ATTR)) return; // never overwrite an already-seeded config
+
+        const nativeCountAttr = $container.attr('data-native-count');
+        const nativeCount = nativeCountAttr ? Number(nativeCountAttr) : undefined;
+        const config = buildDefaultConfig(type, { nativeCount });
+
+        $container.attr(CONFIG_ATTR, JSON.stringify(config));
+        // Internal-only handoff attribute from Stage 2 — never part of
+        // the final persisted config surface.
+        $container.removeAttr('data-native-count');
+      });
+    });
 
     return { html: $('body').html() || $.html(), componentSummary, storeReady, ok: true };
   } catch (err) {

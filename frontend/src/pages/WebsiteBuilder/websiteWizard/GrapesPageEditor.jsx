@@ -1285,7 +1285,7 @@ const GrapesPageEditor = ({
     if ((isStoreRef.current || isFunnelRef.current) && websiteIdRef.current) {
       try {
         registerStoreBlocks(editor, { apiBase: API_BASE, storeId: websiteIdRef.current });
-        registerStoreTraits(editor);
+        registerStoreTraits(editor, { storeId: websiteIdRef.current });
       } catch (e) {
         console.warn('[GrapesPageEditor] registerStoreBlocks/Traits (applyContentToEditor) failed:', e);
       }
@@ -1472,7 +1472,7 @@ const GrapesPageEditor = ({
       if ((isStoreRef.current || isFunnelRef.current) && websiteIdRef.current) {
         try {
           registerStoreBlocks(editor, { apiBase: API_BASE, storeId: websiteIdRef.current });
-          registerStoreTraits(editor);
+          registerStoreTraits(editor, { storeId: websiteIdRef.current });
         } catch (e) {
           console.warn('[GrapesPageEditor] registerStoreBlocks/Traits failed:', e);
         }

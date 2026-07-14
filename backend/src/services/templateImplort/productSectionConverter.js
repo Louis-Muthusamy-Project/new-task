@@ -23,6 +23,14 @@
  *     price sub-elements, when confidently found.
  *   - For a `product-detail` container, tags the single image / title /
  *     price / add-to-cart control the same way.
+ *   - §2 Product Count Preservation: while walking each grid-family
+ *     container's repeating children (already computed here for card
+ *     tagging), also records the observed count as a `data-native-count`
+ *     attribute on the container itself — a temporary, internal-only
+ *     attribute. Stage 3 (storeBlockInjector.js) reads it once to seed
+ *     the block's starting `limit` and then removes it, so the final
+ *     persisted markup only ever carries the canonical `data-block-config`
+ *     attribute, never this intermediate one.
  *
  * Same hard rule as Stage 1: purely additive attributes, nothing is
  * deleted, reordered, or restructured. If anything here throws, the
@@ -100,6 +108,13 @@ function convertProductSections(html, detected = []) {
       $(`[data-store-block="${containerType}"]`).each((_, container) => {
         const items = repeatingChildren($, container);
         if (!items || items.length < 2) return;
+
+        // §2 Product Count Preservation — the native repeat count this
+        // container actually shipped with in the template, written once
+        // here so Stage 3 can seed it as the block's default `limit`
+        // without re-walking the DOM. Internal-only attribute — never
+        // part of the final config surface (see storeBlockInjector.js).
+        $(container).attr('data-native-count', String(items.length));
 
         items.forEach((item) => {
           const $item = $(item);
