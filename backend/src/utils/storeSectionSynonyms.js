@@ -24,7 +24,7 @@
  * synonym set produced a given classification.
  */
 
-const SYNONYM_SET_VERSION = 1;
+const SYNONYM_SET_VERSION = 2;
 
 const SYNONYM_SETS = {
   featured: [
@@ -87,6 +87,21 @@ const SYNONYM_SETS = {
     'customers also bought',
     'you might also like',
   ],
+  sale: [
+    'sale',
+    'on sale',
+    'deals',
+    'today\'s deals',
+    'clearance',
+    'special offers',
+    'special offer',
+    'discounts',
+    'discounted',
+    'flash sale',
+    'markdowns',
+    'hot deals',
+    'limited time offer',
+  ],
 };
 
 /**
@@ -113,6 +128,7 @@ const CONCEPT_TO_TYPE = {
   latest: 'latest-products',
   bestSellers: 'best-sellers',
   related: 'related-products',
+  sale: 'sale-products',
 };
 
 module.exports = {

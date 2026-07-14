@@ -9,6 +9,7 @@ import {
   useFeaturedProducts,
   useLatestProducts,
   useBestSellers,
+  useSaleProducts,
 } from './hooks/useProducts';
 import { useWishlist, useWishlistProducts } from './hooks/useWishlist';
 import ProductGrid from './components/ProductGrid';
@@ -187,6 +188,20 @@ function ImportedBestSellers({ container }) {
   return <ProductGrid products={products} loading={loading} error={error} emptyLabel="No sales yet." />;
 }
 
+function ImportedSaleProducts({ container }) {
+  const { limit = 8 } = blockConfig(container);
+  const { products, loading, error } = useSaleProducts(limit);
+  return <ProductGrid products={products} loading={loading} error={error} emptyLabel="No sale items right now." />;
+}
+
+// "category-products" is a product-grid scoped to a collection — same
+// data shape/component as ImportedProductGrid (which already resolves
+// `collectionBinding` via §4 Category Binding), so it reuses that
+// component rather than forking a near-identical one.
+function ImportedCategoryProducts({ container, paginationStore }) {
+  return <ImportedProductGrid container={container} paginationStore={paginationStore} />;
+}
+
 function ImportedRelatedProducts({ container }) {
   const { view } = useStorefront();
   const { limit = 4, collectionId: configuredBinding } = blockConfig(container);
@@ -266,19 +281,29 @@ function mountDataDrivenBlock(el, type, paginationStore, page) {
   el.dataset.themeHydrated = '1';
 
   // ── Theme-Aware Path ────────────────────────────────────────────────────
-  // When the page carries a productCardTemplate (extracted at import time
-  // from the uploaded ZIP by productCardExtractor.js), we clone the theme's
-  // own card markup per-product instead of wiping the container and mounting
-  // a generic React component. This preserves the theme's exact layout, CSS
-  // classes, hover effects, spacing, and animations byte-for-byte.
+  // When the page carries product card template(s) (extracted at import
+  // time from the uploaded ZIP by productCardExtractor.js), we clone the
+  // theme's own card markup per-product instead of wiping the container and
+  // mounting a generic React component. This preserves the theme's exact
+  // layout, CSS classes, hover effects, spacing, and animations byte-for-byte.
   //
-  // Applies to all product-listing grid types; NOT to cart/checkout/wishlist
-  // (those have no card template concept) or to category-grid (different
-  // card shape — no price/CTA — handled by the generic path unchanged).
-  const cardTemplate = page?.content?.productCardTemplate;
+  // A page can have MULTIPLE product sections (e.g. Featured Products AND
+  // Best Sellers AND a plain Product Grid, each shipped with its own card
+  // markup/CSS by the theme). `productCardTemplates` is an array — one
+  // entry per container instance, each tagged with the SAME
+  // `data-card-template-id` the extractor stamped on this exact container
+  // — so we look up the template that actually belongs to `el`, instead of
+  // always reusing whichever template happened to be found first on the
+  // page. Older imported pages that only ever stored the single legacy
+  // `productCardTemplate` string still work via the fallback below.
+  const templateId = el.getAttribute('data-card-template-id');
+  const matchedTemplate =
+    templateId &&
+    (page?.content?.productCardTemplates || []).find((t) => t.id === templateId);
+  const cardTemplate = matchedTemplate?.cardTemplateHtml || page?.content?.productCardTemplate;
   const THEME_AWARE_TYPES = new Set([
     'product-grid', 'featured-products', 'latest-products',
-    'best-sellers', 'related-products',
+    'best-sellers', 'related-products', 'sale-products', 'category-products',
   ]);
 
   if (cardTemplate && THEME_AWARE_TYPES.has(type)) {
@@ -314,6 +339,12 @@ function mountDataDrivenBlock(el, type, paginationStore, page) {
       break;
     case 'best-sellers':
       root.render(<ImportedBestSellers container={el} />);
+      break;
+    case 'sale-products':
+      root.render(<ImportedSaleProducts container={el} />);
+      break;
+    case 'category-products':
+      root.render(<ImportedCategoryProducts container={el} paginationStore={paginationStore} />);
       break;
     case 'related-products':
       root.render(<ImportedRelatedProducts container={el} />);
@@ -374,8 +405,13 @@ async function mountThemeAwareBlock(el, type, cardTemplateHtml, page, pagination
           return await storefrontApi.listLatestProducts(storeId, limit);
         case 'best-sellers':
           return await storefrontApi.listBestSellers(storeId, limit);
+        case 'sale-products':
+          return await storefrontApi.listSaleProducts(storeId, limit);
         default: {
-          // product-grid, related-products: use the general listProducts endpoint
+          // product-grid, related-products, category-products: use the
+          // general listProducts endpoint (category-products passes its
+          // resolved collectionId through `config.collectionId` below,
+          // same §4 Category Binding resolution ImportedProductGrid uses).
           const collectionId = config.collectionId;
           const result = await storefrontApi.listProducts(storeId, { limit, sort, collectionId });
           // listProducts returns { items, meta }; featured/latest/best-sellers return arrays
@@ -608,6 +644,8 @@ const DATA_DRIVEN_TYPES = new Set([
   'latest-products',
   'best-sellers',
   'related-products',
+  'sale-products',
+  'category-products',
   'product-detail',
   'cart',
   'checkout',

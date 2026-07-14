@@ -88,6 +88,88 @@ function injectImage(fieldEl, product) {
   }
 }
 
+/**
+ * Injects the secondary/hover product image into a
+ * data-store-field="secondary-image" element. Falls back to hiding the
+ * element gracefully (rather than leaving a broken/empty image visible)
+ * when the product has no second photo — a theme's hover-swap effect
+ * just doesn't trigger for that product, nothing breaks.
+ */
+function injectSecondaryImage(fieldEl, product) {
+  const imgSrc = (product.images && product.images[1]) || '';
+  const img = fieldEl.tagName === 'IMG' ? fieldEl : fieldEl.querySelector('img');
+  if (!img) return;
+  if (imgSrc) {
+    img.src = imgSrc;
+    img.alt = product.title || '';
+    img.removeAttribute('style');
+  } else {
+    img.style.display = 'none';
+  }
+}
+
+/** Injects the product description into a data-store-field="description" element. */
+function injectDescription(fieldEl, product) {
+  const text = product.shortDescription || product.description || '';
+  if (!text) {
+    // No description on this product — hide gracefully rather than
+    // leaving the theme's own placeholder copy incorrectly attached to a
+    // real product.
+    fieldEl.style.display = 'none';
+    return;
+  }
+  fieldEl.removeAttribute('style');
+  fieldEl.textContent = text;
+}
+
+/** Injects a "New" / "Sale" / "% Off" / "Sold Out" badge, or hides it when none applies. */
+function injectBadge(fieldEl, product) {
+  let label = '';
+  if (!product.inStock) {
+    label = 'Sold Out';
+  } else if (product.compareAtPrice && product.compareAtPrice > product.price) {
+    const pct = Math.round((1 - product.price / product.compareAtPrice) * 100);
+    label = pct > 0 ? `-${pct}%` : 'Sale';
+  } else if (product.isNew) {
+    label = 'New';
+  }
+  if (!label) {
+    fieldEl.style.display = 'none';
+    return;
+  }
+  fieldEl.removeAttribute('style');
+  fieldEl.textContent = label;
+}
+
+/** Injects a numeric rating (and optional review count) into a data-store-field="rating" element. */
+function injectRating(fieldEl, product) {
+  const rating = product.rating ?? product.averageRating;
+  if (rating == null) {
+    fieldEl.style.display = 'none';
+    return;
+  }
+  fieldEl.removeAttribute('style');
+  fieldEl.setAttribute('data-rating-value', String(rating));
+  const count = product.reviewCount ?? product.ratingCount;
+  fieldEl.textContent = count != null ? `${rating.toFixed ? rating.toFixed(1) : rating} (${count})` : `${rating}`;
+}
+
+/** Injects an inventory/stock-status label into a data-store-field="inventory" element. */
+function injectInventory(fieldEl, product) {
+  const qty = product.inventory ?? product.stock ?? product.quantity;
+  if (!product.inStock) {
+    fieldEl.textContent = 'Out of stock';
+    fieldEl.setAttribute('data-out-of-stock', '1');
+    return;
+  }
+  fieldEl.removeAttribute('data-out-of-stock');
+  if (typeof qty === 'number' && qty > 0 && qty <= 10) {
+    fieldEl.textContent = `Only ${qty} left`;
+  } else {
+    fieldEl.textContent = 'In stock';
+  }
+}
+
 /** Injects the product title into a data-store-field="title" element. */
 function injectTitle(fieldEl, product, storeBasePath) {
   const tag = (fieldEl.tagName || '').toLowerCase();
@@ -107,14 +189,34 @@ function injectTitle(fieldEl, product, storeBasePath) {
   }
 }
 
+/** Injects the product slug into a data-store-field="slug" element (e.g. a hidden SKU/reference node some themes render). */
+function injectSlug(fieldEl, product) {
+  fieldEl.textContent = product.slug || '';
+  fieldEl.setAttribute('data-product-slug', product.slug || '');
+}
+
+/** Injects the currency code into a data-store-field="currency" element. */
+function injectCurrency(fieldEl, product, currency) {
+  fieldEl.textContent = product.currency || currency || '';
+}
+
 /** Injects the formatted price into a data-store-field="price" element. */
 function injectPrice(fieldEl, product, currency) {
   const priceStr = formatPrice(product.price, product.currency || currency);
   fieldEl.textContent = priceStr;
 
-  // If the product has a compare-at price, add a strikethrough element —
-  // but only when the card doesn't already have one (avoid double-injection
-  // on re-renders triggered by SSE events).
+  // If the theme's own markup already has a dedicated compare-price
+  // element (tagged by Stage 2 as data-store-field="compare-price"), that
+  // element's own injector below handles it — don't also synthesize a
+  // second one here, or the card would show the "was" price twice.
+  const card = fieldEl.closest('[data-store-block="product-card"]');
+  const hasExplicitCompareField = !!card?.querySelector('[data-store-field="compare-price"]');
+  if (hasExplicitCompareField) return;
+
+  // Back-compat fallback for themes with no dedicated compare-price
+  // element in their card markup — add a synthetic strikethrough sibling,
+  // but only when the card doesn't already have one (avoid
+  // double-injection on re-renders triggered by SSE events).
   if (
     product.compareAtPrice &&
     product.compareAtPrice > product.price &&
@@ -126,6 +228,21 @@ function injectPrice(fieldEl, product, currency) {
     compareEl.style.cssText = 'text-decoration:line-through;opacity:0.55;margin-left:6px;font-size:0.85em;';
     fieldEl.after(compareEl);
   }
+}
+
+/**
+ * Injects the compare-at ("was") price into an explicitly tagged
+ * data-store-field="compare-price" element. Hides the element gracefully
+ * when the product isn't currently discounted, rather than leaving stale
+ * strikethrough text visible.
+ */
+function injectComparePrice(fieldEl, product, currency) {
+  if (!product.compareAtPrice || product.compareAtPrice <= product.price) {
+    fieldEl.style.display = 'none';
+    return;
+  }
+  fieldEl.removeAttribute('style');
+  fieldEl.textContent = formatPrice(product.compareAtPrice, product.currency || currency);
 }
 
 /** Wires the add-to-cart element for the theme-aware path. */
@@ -195,10 +312,18 @@ export function renderProductCards(products, cardTemplateHtml, opts = {}) {
     card.querySelectorAll('[data-store-field]').forEach((fieldEl) => {
       const field = fieldEl.getAttribute('data-store-field');
       switch (field) {
-        case 'image':       injectImage(fieldEl, product);                         break;
-        case 'title':       injectTitle(fieldEl, product, storeBasePath);          break;
-        case 'price':       injectPrice(fieldEl, product, currency);               break;
-        case 'add-to-cart': injectAddToCart(fieldEl, product, storeBasePath);      break;
+        case 'image':           injectImage(fieldEl, product);                         break;
+        case 'secondary-image': injectSecondaryImage(fieldEl, product);                break;
+        case 'title':           injectTitle(fieldEl, product, storeBasePath);          break;
+        case 'description':     injectDescription(fieldEl, product);                   break;
+        case 'price':           injectPrice(fieldEl, product, currency);               break;
+        case 'compare-price':   injectComparePrice(fieldEl, product, currency);         break;
+        case 'slug':             injectSlug(fieldEl, product);                          break;
+        case 'currency':         injectCurrency(fieldEl, product, currency);            break;
+        case 'badge':           injectBadge(fieldEl, product);                          break;
+        case 'rating':          injectRating(fieldEl, product);                         break;
+        case 'inventory':       injectInventory(fieldEl, product);                      break;
+        case 'add-to-cart':     injectAddToCart(fieldEl, product, storeBasePath);      break;
         // Any other data-store-field values are left as-is — the theme's
         // static content for unknown fields is preserved, not wiped.
         default: break;

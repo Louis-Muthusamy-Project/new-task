@@ -341,6 +341,20 @@ exports.listBestSellers = async (req, res) => {
 };
 
 /**
+ * GET /api/store/:storeId/products/sale
+ * Sale Products section — Active products currently marked down
+ * (compareAtPrice > price). See ProductService.getSaleProducts.
+ */
+exports.listSaleProducts = async (req, res) => {
+  const { storeId } = req.params;
+  requireValidId(storeId, 'storeId');
+
+  const limit = Math.min(parseInt(req.query.limit, 10) || 8, 30);
+  const items = await productService.getSaleProducts(storeId, limit);
+  res.status(200).json({ success: true, data: items.map(toPublicProduct) });
+};
+
+/**
  * GET /api/store/:storeId/pages
  * Published pages only, minimal shape — backs the Menu and Footer nav.
  */

@@ -172,6 +172,10 @@ export const storefrontApi = {
   listBestSellers: async (storeId, limit = 8) =>
     unwrap(await requestJson(`/store/${storeId}/products/bestsellers${qs({ limit })}`)).data,
 
+  // GET /api/store/:storeId/products/sale
+  listSaleProducts: async (storeId, limit = 8) =>
+    unwrap(await requestJson(`/store/${storeId}/products/sale${qs({ limit })}`)).data,
+
   // GET /api/store/:storeId/collections
   listCollections: async (storeId, params = {}) =>
     unwrap(await requestJson(`/store/${storeId}/collections${qs(params)}`)).data,

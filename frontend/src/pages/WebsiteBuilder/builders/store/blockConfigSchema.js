@@ -47,6 +47,8 @@ export const GRID_FAMILY_TYPES = new Set([
   'latest-products',
   'best-sellers',
   'related-products',
+  'sale-products',
+  'category-products',
   'category-grid',
 ]);
 
@@ -66,6 +68,8 @@ const DEFAULT_LIMIT_BY_TYPE = {
   'latest-products': 8,
   'best-sellers': 8,
   'related-products': 4,
+  'sale-products': 8,
+  'category-products': 12,
   'category-grid': 6,
 };
 
@@ -110,7 +114,7 @@ export const CONFIG_FIELDS = [
     // which writes CURRENT_COLLECTION_TOKEN instead of a literal id
     // (§4 mode 1).
     widget: 'collection-picker',
-    appliesTo: new Set(['product-grid', 'category-grid']),
+    appliesTo: new Set(['product-grid', 'category-products', 'category-grid']),
     defaultFor: () => CURRENT_COLLECTION_TOKEN,
   },
   {
@@ -180,7 +184,7 @@ export function buildDefaultConfig(type) {
   return {
     limit: seededLimit,
     ...(isCategoryGrid ? {} : { sort: 'latest' }),
-    ...(type === 'product-grid' || isCategoryGrid ? { collectionBinding: CURRENT_COLLECTION_TOKEN } : {}),
+    ...(type === 'product-grid' || type === 'category-products' || isCategoryGrid ? { collectionBinding: CURRENT_COLLECTION_TOKEN } : {}),
     filters: { tag: '', priceMin: null, priceMax: null, inStockOnly: false },
     layout: {
       columns: isCategoryGrid ? 3 : 4,

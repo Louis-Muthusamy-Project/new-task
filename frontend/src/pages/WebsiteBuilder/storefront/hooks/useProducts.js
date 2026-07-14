@@ -184,6 +184,25 @@ export function useBestSellers(limit = 8) {
 }
 
 /**
+ * useSaleProducts(limit) — "Sale Products" section: Active products
+ * currently marked down (`compareAtPrice` > `price`). Reloads on the same
+ * product/inventory events every other listing hook does, so a price
+ * change that starts/ends a discount shows up immediately.
+ */
+export function useSaleProducts(limit = 8) {
+  const { storeId } = useStorefront();
+
+  const { data, loading, error, reload } = useStorefrontQuery(
+    () => storefrontApi.listSaleProducts(storeId, limit),
+    [storeId, limit]
+  );
+
+  useReloadOnStoreEvents(PRODUCT_EVENTS, reload);
+
+  return { products: data || [], loading, error, reload };
+}
+
+/**
  * useCollections(limit) — Homepage's "Shop by Collection" grid. Reloads on
  * collection events (a collection was created/renamed/deleted) AND
  * product events (a collection's `productCount` changes as products are

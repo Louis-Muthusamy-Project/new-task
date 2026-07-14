@@ -41,6 +41,8 @@ const GRID_FAMILY_TYPES = new Set([
   'latest-products',
   'best-sellers',
   'related-products',
+  'sale-products',
+  'category-products',
   'category-grid',
 ]);
 
@@ -56,6 +58,8 @@ const DEFAULT_LIMIT_BY_TYPE = {
   'latest-products': 8,
   'best-sellers': 8,
   'related-products': 4,
+  'sale-products': 8,
+  'category-products': 12,
   'category-grid': 6,
 };
 
@@ -91,7 +95,7 @@ function buildDefaultConfig(type, opts = {}) {
     // ── Data selection ──────────────────────────────────────────────
     limit: seededLimit,
     ...(isCategoryGrid ? {} : { sort: 'latest' }),
-    ...(type === 'product-grid' || isCategoryGrid ? { collectionBinding: CURRENT_COLLECTION_TOKEN } : {}),
+    ...(type === 'product-grid' || type === 'category-products' || isCategoryGrid ? { collectionBinding: CURRENT_COLLECTION_TOKEN } : {}),
     filters: { tag: '', priceMin: null, priceMax: null, inStockOnly: false },
 
     // ── Presentation ────────────────────────────────────────────────

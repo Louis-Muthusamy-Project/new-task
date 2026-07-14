@@ -261,7 +261,7 @@ function hasViewAllAdjacency($, el) {
 function scoreProductCandidate(candidate, ctx) {
   const { cls, text, repeaters, hasViewAll, afterProductDetail, isFirstOnPage, isLastOnPage } = candidate;
   const label = `${cls} ${text.slice(0, 160)}`.toLowerCase();
-  const scores = { featured: 0, latest: 0, bestSellers: 0, related: 0 };
+  const scores = { featured: 0, latest: 0, bestSellers: 0, related: 0, sale: 0 };
 
   // Synonym-set matching (externalized, versioned, appendable data file).
   const synonymConcept = matchSynonymConcept(label);

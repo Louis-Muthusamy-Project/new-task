@@ -30,7 +30,7 @@
 const { detectStoreComponents } = require('./detectStoreComponents');
 const { convertProductSections } = require('./productSectionConverter');
 const { injectStoreBlocks } = require('./storeBlockInjector');
-const { extractProductCardTemplate } = require('../../utils/productCardExtractor');
+const { extractProductCardTemplates } = require('../../utils/productCardExtractor');
 
 /**
  * Runs the full Detect → Convert → Inject pipeline for one page's
@@ -64,24 +64,34 @@ function runTemplateImportPipeline(html, pageMetadata = {}) {
 
     const detectionSucceeded = detectResult.ok && detectResult.detected.length > 0;
 
-    // Extract product card template from the final componentized HTML
-    let productCardTemplate = null;
+    // Extract a product card template for EVERY grid-family container
+    // instance on the page (checklist item 1 — a page can have several
+    // product sections, e.g. Featured Products AND Best Sellers AND a
+    // plain Product Grid, each with its own card markup). This also
+    // stamps a `data-card-template-id` on each container so the frontend
+    // can match container -> template 1:1 instead of guessing.
+    let productCardTemplate = null; // back-compat: first template found, same shape as before
+    let productCardTemplates = [];  // full per-container array
+    let finalHtml = injectResult.html;
     try {
-      const cardResult = extractProductCardTemplate(injectResult.html);
-      if (cardResult) {
-        productCardTemplate = cardResult.cardTemplateHtml;
+      const cardResult = extractProductCardTemplates(injectResult.html);
+      productCardTemplates = cardResult.templates || [];
+      finalHtml = cardResult.html || injectResult.html;
+      if (productCardTemplates.length) {
+        productCardTemplate = productCardTemplates[0].cardTemplateHtml;
       }
     } catch (cardErr) {
       console.warn('[templateImport] productCardTemplate extraction failed (non-fatal):', cardErr?.message || cardErr);
     }
 
     return {
-      html: injectResult.html,
+      html: finalHtml,
       detectedComponents: detectResult.detected,
       componentSummary: injectResult.componentSummary,
       storeReady: injectResult.storeReady,
       previewStatus: injectResult.storeReady ? 'ready' : (detectionSucceeded ? 'static' : 'fallback'),
       productCardTemplate,
+      productCardTemplates,
       pipeline: {
         detect: { ok: detectResult.ok, error: detectResult.error || null },
         convert: { ok: convertResult.ok, cardsTagged: convertResult.cardsTagged || 0, error: convertResult.error || null },
@@ -100,6 +110,7 @@ function runTemplateImportPipeline(html, pageMetadata = {}) {
       storeReady: false,
       previewStatus: 'fallback',
       productCardTemplate: null,
+      productCardTemplates: [],
       pipeline: { detect: { ok: false, error: err?.message || String(err) }, convert: { ok: false }, inject: { ok: false } },
     };
   }

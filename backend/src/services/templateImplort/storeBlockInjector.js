@@ -45,7 +45,7 @@ const { CONFIG_ATTR, GRID_FAMILY_TYPES, buildDefaultConfig } = require('../../ut
 // at least one product-listing-shaped block (grid family or a PDP).
 const LIVE_DATA_TYPES = new Set([
   'product-grid', 'featured-products', 'latest-products', 'best-sellers',
-  'related-products', 'category-grid', 'product-detail', 'cart', 'checkout',
+  'related-products', 'sale-products', 'category-products', 'category-grid', 'product-detail', 'cart', 'checkout',
   'wishlist', 'wishlist-button', 'search', 'pagination', 'cart-button', 'checkout-button',
 ]);
 

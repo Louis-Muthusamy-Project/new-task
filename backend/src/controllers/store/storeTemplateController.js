@@ -30,7 +30,6 @@ const { uploadBufferToCloudinary } = require('../../config/cloudinary');
 const { minifyCss } = require('../../utils/minifyCss');
 const { optimizeImageUrl } = require('../../utils/storeImageOptimizer');
 const { runTemplateImportPipeline } = require('../../services/templateImplort');
-const { extractProductCardTemplate } = require('../../utils/productCardExtractor');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Multer — in-memory, ZIP-only
@@ -835,37 +834,34 @@ const parseStoreTemplateZip = async (zipBuffer, { cloudinaryFolder }) => {
     // WordPress-imported pages, not this one. Purely additive, same as
     // before: only ever adds attributes to elements that were already
     // there — layout, CSS, spacing, and markup structure are untouched.
+    // Product card extraction (one template PER grid-family container
+    // instance — checklist item 1) already runs INSIDE
+    // runTemplateImportPipeline (Stage 3.5). Reusing its result here
+    // instead of re-parsing/re-extracting the same HTML a second time
+    // avoids a redundant cheerio parse per page (checklist item 9 —
+    // "avoid repeated template extraction") and picks up the
+    // `data-card-template-id` stamps the pipeline's `html` output now
+    // carries, so multi-section pages render every section with its own
+    // theme card, not just the first one found on the page.
     const {
       html: bodyHtml,
       detectedComponents,
       componentSummary: pageComponentSummary,
       storeReady: pageStoreReady,
       previewStatus: pagePreviewStatus,
+      productCardTemplate,
+      productCardTemplates,
     } = runTemplateImportPipeline(bodyHtmlRaw, {
       isHome: isHome,
       slug: pageSlug,
       name: pageName,
     });
 
-    // Theme-Aware Product Card Extraction — runs after Stage 2 has tagged
-    // every repeating card child with data-store-block="product-card" and
-    // its sub-elements with data-store-field="image|title|price|add-to-cart".
-    // Extracts the FIRST such card's outerHTML so the storefront renderer
-    // can clone-and-inject real product data into the theme's own markup
-    // at display time, instead of replacing it with a generic React component.
-    // Wrapped in try/catch: a failure here must NEVER abort a successful import.
-    let productCardTemplate = null;
-    try {
-      const cardResult = extractProductCardTemplate(bodyHtml);
-      if (cardResult) {
-        productCardTemplate = cardResult.cardTemplateHtml;
-        console.log(
-          `[store-import-engine] productCardTemplate extracted for page "${pageSlug}"`,
-          `(containerType=${cardResult.containerType}, fields=${cardResult.fieldsFound.join(',')})`
-        );
-      }
-    } catch (cardErr) {
-      console.warn('[store-import-engine] productCardTemplate extraction failed (non-fatal):', cardErr?.message || cardErr);
+    if (productCardTemplates?.length) {
+      console.log(
+        `[store-import-engine] ${productCardTemplates.length} productCardTemplate(s) extracted for page "${pageSlug}"`,
+        `(types=${productCardTemplates.map((t) => t.containerType).join(',')})`
+      );
     }
 
     pages.push({
@@ -888,8 +884,11 @@ const parseStoreTemplateZip = async (zipBuffer, { cloudinaryFolder }) => {
         // path to clone the theme's own card markup per product instead of
         // rendering a generic React component (see utils/productCardExtractor.js
         // and frontend/storefront/productCardRenderer.js).
-        // null = no tagged card found; ThemeRenderer falls back to generic renderer.
+        // productCardTemplate: back-compat single template (first found).
+        // productCardTemplates: full per-container array — [] = no tagged
+        // card found; ThemeRenderer falls back to the generic renderer.
         productCardTemplate,
+        productCardTemplates: productCardTemplates || [],
       },
     });
   }

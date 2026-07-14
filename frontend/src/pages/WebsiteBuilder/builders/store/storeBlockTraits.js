@@ -59,7 +59,7 @@ import {
 const BLOCK_TYPE_VOCABULARY = [
   'header', 'footer', 'navigation', 'hero',
   'product-grid', 'featured-products', 'category-grid', 'latest-products',
-  'best-sellers', 'related-products', 'product-detail',
+  'best-sellers', 'related-products', 'sale-products', 'category-products', 'product-detail',
   'cart', 'checkout', 'wishlist', 'wishlist-button', 'pagination',
   'search', 'cart-button', 'checkout-button',
   // Not detector output, but hand-dropped GrapesJS-only blocks that

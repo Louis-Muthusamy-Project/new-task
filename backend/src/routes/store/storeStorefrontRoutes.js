@@ -46,6 +46,7 @@ router.get('/:storeId/pages/:slug', cache, asyncHandler(storeStorefrontControlle
 router.get('/:storeId/products/featured', cache, asyncHandler(storeStorefrontController.listFeaturedProducts));
 router.get('/:storeId/products/latest', cache, asyncHandler(storeStorefrontController.listLatestProducts));
 router.get('/:storeId/products/bestsellers', cache, asyncHandler(storeStorefrontController.listBestSellers));
+router.get('/:storeId/products/sale', cache, asyncHandler(storeStorefrontController.listSaleProducts));
 
 // Product Detail Page — looked up by slug (/products/:slug on the
 // storefront), so it must be registered before the /:productId param

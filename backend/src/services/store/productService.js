@@ -350,6 +350,28 @@ async function getFeaturedProducts(storeId, limit = 8) {
   return getLatestProducts(storeId, limit);
 }
 
+/**
+ * Sale Products section — Active products currently marked down, i.e.
+ * `compareAtPrice` is set and strictly greater than the current `price`.
+ * Reads straight off StoreProduct (no separate "on sale" flag/table) so a
+ * price edit that starts or ends a discount is reflected immediately, the
+ * same way every other public read here works off the one source of
+ * truth. Sorted newest-discounted-first; never throws for an empty result
+ * — an empty array is a completely valid "nothing on sale right now".
+ */
+async function getSaleProducts(storeId, limit = 8) {
+  const cappedLimit = Math.min(parseInt(limit, 10) || 8, 30);
+  const mongoose = require('mongoose');
+  const filter = {
+    storeId: mongoose.Types.ObjectId.isValid(storeId) ? new mongoose.Types.ObjectId(storeId) : storeId,
+    isDeleted: false,
+    status: 'Active',
+    compareAtPrice: { $ne: null, $exists: true },
+    $expr: { $gt: ['$compareAtPrice', '$price'] },
+  };
+  return StoreProduct.find(filter).sort({ updatedAt: -1 }).limit(cappedLimit);
+}
+
 module.exports = {
   listProducts,
   getProduct,
@@ -363,4 +385,5 @@ module.exports = {
   searchPublicProducts,
   getLatestProducts,
   getFeaturedProducts,
+  getSaleProducts,
 };
