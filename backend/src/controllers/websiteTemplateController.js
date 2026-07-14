@@ -1060,6 +1060,7 @@ console.log(htmlEntries.length);
         componentSummary,
         storeReady,
         previewStatus,
+        productCardTemplate,
       } = runTemplateImportPipeline(bodyHtml, { isHome, slug: pageSlug, name: pageName });
 
       console.log(
@@ -1090,6 +1091,7 @@ console.log(htmlEntries.length);
           componentSummary,
           storeReady,
           previewStatus,
+          productCardTemplate,
         },
       });
 

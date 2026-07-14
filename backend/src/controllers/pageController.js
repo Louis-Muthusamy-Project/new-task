@@ -227,6 +227,13 @@ exports.updatePage = async (req, res) => {
     }
   }
 
+  if (updates.content) {
+    updates.content = {
+      ...(page.content || {}),
+      ...updates.content,
+    };
+  }
+
   if (updates.slug) {
     const baseSlug = slugify(updates.slug);
     // Only run the uniqueness check when the slug is actually changing.

@@ -80,3 +80,41 @@ exports.deleteCustomer = async (req, res) => {
   const customer = await customerService.deleteCustomer(storeId, id);
   res.status(200).json({ success: true, data: { id: customer._id, deleted: true } });
 };
+
+// ─────────────────────────────────────────────────────────────────────────
+// POST /api/store/:storeId/admin/customers/:id/addresses
+// ─────────────────────────────────────────────────────────────────────────
+exports.addAddress = async (req, res) => {
+  const { storeId, id } = req.params;
+  requireValidId(storeId, 'storeId');
+  requireValidId(id, 'id');
+
+  const customer = await customerService.addCustomerAddress(storeId, id, req.body);
+  res.status(200).json({ success: true, data: customer });
+};
+
+// ─────────────────────────────────────────────────────────────────────────
+// PATCH /api/store/:storeId/admin/customers/:id/addresses/:addressId
+// ─────────────────────────────────────────────────────────────────────────
+exports.updateAddress = async (req, res) => {
+  const { storeId, id, addressId } = req.params;
+  requireValidId(storeId, 'storeId');
+  requireValidId(id, 'id');
+  requireValidId(addressId, 'addressId');
+
+  const customer = await customerService.updateCustomerAddress(storeId, id, addressId, req.body);
+  res.status(200).json({ success: true, data: customer });
+};
+
+// ─────────────────────────────────────────────────────────────────────────
+// DELETE /api/store/:storeId/admin/customers/:id/addresses/:addressId
+// ─────────────────────────────────────────────────────────────────────────
+exports.deleteAddress = async (req, res) => {
+  const { storeId, id, addressId } = req.params;
+  requireValidId(storeId, 'storeId');
+  requireValidId(id, 'id');
+  requireValidId(addressId, 'addressId');
+
+  const customer = await customerService.deleteCustomerAddress(storeId, id, addressId);
+  res.status(200).json({ success: true, data: customer });
+};

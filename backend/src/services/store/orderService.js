@@ -66,10 +66,13 @@ async function attachCustomers(orders) {
     .lean();
   const customerMap = new Map(customers.map((c) => [String(c._id), c]));
 
-  return orders.map((o) => ({
-    ...o,
-    customer: o.customerId ? customerMap.get(String(o.customerId)) || null : null,
-  }));
+  return orders.map((o) => {
+    const customer = o.customerId ? customerMap.get(String(o.customerId)) : null;
+    return {
+      ...o,
+      customer: customer || (o.customerId ? { firstName: 'Deleted', lastName: 'Customer', email: '' } : null),
+    };
+  });
 }
 
 async function listOrders(storeId, { status, search } = {}) {
@@ -203,14 +206,29 @@ async function createOrder(storeId, body) {
     const product = productMap.get(String(line.productId));
     if (!product) continue;
     const quantity = Math.max(parseInt(line.quantity, 10) || 1, 1);
+    
+    // Resolve variant title and pricing
+    let price = product.price || 0;
+    let title = product.title;
+    
+    if (line.variantId && product.variants && product.variants.length > 0) {
+      const variant = product.variants.find(v => String(v._id) === String(line.variantId));
+      if (variant) {
+        price = variant.price;
+        title = `${product.title} - ${variant.title}`;
+      }
+    }
+    
     const override = priceOverrides ? priceOverrides[String(product._id)] : null;
-    const price = override != null ? Number(override) : (product.price || 0);
-    subtotal += price * quantity;
+    const resolvedPrice = override != null ? Number(override) : price;
+    
+    subtotal += resolvedPrice * quantity;
     orderItems.push({
       productId: product._id,
-      title: product.title,
+      variantId: line.variantId || null,
+      title,
       quantity,
-      price,
+      price: resolvedPrice,
     });
   }
 

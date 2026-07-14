@@ -80,6 +80,13 @@ async function updatePage(id, body, user) {
     }
   }
 
+  if (updates.content) {
+    updates.content = {
+      ...(page.content || {}),
+      ...updates.content,
+    };
+  }
+
   if (updates.slug) {
     const baseSlug = slugify(updates.slug);
     if (baseSlug !== page.slug) {

@@ -30,6 +30,7 @@
 const { detectStoreComponents } = require('./detectStoreComponents');
 const { convertProductSections } = require('./productSectionConverter');
 const { injectStoreBlocks } = require('./storeBlockInjector');
+const { extractProductCardTemplate } = require('../../utils/productCardExtractor');
 
 /**
  * Runs the full Detect → Convert → Inject pipeline for one page's
@@ -43,6 +44,7 @@ const { injectStoreBlocks } = require('./storeBlockInjector');
  *   componentSummary: object,     // counts / needsManualMapping / storeReady inputs
  *   storeReady: boolean,          // true once the page has at least one live-hydratable block
  *   previewStatus: 'ready'|'static'|'fallback',
+ *   productCardTemplate: string|null, // extracted outerHTML of the first product card
  * }}
  */
 function runTemplateImportPipeline(html, pageMetadata = {}) {
@@ -62,12 +64,24 @@ function runTemplateImportPipeline(html, pageMetadata = {}) {
 
     const detectionSucceeded = detectResult.ok && detectResult.detected.length > 0;
 
+    // Extract product card template from the final componentized HTML
+    let productCardTemplate = null;
+    try {
+      const cardResult = extractProductCardTemplate(injectResult.html);
+      if (cardResult) {
+        productCardTemplate = cardResult.cardTemplateHtml;
+      }
+    } catch (cardErr) {
+      console.warn('[templateImport] productCardTemplate extraction failed (non-fatal):', cardErr?.message || cardErr);
+    }
+
     return {
       html: injectResult.html,
       detectedComponents: detectResult.detected,
       componentSummary: injectResult.componentSummary,
       storeReady: injectResult.storeReady,
       previewStatus: injectResult.storeReady ? 'ready' : (detectionSucceeded ? 'static' : 'fallback'),
+      productCardTemplate,
       pipeline: {
         detect: { ok: detectResult.ok, error: detectResult.error || null },
         convert: { ok: convertResult.ok, cardsTagged: convertResult.cardsTagged || 0, error: convertResult.error || null },
@@ -85,6 +99,7 @@ function runTemplateImportPipeline(html, pageMetadata = {}) {
       componentSummary: { totalDetected: 0, byType: {}, needsManualMapping: [], passthroughTypes: [], liveDataBlocks: 0 },
       storeReady: false,
       previewStatus: 'fallback',
+      productCardTemplate: null,
       pipeline: { detect: { ok: false, error: err?.message || String(err) }, convert: { ok: false }, inject: { ok: false } },
     };
   }

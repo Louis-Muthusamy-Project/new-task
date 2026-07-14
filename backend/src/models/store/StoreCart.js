@@ -28,6 +28,7 @@ const { Schema } = mongoose;
 const StoreCartItemSchema = new Schema(
   {
     productId: { type: Schema.Types.ObjectId, ref: 'StoreProduct', required: true },
+    variantId: { type: Schema.Types.ObjectId, default: null },
     quantity: { type: Number, default: 1, min: 1 },
   },
   { _id: false }

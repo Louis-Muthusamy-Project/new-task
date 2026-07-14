@@ -4,6 +4,7 @@ const { Schema } = mongoose;
 const StoreOrderItemSchema = new Schema(
   {
     productId: { type: Schema.Types.ObjectId, ref: 'StoreProduct' },
+    variantId: { type: Schema.Types.ObjectId, default: null },
     title: { type: String, trim: true },
     quantity: { type: Number, default: 1 },
     price: { type: Number, default: 0 },

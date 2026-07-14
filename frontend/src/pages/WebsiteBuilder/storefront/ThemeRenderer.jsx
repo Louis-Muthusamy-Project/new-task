@@ -16,6 +16,7 @@ import CollectionsGrid from './components/CollectionsGrid';
 import ProductPage from './pages/ProductPage';
 import CheckoutPage from './pages/CheckoutPage';
 import { readConfigFromElement, CURRENT_COLLECTION_TOKEN } from '../builders/store/blockConfigSchema';
+import { renderProductCards } from './productCardRenderer';
 
 // ThemeRenderer.jsx
 //
@@ -260,9 +261,36 @@ function ImportedWishlist() {
 }
 
 /** Mounts (or re-mounts) the right live component into one `data-store-block` container. */
-function mountDataDrivenBlock(el, type, paginationStore) {
+function mountDataDrivenBlock(el, type, paginationStore, page) {
   if (el.dataset.themeHydrated === '1') return;
   el.dataset.themeHydrated = '1';
+
+  // ── Theme-Aware Path ────────────────────────────────────────────────────
+  // When the page carries a productCardTemplate (extracted at import time
+  // from the uploaded ZIP by productCardExtractor.js), we clone the theme's
+  // own card markup per-product instead of wiping the container and mounting
+  // a generic React component. This preserves the theme's exact layout, CSS
+  // classes, hover effects, spacing, and animations byte-for-byte.
+  //
+  // Applies to all product-listing grid types; NOT to cart/checkout/wishlist
+  // (those have no card template concept) or to category-grid (different
+  // card shape — no price/CTA — handled by the generic path unchanged).
+  const cardTemplate = page?.content?.productCardTemplate;
+  const THEME_AWARE_TYPES = new Set([
+    'product-grid', 'featured-products', 'latest-products',
+    'best-sellers', 'related-products',
+  ]);
+
+  if (cardTemplate && THEME_AWARE_TYPES.has(type)) {
+    mountThemeAwareBlock(el, type, cardTemplate, page, paginationStore);
+    return;
+  }
+
+  // ── Generic Fallback Path (unchanged from original) ──────────────────────
+  // Activated when:
+  //   - productCardTemplate is null (non-ecommerce page, detection missed cards)
+  //   - type is cart / checkout / wishlist / product-detail / category-grid
+  // These types have no theme-card concept and always use the generic components.
 
   // Replace the static placeholder content with a mount point — the
   // container element itself (and every class/style the theme's CSS
@@ -305,6 +333,144 @@ function mountDataDrivenBlock(el, type, paginationStore) {
     default:
       break;
   }
+}
+
+// ── Theme-Aware Grid Block Mounter ─────────────────────────────────────────
+// Replaces the static product cards in a theme-uploaded grid container with
+// real product data from the Store Engine, while keeping the theme's card
+// layout and CSS entirely intact. Called INSTEAD of the generic createRoot
+// path when page.content.productCardTemplate is available.
+//
+// Lifecycle:
+//   1. Reads block config (limit, sort, collectionBinding) from the container.
+//   2. Fetches live products from the Store Engine public API.
+//   3. Clones the card template per-product via renderProductCards().
+//   4. Replaces the container's children with the cloned cards.
+//   5. Wires per-card click handlers (navigate to product page).
+//   6. On SSE-driven reload: steps 2–5 repeat; step 3 re-clones fresh cards.
+//
+// Important: this function intentionally does NOT use createRoot() — the
+// container element is manipulated imperatively after the page's raw HTML
+// has already been rendered via dangerouslySetInnerHTML.
+async function mountThemeAwareBlock(el, type, cardTemplateHtml, page, paginationStore) {
+  // Guard: don't double-mount if already hydrated.
+  if (el.dataset.themeAwareHydrated === '1') return;
+  el.dataset.themeAwareHydrated = '1';
+
+  const config = blockConfig(el);
+  const limit   = config.limit || 8;
+  const sort    = config.sort  || 'latest';
+  const storeId = page?.storeId; // may be undefined in some contexts; API handles it via StorefrontContext
+
+  // Determine which API endpoint to call for this block type.
+  // The storefrontApi is the same public API every other storefront section
+  // uses — no new endpoint, just a direct call outside the React hook cycle.
+  const fetchProducts = async () => {
+    try {
+      switch (type) {
+        case 'featured-products':
+          return await storefrontApi.listFeaturedProducts(storeId, limit);
+        case 'latest-products':
+          return await storefrontApi.listLatestProducts(storeId, limit);
+        case 'best-sellers':
+          return await storefrontApi.listBestSellers(storeId, limit);
+        default: {
+          // product-grid, related-products: use the general listProducts endpoint
+          const collectionId = config.collectionId;
+          const result = await storefrontApi.listProducts(storeId, { limit, sort, collectionId });
+          // listProducts returns { items, meta }; featured/latest/best-sellers return arrays
+          return result?.items || result || [];
+        }
+      }
+    } catch (err) {
+      console.warn('[ThemeRenderer] theme-aware fetch failed:', err?.message || err);
+      return [];
+    }
+  };
+
+  // injectCards: fetches products and replaces the container's children
+  // with cloned, data-injected cards. Called on first mount and on every
+  // SSE-driven reload (product.created / product.updated / product.deleted).
+  const injectCards = async () => {
+    const rawProducts = await fetchProducts();
+    const products = Array.isArray(rawProducts) ? rawProducts : [];
+
+    if (!products.length) {
+      // No products yet — leave the static template cards visible so the
+      // page doesn't go blank. (Same "never empty by construction" pattern
+      // the generic useLatestProducts hook uses.)
+      return;
+    }
+
+    // Build the currency from the container's nearest storeInfo context.
+    // Accessing StorefrontContext here would require a React hook (not
+    // available outside a component). We use a data attribute that
+    // StorefrontContext writes to the document root as a light bridge,
+    // falling back to USD if not set.
+    const currency =
+      document.documentElement.dataset.storeCurrency ||
+      products[0]?.currency ||
+      'USD';
+
+    const fragment = renderProductCards(products, cardTemplateHtml, { currency });
+    if (!fragment.childNodes.length) return; // renderProductCards returned empty on error
+
+    // Replace the container's children (the static template cards)
+    // with the populated clones. The container element itself — with all
+    // its CSS classes, grid layout, and data attributes — is never touched.
+    el.innerHTML = '';
+    el.appendChild(fragment);
+
+    // Wire per-card click handlers: the rendered cards are plain HTML, so
+    // navigation and add-to-cart must be wired imperatively.
+    el.querySelectorAll('[data-product-slug]').forEach((card) => {
+      const slug = card.getAttribute('data-product-slug');
+      if (!slug) return;
+      card.addEventListener('click', (e) => {
+        // Don't hijack clicks on the add-to-cart button — it has its own handler below.
+        if (e.target.closest('[data-store-field="add-to-cart"]')) return;
+        // Navigate: ThemeRenderer lives inside StorefrontApp/StorefrontContext
+        // which manages SPA routing. We dispatch a custom event the context
+        // listens to rather than coupling directly.
+        window.dispatchEvent(new CustomEvent('storefront:navigate', { detail: { type: 'product', slug } }));
+      });
+
+      // Add-to-cart button: dispatch a cart-add event the CartContext listens to.
+      const ctaEl = card.querySelector('[data-store-field="add-to-cart"]');
+      const productId = card.getAttribute('data-product-id');
+      if (ctaEl && productId) {
+        ctaEl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          window.dispatchEvent(new CustomEvent('storefront:addToCart', { detail: { productId, quantity: 1 } }));
+        });
+      }
+    });
+  };
+
+  // Initial render.
+  await injectCards();
+
+  // SSE-driven re-render: when a product is created/updated/deleted, the
+  // ThemePage's storefront context fires a storeEvent. We listen for it
+  // on the el itself (dispatched below) and re-inject cards so the live
+  // storefront always reflects the current product catalogue — same
+  // "add a product, see it immediately" guarantee the generic hooks provide.
+  const PRODUCT_EVENTS = ['product.created', 'product.updated', 'product.deleted', 'inventory.updated'];
+  const onStoreEvent = (e) => {
+    if (PRODUCT_EVENTS.includes(e?.detail?.type)) {
+      // Debounce slightly so rapid consecutive events (e.g. bulk import)
+      // don't fire N simultaneous fetches.
+      clearTimeout(el.__themeAwareReloadTimer);
+      el.__themeAwareReloadTimer = setTimeout(injectCards, 250);
+    }
+  };
+  // ThemePage dispatches 'storefront:storeEvent' on the container when an
+  // SSE event arrives — see ThemePage's useEffect below.
+  el.addEventListener('storefront:storeEvent', onStoreEvent);
+  el.__themeAwareCleanup = () => {
+    el.removeEventListener('storefront:storeEvent', onStoreEvent);
+    clearTimeout(el.__themeAwareReloadTimer);
+  };
 }
 
 /** Light, in-place hydration for header/footer/nav/search/cart/checkout — never replaces markup. */
@@ -466,6 +632,45 @@ function ThemePage({ page }) {
   const paginationStoreRef = useRef(null);
   if (!paginationStoreRef.current) paginationStoreRef.current = createPaginationStore();
 
+  // Wires custom events fired from within Theme-Aware rendered template HTML
+  // (which doesn't run inside React) back into React's application routing & cart contexts.
+  useEffect(() => {
+    const handleNavigate = (e) => {
+      if (e.detail?.slug) {
+        storefront.goToProduct(e.detail.slug);
+      }
+    };
+    const handleAddToCart = (e) => {
+      if (e.detail?.productId) {
+        cart.addItem(e.detail.productId, e.detail.quantity || 1);
+      }
+    };
+
+    window.addEventListener('storefront:navigate', handleNavigate);
+    window.addEventListener('storefront:addToCart', handleAddToCart);
+    return () => {
+      window.removeEventListener('storefront:navigate', handleNavigate);
+      window.removeEventListener('storefront:addToCart', handleAddToCart);
+    };
+  }, [storefront, cart]);
+
+  // Bridges the context's SSE real-time sync stream (product.created, etc.)
+  // down into the theme-aware DOM elements. When an event arrives, ThemePage
+  // dispatches it as a storefront:storeEvent to all matching grid blocks,
+  // which triggers them to reload their product lists from the API.
+  useEffect(() => {
+    if (!storefront?.subscribeToStoreEvents) return undefined;
+    const unsubscribe = storefront.subscribeToStoreEvents((event) => {
+      const root = containerRef.current;
+      if (!root) return;
+      const blocks = root.querySelectorAll('[data-store-block]');
+      blocks.forEach((el) => {
+        el.dispatchEvent(new CustomEvent('storefront:storeEvent', { detail: event }));
+      });
+    });
+    return unsubscribe;
+  }, [storefront]);
+
   useEffect(() => {
     const root = containerRef.current;
     if (!root) return undefined;
@@ -474,7 +679,7 @@ function ThemePage({ page }) {
     blocks.forEach((el) => {
       const type = el.getAttribute('data-store-block');
       if (DATA_DRIVEN_TYPES.has(type)) {
-        mountDataDrivenBlock(el, type, paginationStoreRef.current);
+        mountDataDrivenBlock(el, type, paginationStoreRef.current, page);
       } else if (STATIC_HYDRATE_TYPES.has(type)) {
         hydrateStaticBlock(el, type, { storefront, cart, wishlist, paginationStore: paginationStoreRef.current });
       }
@@ -484,11 +689,16 @@ function ThemePage({ page }) {
     return () => {
       // Unmount every React root this page mounted before the raw HTML
       // is replaced/removed, so React never operates on detached nodes.
+      // Also invoke cleanups on any theme-aware blocks.
       blocks.forEach((el) => {
         const mounted = DATA_ROOTS.get(el);
         if (mounted) {
           mounted.unmount();
           DATA_ROOTS.delete(el);
+        }
+        if (el.__themeAwareCleanup) {
+          el.__themeAwareCleanup();
+          delete el.__themeAwareCleanup;
         }
       });
     };

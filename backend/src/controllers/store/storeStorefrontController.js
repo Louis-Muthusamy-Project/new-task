@@ -384,6 +384,12 @@ exports.getPageBySlug = async (req, res) => {
         html: page.content?.html || '',
         css: page.content?.css || '',
         headLinks: page.content?.headLinks || '',
+        // Theme-Aware Product Renderer: the first tagged product card's
+        // outerHTML, extracted at import time by productCardExtractor.js.
+        // ThemeRenderer clones this per-product instead of mounting a
+        // generic React component — preserving the theme's layout and CSS.
+        // null for non-ecommerce pages or pages where detection found no card.
+        productCardTemplate: page.content?.productCardTemplate || null,
       },
     },
   });
@@ -619,7 +625,7 @@ exports.checkout = async (req, res) => {
   const contactEmail = req.body?.customer?.email || cart.contactEmail;
 
   const order = await orderService.createOrder(storeId, {
-    items: view.items.map((line) => ({ productId: line.productId, quantity: line.quantity })),
+    items: view.items.map((line) => ({ productId: line.productId, variantId: line.variantId, quantity: line.quantity })),
     discountCode: view.discount?.valid ? view.discount.code : undefined,
     shippingAmount: view.shippingChoice?.price || 0,
     paymentMethod,

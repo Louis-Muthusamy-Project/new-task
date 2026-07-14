@@ -13,6 +13,7 @@
 
 const StoreDiscount = require('../../models/store/StoreDiscount');
 const Store = require('../../models/store/Store');
+const StoreCart = require('../../models/store/StoreCart');
 const { notFoundError, badRequestError } = require('./errors');
 const { emitStoreEvent } = require('./storeEvents');
 
@@ -103,6 +104,7 @@ async function updateDiscount(storeId, id, body) {
   const discount = await StoreDiscount.findOne({ _id: id, storeId, isDeleted: false });
   if (!discount) throw notFoundError('Discount not found.');
 
+  const oldCode = discount.code;
   const updates = normalizePayload(body);
   assertValidType(updates.type, updates.value != null ? updates.value : discount.value);
 
@@ -124,6 +126,15 @@ async function updateDiscount(storeId, id, body) {
 
   Object.assign(discount, updates);
   await discount.save();
+
+  // If deactivated or code changed, clear the old/inactive discount code from existing carts
+  if (discount.isActive === false || (updates.code && updates.code !== oldCode)) {
+    await StoreCart.updateMany(
+      { storeId, discountCode: oldCode, isDeleted: false },
+      { $set: { discountCode: '' } }
+    );
+  }
+
   // Covers every admin edit that can change checkout math for a shopper
   // already holding this code applied: value, type, isActive (toggled
   // off), date window, minimum order amount.
@@ -142,6 +153,13 @@ async function deleteDiscount(storeId, id) {
     { new: true }
   );
   if (!discount) throw notFoundError('Discount not found.');
+
+  // Clear from existing active carts
+  await StoreCart.updateMany(
+    { storeId, discountCode: discount.code, isDeleted: false },
+    { $set: { discountCode: '' } }
+  );
+
   emitStoreEvent(storeId, 'discount.deleted', { discountId: discount._id, code: discount.code });
   return discount;
 }

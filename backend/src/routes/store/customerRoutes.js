@@ -14,4 +14,9 @@ router.get('/:storeId/admin/customers/:id', asyncHandler(customerController.getC
 router.patch('/:storeId/admin/customers/:id', asyncHandler(customerController.updateCustomer));
 router.delete('/:storeId/admin/customers/:id', asyncHandler(customerController.deleteCustomer));
 
+// Customer Address Book management
+router.post('/:storeId/admin/customers/:id/addresses', asyncHandler(customerController.addAddress));
+router.patch('/:storeId/admin/customers/:id/addresses/:addressId', asyncHandler(customerController.updateAddress));
+router.delete('/:storeId/admin/customers/:id/addresses/:addressId', asyncHandler(customerController.deleteAddress));
+
 module.exports = router;

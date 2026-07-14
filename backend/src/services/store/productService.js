@@ -34,6 +34,8 @@ const ALLOWED_FIELDS = [
   'collectionIds',
   'tags',
   'status',
+  'options',
+  'variants',
 ];
 
 function normalizePayload(body = {}) {
@@ -60,6 +62,35 @@ function normalizePayload(body = {}) {
       .split(',')
       .map((t) => t.trim())
       .filter(Boolean);
+  }
+
+  if (updates.options) {
+    updates.options = Array.isArray(updates.options) ? updates.options.map(o => ({
+      name: String(o.name || '').trim(),
+      values: Array.isArray(o.values) ? o.values.map(String) : []
+    })).filter(o => o.name) : [];
+  }
+
+  if (updates.variants) {
+    const mongoose = require('mongoose');
+    updates.variants = Array.isArray(updates.variants) ? updates.variants.map(v => {
+      const optionValuesMap = new Map();
+      if (v.optionValues) {
+        const entries = v.optionValues instanceof Map ? v.optionValues.entries() : Object.entries(v.optionValues);
+        for (const [key, value] of entries) {
+          optionValuesMap.set(String(key), String(value));
+        }
+      }
+      return {
+        _id: v._id && mongoose.Types.ObjectId.isValid(v._id) ? new mongoose.Types.ObjectId(v._id) : new mongoose.Types.ObjectId(),
+        title: String(v.title || '').trim(),
+        price: Number(v.price) || 0,
+        compareAtPrice: v.compareAtPrice === '' || v.compareAtPrice == null ? null : Number(v.compareAtPrice),
+        sku: String(v.sku || '').trim(),
+        inventoryQuantity: Number(v.inventoryQuantity) || 0,
+        optionValues: optionValuesMap
+      };
+    }) : [];
   }
 
   // SEO is nested under `seo` but accepted flat (metaTitle/metaDescription)

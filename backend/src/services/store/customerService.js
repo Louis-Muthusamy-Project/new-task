@@ -160,6 +160,46 @@ async function recordOrder(storeId, { name, email }, orderTotal) {
   return customer;
 }
 
+async function addCustomerAddress(storeId, customerId, addressData) {
+  const customer = await StoreCustomer.findOne({ _id: customerId, storeId, isDeleted: false });
+  if (!customer) throw notFoundError('Customer not found.');
+
+  if (addressData.isDefault) {
+    customer.addresses.forEach(a => { a.isDefault = false; });
+  }
+  customer.addresses.push(addressData);
+  await customer.save();
+  emitStoreEvent(storeId, 'customer.updated', { customerId: customer._id });
+  return customer;
+}
+
+async function updateCustomerAddress(storeId, customerId, addressId, addressData) {
+  const customer = await StoreCustomer.findOne({ _id: customerId, storeId, isDeleted: false });
+  if (!customer) throw notFoundError('Customer not found.');
+
+  const address = customer.addresses.id(addressId);
+  if (!address) throw notFoundError('Address not found.');
+
+  if (addressData.isDefault) {
+    customer.addresses.forEach(a => { a.isDefault = false; });
+  }
+
+  Object.assign(address, addressData);
+  await customer.save();
+  emitStoreEvent(storeId, 'customer.updated', { customerId: customer._id });
+  return customer;
+}
+
+async function deleteCustomerAddress(storeId, customerId, addressId) {
+  const customer = await StoreCustomer.findOne({ _id: customerId, storeId, isDeleted: false });
+  if (!customer) throw notFoundError('Customer not found.');
+
+  customer.addresses = customer.addresses.filter(a => String(a._id) !== String(addressId));
+  await customer.save();
+  emitStoreEvent(storeId, 'customer.updated', { customerId: customer._id });
+  return customer;
+}
+
 module.exports = {
   listCustomers,
   getCustomer,
@@ -167,4 +207,7 @@ module.exports = {
   updateCustomer,
   deleteCustomer,
   recordOrder,
+  addCustomerAddress,
+  updateCustomerAddress,
+  deleteCustomerAddress,
 };

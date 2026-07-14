@@ -27,6 +27,30 @@ const StoreProductSchema = new Schema(
       default: 'Draft',
       index: true,
     },
+    // Shopify-style variants and options support
+    options: {
+      type: [
+        {
+          name: { type: String, required: true, trim: true },
+          values: { type: [String], default: [] },
+        }
+      ],
+      default: []
+    },
+    variants: {
+      type: [
+        {
+          _id: { type: Schema.Types.ObjectId, default: () => new mongoose.Types.ObjectId() },
+          title: { type: String, required: true }, // e.g. "S / Red"
+          price: { type: Number, default: 0 },
+          compareAtPrice: { type: Number, default: null },
+          sku: { type: String, trim: true, default: '' },
+          inventoryQuantity: { type: Number, default: 0 },
+          optionValues: { type: Map, of: String }, // e.g. { Size: "S", Color: "Red" }
+        }
+      ],
+      default: []
+    },
     // ── SEO ──────────────────────────────────────────────────────────────
     seo: {
       metaTitle: { type: String, trim: true, default: '' },

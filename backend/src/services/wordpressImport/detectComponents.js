@@ -81,6 +81,7 @@ function detectStoreComponents(parsedPages = []) {
       componentSummary,
       storeReady,
       previewStatus,
+      productCardTemplate,
     } = runTemplateImportPipeline(bodyHtml, pageMetadata);
 
     detected.forEach((d) => {
@@ -101,6 +102,7 @@ function detectStoreComponents(parsedPages = []) {
         componentSummary,
         storeReady,
         previewStatus,
+        productCardTemplate,
       },
     };
   });

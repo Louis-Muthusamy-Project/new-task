@@ -15,7 +15,7 @@
  *   { customerId }    a signed-in shopper (see customerAuthService.js)
  *
  * Pricing — mirrors OrderService's rule: a cart's stored `items` are just
- * `{ productId, quantity }`; price/title/image/in-stock are always
+ * `{ productId, quantity, variantId }`; price/title/image/in-stock are always
  * re-read live from StoreProduct in `getCartView`, never trusted from
  * whatever was true when the item was added. That's what makes a price
  * change or a sellout show up in an already-open cart immediately.
@@ -79,27 +79,33 @@ async function getOrCreateCart(storeId, identity) {
   return cart;
 }
 
-async function addItem(storeId, identity, productId, quantity = 1) {
+async function addItem(storeId, identity, productId, quantity = 1, variantId = null) {
   requireValidId(productId, 'productId');
+  if (variantId) requireValidId(variantId, 'variantId');
   const qty = Math.max(parseInt(quantity, 10) || 1, 1);
 
   const cart = await getOrCreateCart(storeId, identity);
-  const existing = cart.items.find((i) => String(i.productId) === String(productId));
+  const existing = cart.items.find(
+    (i) => String(i.productId) === String(productId) && String(i.variantId || '') === String(variantId || '')
+  );
   if (existing) {
     existing.quantity += qty;
   } else {
-    cart.items.push({ productId, quantity: qty });
+    cart.items.push({ productId, variantId, quantity: qty });
   }
   await cart.save();
   return cart;
 }
 
-async function updateItemQuantity(storeId, identity, productId, quantity) {
+async function updateItemQuantity(storeId, identity, productId, quantity, variantId = null) {
   requireValidId(productId, 'productId');
+  if (variantId) requireValidId(variantId, 'variantId');
   const qty = Math.max(parseInt(quantity, 10) || 0, 0);
 
   const cart = await getOrCreateCart(storeId, identity);
-  const idx = cart.items.findIndex((i) => String(i.productId) === String(productId));
+  const idx = cart.items.findIndex(
+    (i) => String(i.productId) === String(productId) && String(i.variantId || '') === String(variantId || '')
+  );
   if (idx === -1) throw notFoundError('That item is not in the cart.');
 
   if (qty === 0) {
@@ -111,10 +117,13 @@ async function updateItemQuantity(storeId, identity, productId, quantity) {
   return cart;
 }
 
-async function removeItem(storeId, identity, productId) {
+async function removeItem(storeId, identity, productId, variantId = null) {
   requireValidId(productId, 'productId');
+  if (variantId) requireValidId(variantId, 'variantId');
   const cart = await getOrCreateCart(storeId, identity);
-  cart.items = cart.items.filter((i) => String(i.productId) !== String(productId));
+  cart.items = cart.items.filter(
+    (i) => !(String(i.productId) === String(productId) && String(i.variantId || '') === String(variantId || ''))
+  );
   await cart.save();
   return cart;
 }
@@ -183,6 +192,7 @@ async function getCartView(storeId, cart) {
     if (!product) {
       return {
         productId: item.productId,
+        variantId: item.variantId || null,
         quantity: item.quantity,
         title: 'Product no longer available',
         price: 0,
@@ -193,19 +203,36 @@ async function getCartView(storeId, cart) {
       };
     }
     const available = product.status === 'Active';
-    const inStock = inventoryService.isInStock(product);
-    const lineTotal = available ? product.price * item.quantity : 0;
+    
+    // Check if variant details apply
+    let price = product.price;
+    let title = product.title;
+    let maxQuantity = product.trackInventory ? product.inventoryQuantity : null;
+    let inStock = inventoryService.isInStock(product, item.variantId);
+    
+    if (item.variantId && product.variants && product.variants.length > 0) {
+      const variant = product.variants.find(v => String(v._id) === String(item.variantId));
+      if (variant) {
+        price = variant.price;
+        title = `${product.title} - ${variant.title}`;
+        maxQuantity = product.trackInventory ? variant.inventoryQuantity : null;
+      }
+    }
+    
+    const lineTotal = available ? price * item.quantity : 0;
     subtotal += lineTotal;
+    
     return {
       productId: product._id,
+      variantId: item.variantId || null,
       quantity: item.quantity,
-      title: product.title,
-      price: product.price,
+      title,
+      price,
       currency: product.currency || 'USD',
       image: (product.images && product.images[0]) || '',
       available,
       inStock,
-      maxQuantity: product.trackInventory ? product.inventoryQuantity : null,
+      maxQuantity,
       lineTotal,
     };
   });
@@ -285,12 +312,12 @@ async function mergeGuestIntoCustomer(storeId, guestToken, customerId) {
 
   for (const guestItem of guestCart.items) {
     const existing = customerCart.items.find(
-      (i) => String(i.productId) === String(guestItem.productId)
+      (i) => String(i.productId) === String(guestItem.productId) && String(i.variantId || '') === String(guestItem.variantId || '')
     );
     if (existing) {
       existing.quantity += guestItem.quantity;
     } else {
-      customerCart.items.push({ productId: guestItem.productId, quantity: guestItem.quantity });
+      customerCart.items.push({ productId: guestItem.productId, variantId: guestItem.variantId, quantity: guestItem.quantity });
     }
   }
 

@@ -36,32 +36,54 @@ const emitInventoryUpdated = (storeId, product) => {
  * True if `product` (a StoreProduct doc or lean object) currently has
  * stock available for purchase.
  */
-function isInStock(product) {
+function isInStock(product, variantId) {
   if (!product) return false;
   if (!product.trackInventory) return true;
+  
+  if (variantId && product.variants && product.variants.length > 0) {
+    const variant = product.variants.find(v => String(v._id) === String(variantId));
+    return variant ? (variant.inventoryQuantity || 0) > 0 : false;
+  }
+  
+  if (product.variants && product.variants.length > 0) {
+    return product.variants.some(v => (v.inventoryQuantity || 0) > 0);
+  }
+  
   return (product.inventoryQuantity || 0) > 0;
 }
 
 /**
  * Reads the current stock level for a single product, scoped to a store.
  */
-async function getInventory(storeId, productId) {
+async function getInventory(storeId, productId, variantId) {
   const product = await StoreProduct.findOne({
     _id: productId,
     storeId,
     isDeleted: false,
   })
-    .select('title sku inventoryQuantity trackInventory')
+    .select('title sku inventoryQuantity trackInventory variants')
     .lean();
   if (!product) throw notFoundError('Product not found.');
 
+  let inventoryQuantity = product.inventoryQuantity;
+  let sku = product.sku;
+  
+  if (variantId && product.variants && product.variants.length > 0) {
+    const variant = product.variants.find(v => String(v._id) === String(variantId));
+    if (variant) {
+      inventoryQuantity = variant.inventoryQuantity;
+      sku = variant.sku;
+    }
+  }
+
   return {
     productId: product._id,
+    variantId: variantId || null,
     title: product.title,
-    sku: product.sku,
+    sku,
     trackInventory: product.trackInventory,
-    inventoryQuantity: product.inventoryQuantity,
-    inStock: isInStock(product),
+    inventoryQuantity,
+    inStock: isInStock(product, variantId),
   };
 }
 
@@ -92,19 +114,26 @@ async function setInventory(storeId, productId, quantity, { trackInventory } = {
  * deduct). Used internally by OrderService when an order is placed or
  * cancelled/restocked. Clamped at zero — never goes negative.
  */
-async function adjustInventory(storeId, productId, delta, session) {
+async function adjustInventory(storeId, productId, delta, session, variantId) {
   const product = await StoreProduct.findOne({ _id: productId, storeId, isDeleted: false }).session(
     session || null
   );
   if (!product) throw notFoundError('Product not found.');
   if (!product.trackInventory) return product; // untracked products are never decremented
 
-  const next = Math.max(0, (product.inventoryQuantity || 0) + delta);
-  product.inventoryQuantity = next;
+  if (variantId && product.variants && product.variants.length > 0) {
+    const variant = product.variants.find(v => String(v._id) === String(variantId));
+    if (variant) {
+      variant.inventoryQuantity = Math.max(0, (variant.inventoryQuantity || 0) + delta);
+      // Synchronize parent product inventoryQuantity with sum of all variant quantities
+      product.inventoryQuantity = product.variants.reduce((sum, v) => sum + (v.inventoryQuantity || 0), 0);
+    }
+  } else {
+    const next = Math.max(0, (product.inventoryQuantity || 0) + delta);
+    product.inventoryQuantity = next;
+  }
+
   await product.save({ session: session || undefined });
-  // Covers both checkout (decrement) and order-cancellation (restock), so a
-  // shopper completing an order updates every other open storefront tab's
-  // stock badge in real time, not just the admin's own view.
   emitInventoryUpdated(storeId, product);
   return product;
 }
@@ -137,8 +166,17 @@ async function checkAvailability(storeId, items) {
       problems.push(`${product.title} is not currently available.`);
       continue;
     }
-    if (product.trackInventory && (product.inventoryQuantity || 0) < quantity) {
-      problems.push(`${product.title} only has ${product.inventoryQuantity || 0} unit(s) in stock.`);
+    if (product.trackInventory) {
+      if (line.variantId && product.variants && product.variants.length > 0) {
+        const variant = product.variants.find(v => String(v._id) === String(line.variantId));
+        if (!variant) {
+          problems.push(`Selected variant of ${product.title} does not exist.`);
+        } else if ((variant.inventoryQuantity || 0) < quantity) {
+          problems.push(`Selected variant of ${product.title} only has ${variant.inventoryQuantity || 0} unit(s) in stock.`);
+        }
+      } else if ((product.inventoryQuantity || 0) < quantity) {
+        problems.push(`${product.title} only has ${product.inventoryQuantity || 0} unit(s) in stock.`);
+      }
     }
   }
 
@@ -157,8 +195,7 @@ async function checkAvailability(storeId, items) {
  */
 async function decrementForOrder(storeId, orderItems) {
   for (const item of orderItems) {
-    // eslint-disable-next-line no-await-in-loop
-    await adjustInventory(storeId, item.productId, -item.quantity);
+    await adjustInventory(storeId, item.productId, -item.quantity, null, item.variantId);
   }
 }
 
@@ -167,8 +204,7 @@ async function decrementForOrder(storeId, orderItems) {
  */
 async function restockForOrder(storeId, orderItems) {
   for (const item of orderItems) {
-    // eslint-disable-next-line no-await-in-loop
-    await adjustInventory(storeId, item.productId, item.quantity);
+    await adjustInventory(storeId, item.productId, item.quantity, null, item.variantId);
   }
 }
 
