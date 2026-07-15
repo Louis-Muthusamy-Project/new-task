@@ -50,6 +50,13 @@
 const cheerio = require('cheerio');
 const { COMPONENT_LABELS, AUTO_CONVERTIBLE_TYPES } = require('./storeBlockTemplates');
 const { matchSynonymConcept, CONCEPT_TO_TYPE } = require('./storeSectionSynonyms');
+// Phase 4 (store-module implementation plan) — reuses Phase 2's js-bundle
+// product-data scan as a DETECTION signal, not just a data-extraction one.
+// A CSR/JS-hydrated export (e.g. a Next.js static build) ships an empty
+// HTML shell, so every cheerio-based heuristic above finds nothing and
+// `storeReady` would otherwise never become true for these templates —
+// even though real product data demonstrably exists in a bundled JS chunk.
+const { extractProductsFromJsSource } = require('../services/templateImplort/productDataExtractor');
 
 const CONFIDENCE_THRESHOLD = 0.6;
 // Tier 2's own labeling threshold — separate from Tier 1's structural
@@ -230,6 +237,107 @@ function looksLikeProductContainer($, el) {
   }
 
   return false;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// CSR / JS-hydrated fallback signal (Phase 4)
+// ─────────────────────────────────────────────────────────────────────────
+
+// Every source that carries a live `data-store-*` grid/detail type — if
+// any of these already exist on the page, the JS-bundle fallback below is
+// unnecessary (and, per the extractor's own contract, redundant/risky —
+// a bundle re-hydrating markup that already has real product cards is
+// very likely the SAME data, not a second catalog).
+const GRID_OR_DETAIL_TYPES = new Set([
+  'product-grid', 'featured-products', 'latest-products', 'best-sellers',
+  'related-products', 'sale-products', 'category-products', 'category-grid',
+  'product-detail',
+]);
+
+/**
+ * Runs Phase 2's js-bundle product scan (services/templateImplort/
+ * productDataExtractor.js) across whatever JS source text is available for
+ * this template and reports whether it found real product-shaped data.
+ * Bounded and failure-isolated the same way the rest of this module is —
+ * a bad/huge bundle degrades to "nothing found", never a thrown error.
+ *
+ * @param {Array<string|{content:string}>} jsSources
+ * @returns {{ found: boolean, count: number }}
+ */
+function scanJsSourcesForProducts(jsSources) {
+  if (!Array.isArray(jsSources) || !jsSources.length) return { found: false, count: 0 };
+  let count = 0;
+  try {
+    for (const source of jsSources) {
+      const text = typeof source === 'string' ? source : source?.content;
+      if (!text) continue;
+      count += extractProductsFromJsSource(text).length;
+      if (count > 0) break; // one confirmed hit is enough to justify tagging a container
+    }
+  } catch (err) {
+    console.warn('[storeComponentDetector] js-bundle detection scan failed (non-fatal):', err?.message || err);
+    return { found: false, count: 0 };
+  }
+  return { found: count > 0, count };
+}
+
+/**
+ * Tags a "sensible anchor" element as `data-store-block="product-grid"` so
+ * a CSR template whose product data lives in a JS bundle (not its HTML)
+ * still ends up `storeReady`. This is the one place in this module that
+ * may synthesize a wrapper element rather than only tagging one that was
+ * already there — a deliberate, narrow exception (per the store-module
+ * plan's Phase 4) for the specific case where the page body has nothing
+ * taggable at all (a bare mount point with no children), since a CSR
+ * export's real markup won't exist until the client hydrates it.
+ *
+ * Anchor preference, most- to least-specific:
+ *   1. The document's designated app-mount container (`#__next`, `#root`,
+ *      `#app`, etc.) if present — this IS "the page" for these builds.
+ *   2. The first element child of <body>.
+ *   3. <body> itself, wrapped in a new synthetic container as a last
+ *      resort (only when body has no element children to tag directly).
+ *
+ * @returns {{ type: 'product-grid', label: string, score: number,
+ *   mapping: 'converted', source: 'js-bundle-fallback', itemCount: number } | null}
+ */
+function tagJsBundleFallbackContainer($, itemCount) {
+  const mountSelectors = ['#__next', '#root', '#app', '#gatsby-focus-wrapper'];
+  let $anchor = null;
+
+  for (const sel of mountSelectors) {
+    const $match = $(sel);
+    if ($match.length) { $anchor = $match.first(); break; }
+  }
+
+  if (!$anchor) {
+    const $firstChild = $('body').children().first();
+    $anchor = $firstChild.length ? $firstChild : null;
+  }
+
+  if (!$anchor) {
+    // Body has no element children at all — synthesize one wrapper
+    // around whatever body contains, rather than leaving the page
+    // permanently un-hydratable.
+    const inner = $('body').html() || '';
+    $('body').html(`<div>${inner}</div>`);
+    $anchor = $('body').children().first();
+    if (!$anchor.length) return null;
+  }
+
+  const existingClass = $anchor.attr('class') || '';
+  $anchor.attr('data-store-block', 'product-grid');
+  $anchor.attr('data-native-count', String(itemCount));
+  $anchor.attr('class', `store-block store-block-product-grid ${existingClass}`.trim());
+
+  return {
+    type: 'product-grid',
+    label: COMPONENT_LABELS['product-grid'] || 'product-grid',
+    score: 0.55, // deliberately below the heuristic detectors' scores — this is a coarser, whole-page signal, not a scanned/scored card grid
+    mapping: 'converted',
+    source: 'js-bundle-fallback',
+    itemCount,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -638,12 +746,18 @@ function classifyNonGridElement($, el, pageMetadata = {}) {
  * @param {string} html  body-only HTML from parseStoreTemplateZip's
  *   page.content.html
  * @param {object} pageMetadata  optional { isHome: boolean, slug: string, name: string }
+ * @param {Array<string|{content:string}>} [jsSources]  raw JS bundle source
+ *   text (or `{content}` entries) collected from the uploaded ZIP, used as
+ *   a fallback DETECTION signal (Phase 4) when no static-HTML grid/detail
+ *   region was found — see scanJsSourcesForProducts/tagJsBundleFallbackContainer
+ *   above. Optional; omitting it just skips the fallback (existing static-HTML
+ *   templates are completely unaffected).
  * @returns {{
  *   html: string,
  *   detected: Array<{ type: string, label: string, score: number, mapping: 'converted'|'needs-manual-mapping', itemCount?: number }>
  * }}
  */
-function detectAndReplaceComponents(html, pageMetadata = {}) {
+function detectAndReplaceComponents(html, pageMetadata = {}, jsSources = []) {
   if (!html || typeof html !== 'string') return { html: html || '', detected: [] };
 
   const $ = cheerio.load(html, { decodeEntities: false });
@@ -793,6 +907,34 @@ function detectAndReplaceComponents(html, pageMetadata = {}) {
         });
       }
     });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // CSR / JS-HYDRATED FALLBACK (Phase 4): every heuristic above works off
+  // the page's markup, so a client-rendered export whose product data
+  // lives in a bundled JS chunk (shipped HTML is an empty shell) reaches
+  // this point having tagged nothing grid/detail-shaped. If the caller
+  // supplied JS source text and it contains real product-shaped data,
+  // tag one sensible container so injectStoreBlocks (Stage 3) still sees
+  // a live-data block and marks the page storeReady — the same live
+  // dynamic-block mechanism that already renders product-grid containers
+  // then takes over at render time, exactly as it does for any other
+  // detected product-grid.
+  // ─────────────────────────────────────────────────────────────────────
+  const alreadyHasLiveGridOrDetail = detected.some((d) => GRID_OR_DETAIL_TYPES.has(d.type));
+  if (!alreadyHasLiveGridOrDetail && jsSources && jsSources.length) {
+    try {
+      const { found, count } = scanJsSourcesForProducts(jsSources);
+      if (found) {
+        const fallbackEntry = tagJsBundleFallbackContainer($, count);
+        if (fallbackEntry) detected.push(fallbackEntry);
+      }
+    } catch (err) {
+      // Detection is best-effort everywhere else in this module; the
+      // fallback is no exception — a failure here just means the page
+      // stays whatever it already was (static/fallback), never a crash.
+      console.warn('[storeComponentDetector] js-bundle fallback tagging failed (non-fatal):', err?.message || err);
+    }
   }
 
   return { html: $('body').html() || $.html(), detected };

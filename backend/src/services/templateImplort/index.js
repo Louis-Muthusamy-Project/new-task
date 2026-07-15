@@ -38,6 +38,10 @@ const { extractProductCardTemplates } = require('../../utils/productCardExtracto
  *
  * @param {string} html          body HTML for a single page (post asset-rewrite)
  * @param {object} pageMetadata  { isHome, slug, name }
+ * @param {Array<string|{content:string}>} [jsSources]  raw JS bundle source
+ *   text from the uploaded ZIP — see detectStoreComponents.js's jsSources
+ *   param (Phase 4: CSR/JS-hydrated fallback detection). Optional; existing
+ *   callers that don't pass it are unaffected.
  * @returns {{
  *   html: string,                 // final HTML to persist (tagged, or original on failure)
  *   detectedComponents: Array,    // what was found (empty if detection failed)
@@ -47,13 +51,13 @@ const { extractProductCardTemplates } = require('../../utils/productCardExtracto
  *   productCardTemplate: string|null, // extracted outerHTML of the first product card
  * }}
  */
-function runTemplateImportPipeline(html, pageMetadata = {}) {
+function runTemplateImportPipeline(html, pageMetadata = {}, jsSources = []) {
   const originalHtml = typeof html === 'string' ? html : '';
 
   try {
     // Stage 1 — Detect Components (also does the base attribute injection
     // for whole containers; see detectStoreComponents.js).
-    const detectResult = detectStoreComponents(originalHtml, pageMetadata);
+    const detectResult = detectStoreComponents(originalHtml, pageMetadata, jsSources);
 
     // Stage 2 — Convert Product Sections (per-card / per-field tagging
     // inside already-detected grid/PDP containers).

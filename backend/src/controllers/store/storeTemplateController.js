@@ -823,6 +823,13 @@ const parseStoreTemplateZip = async (zipBuffer, { cloudinaryFolder }) => {
   // alphabetical) from the guard above — process in that same order.
   const pages = [];
 
+  // Parallel array (same index as `pages`) holding each page's raw,
+  // pre-detection body HTML. Kept around only so the CSR/JS-hydrated
+  // fallback pass below (Phase 4) can re-run the Detect->Convert->Inject
+  // pipeline a second time with JS bundle sources, without re-doing the
+  // (much more expensive) asset-rewrite/CSS-inlining work above.
+  const rawBodyHtmlByPage = [];
+
   // Only the single, already-identified `homeEntry` (htmlEntries[0], once
   // sorting has run) should ever be treated as the store's home page.
   // Previously every file literally named "index.html" anywhere in the
@@ -904,6 +911,8 @@ const parseStoreTemplateZip = async (zipBuffer, { cloudinaryFolder }) => {
       );
     }
 
+    rawBodyHtmlByPage.push(bodyHtmlRaw);
+
     pages.push({
       name: pageName,
       slug: pageSlug,
@@ -938,6 +947,55 @@ const parseStoreTemplateZip = async (zipBuffer, { cloudinaryFolder }) => {
     if (v.secureUrl) assetMap[k] = v.secureUrl;
   }
 
+  // ── CSR / JS-hydrated fallback detection (Phase 4) ──────────────────────
+  // Every page above was detected against static HTML only. That's enough
+  // for ordinary themes, but a CSR/JS-hydrated export (e.g. a Next.js
+  // static build) ships an empty HTML shell — cheerio finds nothing,
+  // `storeReady` never becomes true, and the storefront would silently
+  // fall back to a generic screen (root-cause gap #2 in the store-module
+  // plan) even once Phase 2/3 have real products sitting in
+  // StoreTemplate.demoProducts. Only bother reading the ZIP's JS bundles
+  // (bounded/deferred, same as the demoProducts extraction below) when
+  // NOT ONE page came out storeReady from static detection alone — most
+  // templates never need this second pass.
+  const anyStoreReadyFromStatic = pages.some((p) => p.content.storeReady);
+  let cachedJsSources = null;
+
+  if (!anyStoreReadyFromStatic && jsEntries.length) {
+    cachedJsSources = await readBoundedJsSources(jsEntries);
+
+    if (cachedJsSources.length) {
+      pages.forEach((page, i) => {
+        const rawBodyHtml = rawBodyHtmlByPage[i];
+        if (!rawBodyHtml) return;
+
+        const retryResult = runTemplateImportPipeline(
+          rawBodyHtml,
+          { isHome: page.isHome, slug: page.slug, name: page.name },
+          cachedJsSources
+        );
+
+        // Only adopt the retry if it actually found something the first
+        // pass didn't — never regress a page that was already fine, and
+        // never swap in a worse result if the js-bundle scan came up empty
+        // for this particular template.
+        if (retryResult.storeReady) {
+          page.content.html = retryResult.html;
+          page.content.detectedComponents = retryResult.detectedComponents;
+          page.content.componentSummary = retryResult.componentSummary;
+          page.content.storeReady = retryResult.storeReady;
+          page.content.previewStatus = retryResult.previewStatus;
+          page.content.productCardTemplate = retryResult.productCardTemplate;
+          page.content.productCardTemplates = retryResult.productCardTemplates || [];
+
+          console.log(
+            `[store-import-engine] page "${page.slug}" marked storeReady via js-bundle fallback detection`
+          );
+        }
+      });
+    }
+  }
+
   // Product Data Extraction (services/templateImplort/productDataExtractor.js)
   // — Phase 2 of the store-module implementation plan: pull real products
   // (title/price/image/description) out of the uploaded ZIP so
@@ -946,12 +1004,14 @@ const parseStoreTemplateZip = async (zipBuffer, { cloudinaryFolder }) => {
   // (cheap — reuses HTML already parsed above); the JS-bundle fallback
   // only runs, and only reads jsEntries off disk, when that comes back
   // empty (CSR/client-hydrated templates like a Next.js static export
-  // ship product data inside a JS chunk, not in the HTML).
+  // ship product data inside a JS chunk, not in the HTML). Reuses
+  // `cachedJsSources` from the fallback-detection pass above when already
+  // read, so a CSR template's JS bundles are never read off the ZIP twice.
   const pageHtmls = pages.map((p) => p.content.html);
   let demoProducts = extractTemplateProducts({ pageHtmls });
 
   if (!demoProducts.length && jsEntries.length) {
-    const jsSources = await readBoundedJsSources(jsEntries);
+    const jsSources = cachedJsSources || await readBoundedJsSources(jsEntries);
     demoProducts = extractTemplateProducts({ pageHtmls: [], jsSources });
   }
 

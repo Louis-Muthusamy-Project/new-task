@@ -53,8 +53,11 @@ const slugify = (s) =>
 const deepClone = (value) => (value == null ? value : JSON.parse(JSON.stringify(value)));
 
 // Static demo catalog used to seed a freshly created store when
-// `installDemo` is requested. Kept intentionally generic/template-agnostic;
-// swap for template.projectData.demoProducts if a template ships its own.
+// `installDemo` is requested and the chosen template has no extracted
+// products of its own. Kept intentionally generic/template-agnostic — used
+// as the fallback in createStoreFromTemplateDocument's "Copy Demo Products"
+// step; template.demoProducts (populated at upload time by
+// services/templateImplort/productDataExtractor.js) wins whenever present.
 const DEMO_PRODUCT_SEED = [
   { title: 'Classic Tee', price: 24.99, tags: ['bestseller'] },
   { title: 'Everyday Hoodie', price: 49.99, tags: ['new'] },
@@ -220,16 +223,43 @@ async function createStoreFromTemplateDocument(opts = {}) {
       isActive: true,
     });
 
-    const productDocs = DEMO_PRODUCT_SEED.map((p) => ({
-      storeId: store._id,
-      title: p.title,
-      slug: slugify(p.title),
-      price: p.price,
-      currency: currency || 'USD',
-      tags: p.tags,
-      collectionIds: [demoCollection._id],
-      status: 'Active',
-    }));
+    // Prefer products actually extracted from the uploaded template ZIP
+    // (services/templateImplort/productDataExtractor.js, saved onto
+    // template.demoProducts at upload time — see Phase 2). Only fall back
+    // to the generic hardcoded seed when a template shipped none, so
+    // templates without extractable product data (or manually-created
+    // templates predating extraction) keep working exactly as before.
+    const sourceProducts =
+      Array.isArray(template.demoProducts) && template.demoProducts.length
+        ? template.demoProducts
+        : DEMO_PRODUCT_SEED;
+
+    // Guard against duplicate/blank slugs the same way pageDocs does above
+    // — StoreProduct enforces a unique (storeId, slug) index, and extracted
+    // titles (unlike the static seed) aren't guaranteed unique.
+    const seenProductSlugs = new Set();
+    const productDocs = sourceProducts.map((p) => {
+      const baseSlug = slugify(p.slug || p.title) || 'product';
+      let uniqueSlug = baseSlug;
+      let suffix = 2;
+      while (seenProductSlugs.has(uniqueSlug)) {
+        uniqueSlug = `${baseSlug}-${suffix++}`;
+      }
+      seenProductSlugs.add(uniqueSlug);
+
+      return {
+        storeId: store._id,
+        title: p.title,
+        slug: uniqueSlug,
+        description: p.description || '',
+        images: p.image ? [p.image] : [],
+        price: p.price || 0,
+        currency: p.currency || currency || 'USD',
+        tags: p.tags || [],
+        collectionIds: [demoCollection._id],
+        status: 'Active',
+      };
+    });
 
     createdProducts = await StoreProduct.insertMany(productDocs);
 

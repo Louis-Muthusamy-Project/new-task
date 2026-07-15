@@ -31,6 +31,15 @@ const { detectAndReplaceComponents } = require('../../utils/storeComponentDetect
 /**
  * @param {string} html          body-only HTML for one page
  * @param {object} pageMetadata  { isHome, slug, name }
+ * @param {Array<string|{content:string}>} [jsSources]  raw JS bundle source
+ *   text collected from the uploaded ZIP (e.g. the site's `_next/static/
+ *   chunks/*.js`). Optional — omitting it leaves static-HTML templates'
+ *   behavior completely unchanged. When a page's cheerio-based heuristics
+ *   above find no product-grid/product-detail region, this is scanned as
+ *   a fallback detection signal (Phase 4 of the store-module plan) so
+ *   CSR/JS-hydrated templates (e.g. a Next.js static export whose product
+ *   data lives in a bundled JS chunk rather than the HTML) can still be
+ *   marked `storeReady` downstream.
  * @returns {{
  *   html: string,
  *   detected: Array<{type:string,label:string,score:number,mapping:string}>,
@@ -38,7 +47,7 @@ const { detectAndReplaceComponents } = require('../../utils/storeComponentDetect
  *   error?: string
  * }}
  */
-function detectStoreComponents(html, pageMetadata = {}) {
+function detectStoreComponents(html, pageMetadata = {}, jsSources = []) {
   const original = typeof html === 'string' ? html : '';
 
   if (!original.trim()) {
@@ -46,7 +55,7 @@ function detectStoreComponents(html, pageMetadata = {}) {
   }
 
   try {
-    const { html: taggedHtml, detected } = detectAndReplaceComponents(original, pageMetadata);
+    const { html: taggedHtml, detected } = detectAndReplaceComponents(original, pageMetadata, jsSources);
 
     // Belt-and-braces: never hand back an empty result for non-empty
     // input — treat that as a failed detection rather than silently
