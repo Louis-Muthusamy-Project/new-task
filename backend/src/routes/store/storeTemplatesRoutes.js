@@ -38,6 +38,13 @@ router.post(
     let templateZipCloudinaryUrl = '';
     let parsedPages = [];
     let assetMap = {};
+    // Real products parsed out of the ZIP by the Template Import
+    // Pipeline's extraction stage (services/templateImplort/
+    // productDataExtractor.js) — see models/store/StoreTemplate.js's
+    // demoProducts field. [] when the template has no detectable
+    // products; installDemo then falls back to the generic seed at
+    // store-creation time (storeController.js).
+    let parsedDemoProducts = [];
 
     if (req.file) {
       // Reserve the template's _id up front so the parse pipeline's asset
@@ -56,6 +63,7 @@ router.post(
       templateZipCloudinaryUrl = zipUploadResult.secure_url;
       parsedPages = parsed.pages;
       assetMap = parsed.assetMap;
+      parsedDemoProducts = parsed.demoProducts || [];
 
       req.body._reservedTemplateId = templateId;
     }
@@ -67,6 +75,7 @@ router.post(
       thumbnail,
       preview,
       pages,
+      demoProducts,
       theme,
       status,
       version,
@@ -81,6 +90,17 @@ router.post(
         parsedPages = JSON.parse(pages);
       } catch (e) {
         console.error('Failed to parse pages array:', e);
+      }
+    }
+
+    // Same fallback pattern as `pages` above — a ZIP's own extraction
+    // wins; a caller-supplied `demoProducts` JSON field (e.g. a manual/
+    // non-ZIP template entry) is only used when the ZIP yielded nothing.
+    if (!parsedDemoProducts.length && demoProducts) {
+      try {
+        parsedDemoProducts = JSON.parse(demoProducts);
+      } catch (e) {
+        console.error('Failed to parse demoProducts array:', e);
       }
     }
 
@@ -102,6 +122,7 @@ router.post(
       // raw ZIP's Cloudinary URL for reference/re-download.
       projectData: { zipCloudinaryUrl: templateZipCloudinaryUrl, assetMap },
       pages: parsedPages,
+      demoProducts: parsedDemoProducts,
       theme: parsedTheme,
       status: status || 'Draft',
       version: version || 1,
@@ -158,6 +179,7 @@ router.post(
       theme: template.theme,
       thumbnail: template.thumbnail,
       preview: template.preview,
+      demoProducts: template.demoProducts,
       label: label || `Version ${nextVersion}`,
       createdBy: req?.user?.id || req?.user?._id || null,
       createdAt: new Date(),
@@ -197,6 +219,7 @@ router.post(
     template.theme = target.theme;
     template.thumbnail = target.thumbnail;
     template.preview = target.preview;
+    template.demoProducts = target.demoProducts;
 
     const nextVersion = Math.max(...template.versions.map((v) => v.version)) + 1;
     template.versions.push({
@@ -206,6 +229,7 @@ router.post(
       theme: target.theme,
       thumbnail: target.thumbnail,
       preview: target.preview,
+      demoProducts: target.demoProducts,
       label: `Rollback to v${targetVersion}`,
       createdBy: req?.user?.id || req?.user?._id || null,
       createdAt: new Date(),
@@ -243,6 +267,7 @@ router.post(
       thumbnail: source.thumbnail,
       projectData: source.projectData,
       pages: source.pages,
+      demoProducts: source.demoProducts,
       theme: source.theme,
       status: 'Draft',
       version: 1,

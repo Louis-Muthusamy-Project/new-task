@@ -30,6 +30,7 @@ const { uploadBufferToCloudinary } = require('../../config/cloudinary');
 const { minifyCss } = require('../../utils/minifyCss');
 const { optimizeImageUrl } = require('../../utils/storeImageOptimizer');
 const { runTemplateImportPipeline } = require('../../services/templateImplort');
+const { extractTemplateProducts } = require('../../services/templateImplort/productDataExtractor');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Multer — in-memory, ZIP-only
@@ -676,6 +677,36 @@ const isUnbuiltSpaShell = (html) => SPA_MOUNT_DIV_RE.test(html) && SPA_DEV_SCRIP
 // @returns {Promise<{ pages: Array, assetMap: Object }>}
 //   pages[i] = { name, slug, isHome, content: { html, css, headLinks, sourcePath } }
 // ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Bounded JS-source reader — only ever invoked when the static-HTML product
+// extraction strategy found nothing (see below), so most uploads never pay
+// this cost. Caps file count/size/total bytes so a huge or adversarial
+// bundle can't blow up memory or stall the upload; unreadable/oversized
+// entries are silently skipped rather than failing the whole import.
+// ─────────────────────────────────────────────────────────────────────────────
+const MAX_JS_FILES_TO_SCAN  = 40;
+const MAX_JS_FILE_BYTES     = 3 * 1024 * 1024;  // 3 MB per file
+const MAX_TOTAL_JS_BYTES    = 15 * 1024 * 1024; // 15 MB combined
+
+const readBoundedJsSources = async (jsEntries) => {
+  const sources = [];
+  let totalBytes = 0;
+
+  for (const { zipPath, entry } of jsEntries.slice(0, MAX_JS_FILES_TO_SCAN)) {
+    if (totalBytes >= MAX_TOTAL_JS_BYTES) break;
+    try {
+      const content = await entry.async('string');
+      if (content.length > MAX_JS_FILE_BYTES) continue;
+      totalBytes += content.length;
+      sources.push({ path: zipPath, content });
+    } catch (err) {
+      console.warn(`[store-import-engine] could not read JS entry "${zipPath}" for product extraction:`, err?.message || err);
+    }
+  }
+
+  return sources;
+};
+
 const parseStoreTemplateZip = async (zipBuffer, { cloudinaryFolder }) => {
   // 1. Open ZIP
   const zip = await JSZip.loadAsync(zipBuffer);
@@ -683,6 +714,14 @@ const parseStoreTemplateZip = async (zipBuffer, { cloudinaryFolder }) => {
   // 2. Catalogue entries
   const htmlEntries = [];
   const cssEntries  = new Map();
+  // Collected only for the js-bundle product-data extraction fallback
+  // (productDataExtractor.js) — CSR/client-hydrated templates (e.g.
+  // Next.js static exports) ship their product data inside a bundled JS
+  // chunk rather than in the HTML, so the static-HTML product-card
+  // strategy finds nothing on those. Not read yet — that's deferred and
+  // bounded (see readBoundedJsSources below) since most templates never
+  // need this fallback.
+  const jsEntries = [];
 
   zip.forEach((rawPath, entry) => {
     if (!entry || entry.dir) return;
@@ -695,6 +734,7 @@ const parseStoreTemplateZip = async (zipBuffer, { cloudinaryFolder }) => {
     }
     if (SKIP_EXTS.has(ext)) return;
     if (ext === 'css') cssEntries.set(zipPath, { entry });
+    if (ext === 'js' || ext === 'mjs') jsEntries.push({ zipPath, entry });
   });
 
   if (!htmlEntries.some(({ zipPath }) => /(^|\/)index\.html?$/i.test(zipPath))) {
@@ -898,7 +938,31 @@ const parseStoreTemplateZip = async (zipBuffer, { cloudinaryFolder }) => {
     if (v.secureUrl) assetMap[k] = v.secureUrl;
   }
 
-  return { pages, assetMap };
+  // Product Data Extraction (services/templateImplort/productDataExtractor.js)
+  // — Phase 2 of the store-module implementation plan: pull real products
+  // (title/price/image/description) out of the uploaded ZIP so
+  // StoreTemplate.demoProducts is populated from the actual theme instead
+  // of a hardcoded seed. Static-HTML tagged product cards are tried first
+  // (cheap — reuses HTML already parsed above); the JS-bundle fallback
+  // only runs, and only reads jsEntries off disk, when that comes back
+  // empty (CSR/client-hydrated templates like a Next.js static export
+  // ship product data inside a JS chunk, not in the HTML).
+  const pageHtmls = pages.map((p) => p.content.html);
+  let demoProducts = extractTemplateProducts({ pageHtmls });
+
+  if (!demoProducts.length && jsEntries.length) {
+    const jsSources = await readBoundedJsSources(jsEntries);
+    demoProducts = extractTemplateProducts({ pageHtmls: [], jsSources });
+  }
+
+  if (demoProducts.length) {
+    console.log(
+      `[store-import-engine] ${demoProducts.length} product(s) extracted from template`,
+      `(source=${demoProducts[0].sourceSection})`
+    );
+  }
+
+  return { pages, assetMap, demoProducts };
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

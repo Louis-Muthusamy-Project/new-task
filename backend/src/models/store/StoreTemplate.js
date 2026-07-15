@@ -39,6 +39,32 @@ const TemplateThemeSchema = new Schema(
   { _id: false }
 );
 
+// One product parsed out of the uploaded ZIP by the Template Import
+// Pipeline's product-data extraction stage (see services/templateImplort/
+// productDataExtractor.js) — either scraped from static product-card
+// markup or, for CSR/JS-hydrated templates (e.g. Next.js exports), pulled
+// from an embedded product-data array inside a bundled JS chunk. This is
+// a snapshot only: it never links to a live StoreProduct/_id — that
+// happens once when a Store is actually created from this template (see
+// createStoreFromTemplateDocument in controllers/store/storeController.js),
+// which copies these into real StoreProduct documents.
+const TemplateProductSchema = new Schema(
+  {
+    title: { type: String, trim: true, required: true },
+    slug: { type: String, trim: true, default: '' },
+    price: { type: Number, default: 0 },
+    currency: { type: String, trim: true, default: '' },
+    image: { type: String, trim: true, default: '' },
+    description: { type: String, trim: true, default: '' },
+    // Where this product was found — 'static-html' (product-card markup
+    // detected by the cheerio-based detector) or 'js-bundle' (extracted
+    // from a client-rendered template's bundled JS data array). Purely
+    // diagnostic; never affects rendering or store creation.
+    sourceSection: { type: String, trim: true, default: '' },
+  },
+  { _id: false }
+);
+
 // Snapshot of a template's editable payload at a point in time. Pushed onto
 // `versions` whenever a new version is saved so older revisions can be
 // rolled back to without losing history.
@@ -51,6 +77,7 @@ const TemplateVersionSchema = new Schema(
     thumbnail: { type: String, trim: true, default: '' },
     preview: { type: String, trim: true, default: '' },
     label: { type: String, trim: true, default: '' },
+    demoProducts: { type: [TemplateProductSchema], default: [] },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     createdAt: { type: Date, default: Date.now },
   },
@@ -108,6 +135,15 @@ const StoreTemplateSchema = new Schema(
     },
     pages: {
       type: [TemplatePageDefinitionSchema],
+      default: [],
+    },
+    // Products parsed out of the uploaded ZIP by the Template Import
+    // Pipeline's extraction stage — see TemplateProductSchema above.
+    // Populated once at upload time; createStoreFromTemplateDocument
+    // copies these into real StoreProduct docs when installDemo is on,
+    // in place of the old hardcoded DEMO_PRODUCT_SEED fallback.
+    demoProducts: {
+      type: [TemplateProductSchema],
       default: [],
     },
     theme: {
@@ -183,6 +219,7 @@ StoreTemplateSchema.pre('save', function seedInitialVersion(next) {
         theme: this.theme,
         thumbnail: this.thumbnail,
         preview: this.preview,
+        demoProducts: this.demoProducts,
         label: 'Initial version',
         createdBy: this.uploadedBy || null,
         createdAt: this.createdAt || new Date(),
